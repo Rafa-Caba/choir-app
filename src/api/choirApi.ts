@@ -2,16 +2,20 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// ⚠️ REPLACE THIS WITH YOUR COMPUTER'S LOCAL IP ADDRESS IF TESTING ON PHYSICAL DEVICE
-const DEV_URL = Platform.OS === 'android' 
-    ? 'http://10.0.2.2:8080/api' 
-    : 'http://10.10.1.98:8080/api'; 
+const PROD_URL = 'https://choir-api-production.up.railway.app/api';
 
-// Use your Railway URL for production later
-const PROD_URL = 'https://your-railway-app.up.railway.app/api';
+// 2. Define your Local IPs
+const LOCAL_IP = '10.10.1.98'; 
+
+const LOCAL_URL = Platform.OS === 'android' 
+    ? 'http://10.0.2.2:8080/api' 
+    : `http://${LOCAL_IP}:8080/api`;
+
+// 3. Select based on Environment
+const BASE_URL = __DEV__ ? LOCAL_URL : PROD_URL;
 
 const choirApi = axios.create({
-    baseURL: DEV_URL, // Switch to PROD_URL when deploying
+    baseURL: BASE_URL,
     headers: {
         'Content-Type': 'application/json',
     },

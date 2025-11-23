@@ -15,15 +15,32 @@ export const HomeScreen = () => {
     const navigation = useNavigation<any>();
     
     const { user } = useAuthStore();
-    const { announcements, fetchPublicAnnouncements, loading } = useAnnouncementStore();
-
-    // Fetch on mount
-    useEffect(() => {
-        fetchPublicAnnouncements();
-    }, []);
+    const { announcements, fetchPublicAnnouncements, fetchAdminAnnouncements, loading } = useAnnouncementStore();
 
     // Only Admins/Editors can see the "Add" button
     const canCreate = user?.role === 'ADMIN' || user?.role === 'EDITOR';
+    const canEdit = user?.role === 'ADMIN' || user?.role === 'EDITOR';
+
+    // Fetch Correct Data
+    useEffect(() => {
+        if (canEdit) {
+            fetchAdminAnnouncements();
+        } else {
+            fetchPublicAnnouncements();
+        }
+    }, [canEdit]);
+
+    // Handle Card Tap
+    const handleCardPress = (announcement: any) => {
+        if (canEdit) {
+            // Navigate to CreateAnnouncement, but pass the existing item to EDIT it
+            navigation.navigate('CreateAnnouncement', { announcement });
+        } else {
+            // For guests, maybe show a simple alert or detail modal
+            // For now, just log
+            console.log('Viewing detail:', announcement.id);
+        }
+    };
 
     return (
         <View style={[styles.container, { paddingTop: insets.top + 10 }]}>
@@ -61,8 +78,8 @@ export const HomeScreen = () => {
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={({ item }) => (
                     <AnnouncementCard 
-                        announcement={item} 
-                        onPress={() => console.log('Open details', item.id)} 
+                        announcement={item}
+                        onPress={() => handleCardPress(item)}
                     />
                 )}
                 refreshing={loading}

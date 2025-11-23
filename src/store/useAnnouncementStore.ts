@@ -68,8 +68,9 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => ({
     editAnnouncement: async (id, payload) => {
         set({ loading: true });
         try {
-            await updateAnnouncement(id, payload);
-            await get().fetchAdminAnnouncements(); 
+            await updateAnnouncement(id, payload); 
+            // Always fetch admin list after edit to see drafts/updates
+            await get().fetchAdminAnnouncements();
             return true;
         } catch (error) {
             console.error("Failed to update announcement", error);

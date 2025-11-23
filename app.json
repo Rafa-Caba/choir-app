@@ -16,15 +16,22 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.rafacaba.choirapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "453ab38a-8f9e-4c53-8ac8-9ed975e6415a"
+      }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }
