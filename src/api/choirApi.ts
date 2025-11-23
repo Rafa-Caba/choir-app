@@ -33,4 +33,24 @@ choirApi.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
+// RESPONSE INTERCEPTOR ---
+choirApi.interceptors.response.use(
+    (response) => response, // Return success responses as is
+    async (error) => {
+        // Check if error is 401 (Unauthorized) or 403 (Forbidden)
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+            
+            // 1. Clear tokens
+            await AsyncStorage.removeItem('token');
+            await AsyncStorage.removeItem('refreshToken');
+            
+            // Ideally, import the store directly to reset state:
+            // (This requires you to export the store instance, which you do)
+            const { useAuthStore } = require('../store/useAuthStore'); 
+            useAuthStore.getState().logout();
+        }
+        return Promise.reject(error);
+    }
+);
+
 export default choirApi;
