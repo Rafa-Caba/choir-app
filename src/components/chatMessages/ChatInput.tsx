@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-// FIX: Added 'Text' to the imports
 import { StyleSheet, TextInput, View, TouchableOpacity, Platform, Text, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useChatStore } from '../../store/useChatStore';
 import { getPreviewFromRichText } from '../../utils/textUtils';
+import { useTheme } from '../../context/ThemeContext';
 
 interface Props {
     onSend: (text: string, imageUri?: string) => void;
@@ -13,9 +13,13 @@ interface Props {
 export const ChatInput = ({ onSend }: Props) => {
     const [message, setMessage] = useState('');
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
-
-    // Get the reply state and setter from the store
+    
+    // Store Access
     const { replyingTo, setReplyingTo } = useChatStore();
+
+    // Theme Access
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
 
     const pickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -41,40 +45,50 @@ export const ChatInput = ({ onSend }: Props) => {
         <View>
             {/* --- REPLY PREVIEW BAR --- */}
             {replyingTo && (
-                <View style={styles.replyBar}>
-                    <View style={styles.replyBarLine} />
+                <View style={[
+                    styles.replyBar, 
+                    { backgroundColor: colors.card, borderTopColor: colors.border }
+                ]}>
+                    <View style={[styles.replyBarLine, { backgroundColor: colors.primary }]} />
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.replyBarName}>
+                        <Text style={[styles.replyBarName, { color: colors.primary }]}>
                             Respondiendo a {replyingTo.author.name.split(' ')[0]}
                         </Text>
-                        <Text numberOfLines={1} style={styles.replyBarText}>
+                        <Text numberOfLines={1} style={[styles.replyBarText, { color: colors.textSecondary }]}>
                             {getPreviewFromRichText(replyingTo.content)}
                         </Text>
                     </View>
                     <TouchableOpacity onPress={() => setReplyingTo(null)}>
-                        <Ionicons name="close-circle" size={24} color="#666" />
+                        <Ionicons name="close-circle" size={24} color={colors.text} />
                     </TouchableOpacity>
                 </View>
             )}
 
+            {/* --- IMAGE PREVIEW BAR --- */}
             {selectedImage && (
-                <View style={styles.imagePreviewBar}>
+                <View style={[
+                    styles.imagePreviewBar, 
+                    { backgroundColor: colors.card, borderTopColor: colors.border }
+                ]}>
                     <Image source={{ uri: selectedImage }} style={styles.previewThumb} />
                     <TouchableOpacity onPress={() => setSelectedImage(null)} style={styles.removeImageBtn}>
-                         <Ionicons name="close-circle" size={24} color="#333" />
+                         <Ionicons name="close-circle" size={24} color={colors.text} />
                     </TouchableOpacity>
                 </View>
             )}
 
             {/* --- INPUT AREA --- */}
-            <View style={styles.container}>
+            <View style={[styles.container, { backgroundColor: colors.primary }]}>
                 <View style={styles.itemInput}>
                     <TouchableOpacity onPress={pickImage} style={styles.attachBtn}>
-                        <Ionicons name="add-circle-outline" size={32} color="#fff" />
+                        <Ionicons name="add-circle-outline" size={32} color={colors.buttonText} />
                     </TouchableOpacity>
                     
                     <TextInput 
-                        style={styles.input}
+                        style={[styles.input, { 
+                            backgroundColor: currentTheme.isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.2)',
+                            color: colors.buttonText 
+                        }]}
                         placeholder="Mensaje..."
                         placeholderTextColor="rgba(255,255,255,0.6)"
                         multiline
@@ -89,7 +103,7 @@ export const ChatInput = ({ onSend }: Props) => {
                     >
                         <Ionicons 
                             name="send" 
-                            color="#fff"
+                            color={colors.buttonText} 
                             size={28} 
                         />
                     </TouchableOpacity>
@@ -102,7 +116,6 @@ export const ChatInput = ({ onSend }: Props) => {
 const styles = StyleSheet.create({
     container: {
         width: '100%',
-        backgroundColor: '#AC75FF',
         paddingBottom: Platform.OS === "ios" ? 20 : 10,
         paddingHorizontal: 10,
         paddingVertical: 10,
@@ -113,8 +126,6 @@ const styles = StyleSheet.create({
     },
     input: {
         flex: 1,
-        color: '#fff',
-        backgroundColor: '#9d5cff',
         fontSize: 16, 
         paddingHorizontal: 15,
         paddingVertical: 10,
@@ -123,46 +134,41 @@ const styles = StyleSheet.create({
         marginLeft: 5,
     },
     attachBtn: {
-        paddingBottom: 8,
+        // paddingBottom: 12,
+        marginVertical: 'auto',
         paddingLeft: 5
     },
     iconSend: {
         marginLeft: 10,
-        paddingBottom: 8
+        // paddingBottom: 14
+        marginVertical: 'auto'
     },
     // Reply Bar Styles
     replyBar: {
         flexDirection: 'row',
         alignItems: 'center',
         padding: 10,
-        backgroundColor: '#f0f0f0',
         borderTopWidth: 1,
-        borderTopColor: '#ddd'
     },
     replyBarLine: {
         width: 4,
         height: '100%',
-        backgroundColor: '#AC75FF',
         marginRight: 10,
         borderRadius: 2
     },
     replyBarName: {
         fontWeight: 'bold',
-        color: '#AC75FF',
         fontSize: 12,
         marginBottom: 2
     },
     replyBarText: {
-        color: '#666',
         fontSize: 12
     },
     imagePreviewBar: {
         padding: 10,
-        backgroundColor: '#f0f0f0',
         flexDirection: 'row',
         alignItems: 'center',
         borderTopWidth: 1,
-        borderTopColor: '#ddd'
     },
     previewThumb: {
         width: 60,

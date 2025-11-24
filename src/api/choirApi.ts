@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const PROD_URL = 'https://choir-api-production.up.railway.app/api';
+const PROD_URL = 'https://choir-app-api-production.up.railway.app/api';
 
 // 2. Define your Local IPs
 const LOCAL_IP = '10.10.1.98'; 

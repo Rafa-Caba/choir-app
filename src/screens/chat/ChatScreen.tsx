@@ -1,31 +1,28 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Text, Image } from 'react-native';
+import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useChatStore } from '../../store/useChatStore';
 import { ChatMessageItem } from '../../components/chatMessages/ChatMessageItem';
 import { ChatInput } from '../../components/chatMessages/ChatInput';
+import { useTheme } from '../../context/ThemeContext'; // 1. Import Theme
 
 export const ChatScreen = () => {
     const insets = useSafeAreaInsets();
     const flatListRef = useRef<FlatList>(null);
-
-    // Get state from Store
     const { messages, connect, disconnect, sendMessage, loadHistory } = useChatStore();
+    
+    // 2. Get Theme
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
 
-    // 1. Lifecycle: Connect & Load
     useEffect(() => {
         loadHistory();
         connect();
-        
-        return () => {
-            disconnect();
-        };
+        return () => disconnect();
     }, []);
 
-    // 2. Auto-scroll to bottom when new messages arrive
     useEffect(() => {
         if (messages.length > 0) {
-            // Small timeout ensures list is rendered before scrolling
             setTimeout(() => {
                 flatListRef.current?.scrollToEnd({ animated: true });
             }, 200);
@@ -37,12 +34,12 @@ export const ChatScreen = () => {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
             
-            {/* Custom Header */}
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Chat</Text>
-                <Text style={styles.headerSubtitle}>Grupo General</Text>
+            {/* Custom Header with Dynamic Colors */}
+            <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>Chat</Text>
+                <Text style={[styles.headerSubtitle, { color: colors.primary }]}>Grupo General</Text>
             </View>
 
             <KeyboardAvoidingView 
@@ -56,12 +53,13 @@ export const ChatScreen = () => {
                     keyExtractor={(item) => item.id.toString()}
                     renderItem={({ item }) => <ChatMessageItem message={item} />}
                     contentContainerStyle={styles.listContent}
-                    // Initial scroll logic
                     onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
                     onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyText}>No hay mensajes aún. ¡Saluda!</Text>
+                            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                                No hay mensajes aún. ¡Saluda!
+                            </Text>
                         </View>
                     }
                 />
@@ -75,14 +73,12 @@ export const ChatScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ddc7ff', // Your background color
+        // backgroundColor handled inline
     },
     header: {
-        backgroundColor: '#fff',
         paddingVertical: 15,
         paddingHorizontal: 20,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
         elevation: 3,
         shadowColor: '#000',
         shadowOpacity: 0.1,
@@ -91,11 +87,9 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 22,
         fontWeight: 'bold',
-        color: 'rgba(0,0,0,0.6)'
     },
     headerSubtitle: {
         fontSize: 12,
-        color: '#8B4BFF',
         fontWeight: '600'
     },
     listContent: {
@@ -106,7 +100,6 @@ const styles = StyleSheet.create({
         alignItems: 'center'
     },
     emptyText: {
-        color: '#888',
         fontStyle: 'italic'
     }
 });

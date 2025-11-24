@@ -3,18 +3,17 @@ import { useWindowDimensions, View, Image, Text, TouchableOpacity, StyleSheet } 
 import { createDrawerNavigator, DrawerContentComponentProps, DrawerContentScrollView } from '@react-navigation/drawer';
 import { Ionicons as Icon} from '@expo/vector-icons';
 
-// Stores
+// Stores & Context
 import { useAuthStore } from '../store/useAuthStore';
+import { usePushNotifications } from '../hooks/usePushNotifications';
+import { useTheme } from '../context/ThemeContext';
 
 // Screens
 import { LoginScreen } from '../screens/LoginScreen';
-// import { RegistroScreen } from '../screens/RegistroScreen'; // Create placeholder if needed
 import { LoadingScreen } from '../screens/LoadingScreen';
-import { HomeScreen } from '../screens/HomeScreen';
 import { CreateAnnouncementScreen } from '../screens/CreateAnnouncementScreen';
 import { TabsNavigator } from './TabsNavigator';
 import { updatePushToken } from '../services/auth';
-import { usePushNotifications } from '../hooks/usePushNotifications';
 
 const Drawer = createDrawerNavigator();
 
@@ -22,16 +21,17 @@ export const AppNavigator = () => {
     const { status, checkAuth } = useAuthStore();
     const { expoPushToken } = usePushNotifications();
     const { width } = useWindowDimensions();
+    
+    // Get Theme for the Navigator Options (Header/Drawer Container)
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
 
-    // Check token on app launch
     useEffect(() => {
         checkAuth();
     }, []);
 
-    // Sync token when logged in
     useEffect(() => {
         if (status === 'authenticated' && expoPushToken) {
-            console.log("Sending token to backend...");
             updatePushToken(expoPushToken);
         }
     }, [status, expoPushToken]);
@@ -41,17 +41,28 @@ export const AppNavigator = () => {
     return (
         <Drawer.Navigator 
             screenOptions={{ 
-                headerShown: true, // Show header for hamburger menu
+                headerShown: true,
                 drawerType: width >= 768 ? 'permanent' : 'front',
-                drawerStyle: { width: 250 },
-                headerTintColor: '#8B4BFF'
+                drawerStyle: { 
+                    width: 250,
+                    backgroundColor: colors.navBg
+                },
+                // Dynamic Header Styling
+                headerTintColor: colors.primary, 
+                headerStyle: {
+                    backgroundColor: colors.navBg, // Or colors.navBg
+                    elevation: 0,
+                    shadowOpacity: 0
+                },
+                headerTitleStyle: {
+                    color: colors.text
+                }
             }}
             drawerContent={(props) => <MenuInterno {...props} />}
         >
             {status !== 'authenticated' ? (
                 <>
                     <Drawer.Screen name="LoginScreen" component={LoginScreen} options={{ headerShown: false }} />
-                    {/* <Drawer.Screen name="RegistroScreen" component={RegistroScreen} options={{ headerShown: false }} /> */}
                 </>
             ) : (
                 <>
@@ -66,16 +77,22 @@ export const AppNavigator = () => {
 
 const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
     const { user, logout } = useAuthStore();
+    
+    // 5. Get Theme for the internal content (Text, Icons)
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
 
     return (
-        <DrawerContentScrollView>
+        <DrawerContentScrollView style={{ backgroundColor: colors.navBg }}>
             {/* Avatar Container */}
             <View style={styles.avatarContainer}>
                 <Image 
                     source={{ uri: user?.imageUrl || 'https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png' }}
-                    style={styles.avatar}
+                    style={[styles.avatar, { borderColor: colors.primary }]} // Dynamic Border
                 />
-                <Text style={styles.userName}>{user?.name || 'Usuario'}</Text>
+                <Text style={[styles.userName, { color: colors.text }]}>
+                    {user?.name || 'Usuario'}
+                </Text>
             </View>
 
             {/* Menu Options */}
@@ -83,7 +100,8 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
                 <MenuItem 
                     icon="home-outline" 
                     text="Home" 
-                    // FIX: Navigate to Root -> HomeTab
+                    color={colors.primary} // Pass dynamic color
+                    textColor={colors.text}
                     onPress={() => navigation.navigate('Root', { 
                         screen: 'HomeTab',
                         params: { screen: 'HomeScreen' }
@@ -92,30 +110,33 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
                 <MenuItem 
                     icon="person-outline" 
                     text="Perfil" 
-                    // FIX: Navigate to Root -> SettingsTab -> PerfilScreen
+                    color={colors.primary}
+                    textColor={colors.text}
                     onPress={() => navigation.navigate('Root', { 
                         screen: 'SettingsTab',
                         params: { screen: 'PerfilScreen' }
                     })} 
                 />
 
-                <View style={styles.separator} />
+                <View style={[styles.separator, { backgroundColor: colors.border }]} />
 
                 <MenuItem 
                     icon="log-out-outline" 
                     text="Cerrar Sesión" 
                     onPress={logout} 
-                    color="#e74c3c"
+                    color="#e74c3c" // Logout usually stays red
+                    textColor="#e74c3c"
                 />
             </View>
         </DrawerContentScrollView>
     );
 };
 
-const MenuItem = ({ icon, text, onPress, color = '#5856D6' }: any) => (
+// Helper Component updated to accept textColor
+const MenuItem = ({ icon, text, onPress, color, textColor }: any) => (
     <TouchableOpacity style={styles.menuBtn} onPress={onPress}>
         <Icon name={icon} size={22} color={color} />
-        <Text style={{...styles.menuText, color}}>{text}</Text>
+        <Text style={[styles.menuText, { color: textColor }]}>{text}</Text>
     </TouchableOpacity>
 );
 
@@ -130,13 +151,11 @@ const styles = StyleSheet.create({
         height: 100,
         borderRadius: 50,
         borderWidth: 3,
-        borderColor: '#8B4BFF'
     },
     userName: {
         marginTop: 10,
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#333'
     },
     menuContainer: {
         marginHorizontal: 20
@@ -152,7 +171,6 @@ const styles = StyleSheet.create({
     },
     separator: {
         height: 1,
-        backgroundColor: '#ccc',
         marginVertical: 10
     }
 });
