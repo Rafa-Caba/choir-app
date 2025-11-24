@@ -35,12 +35,14 @@
     "react-native-screens": "~4.4.0",
     "react-native-web": "~0.19.13",
     "reanimated-color-picker": "^4.1.1",
+    "sockjs-client": "^1.6.1",
     "styled-components": "^6.1.19",
     "text-encoding": "^0.7.0",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/react": "~18.3.12",
+    "@types/sockjs-client": "^1.5.4",
     "@types/styled-components": "^5.1.36",
     "@types/styled-components-react-native": "^5.2.5",
     "typescript": "~5.3.3"

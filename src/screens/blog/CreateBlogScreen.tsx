@@ -7,9 +7,14 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useBlogStore } from '../../store/useBlogStore';
+import { useTheme } from '../../context/ThemeContext';
 
 export const CreateBlogScreen = () => {
     const navigation = useNavigation();
+    
+    // Theme Hook
+    const { currentTheme } = useTheme();
+    
     const { addPost } = useBlogStore();
 
     // Form State
@@ -58,13 +63,17 @@ export const CreateBlogScreen = () => {
     return (
         <KeyboardAvoidingView 
             behavior={Platform.OS === "ios" ? "padding" : "height"} 
-            style={{flex:1}} 
+            style={{ flex: 1, backgroundColor: currentTheme.colors.background }} 
             keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
         <ScrollView style={styles.container} contentContainerStyle={{paddingBottom: 30}}>
             
             {/* --- Cover Image Picker --- */}
-            <TouchableOpacity style={styles.imagePickerContainer} onPress={pickImage} activeOpacity={0.8}>
+            <TouchableOpacity 
+                style={[styles.imagePickerContainer, { backgroundColor: currentTheme.colors.card }]} 
+                onPress={pickImage} 
+                activeOpacity={0.8}
+            >
                 {imageUri ? (
                     <>
                         <Image source={{ uri: imageUri }} style={styles.coverImage} />
@@ -75,8 +84,10 @@ export const CreateBlogScreen = () => {
                     </>
                 ) : (
                     <View style={styles.placeholderImage}>
-                        <Ionicons name="image-outline" size={50} color="#ccc" />
-                        <Text style={styles.placeholderText}>Agregar Imagen de Portada</Text>
+                        <Ionicons name="image-outline" size={50} color={currentTheme.colors.textSecondary} />
+                        <Text style={[styles.placeholderText, { color: currentTheme.colors.textSecondary }]}>
+                            Agregar Imagen de Portada
+                        </Text>
                     </View>
                 )}
             </TouchableOpacity>
@@ -88,20 +99,33 @@ export const CreateBlogScreen = () => {
 
             <View style={styles.formContainer}>
                 {/* --- Title Input --- */}
-                <Text style={styles.label}>Título</Text>
+                <Text style={[styles.label, { color: currentTheme.colors.text }]}>
+                    Título
+                </Text>
                 <TextInput
-                    style={styles.input}
+                    style={[
+                        styles.input, 
+                        { backgroundColor: currentTheme.colors.card, borderColor: currentTheme.colors.border, color: currentTheme.colors.text }
+                    ]}
                     placeholder="Ej. Resumen del Ensayo..."
+                    placeholderTextColor={currentTheme.colors.textSecondary}
                     value={title}
                     onChangeText={setTitle}
                     maxLength={100}
                 />
 
                 {/* --- Content Input --- */}
-                <Text style={styles.label}>Contenido</Text>
+                <Text style={[styles.label, { color: currentTheme.colors.text }]}>
+                    Contenido
+                </Text>
                 <TextInput
-                    style={[styles.input, styles.textArea]}
+                    style={[
+                        styles.input, 
+                        styles.textArea,
+                        { backgroundColor: currentTheme.colors.card, borderColor: currentTheme.colors.border, color: currentTheme.colors.text }
+                    ]}
                     placeholder="Escribe aquí el contenido de tu publicación..."
+                    placeholderTextColor={currentTheme.colors.textSecondary}
                     value={content}
                     onChangeText={setContent}
                     multiline
@@ -109,16 +133,21 @@ export const CreateBlogScreen = () => {
                 />
 
                 {/* --- Visibility Switch --- */}
-                <View style={styles.switchRow}>
+                <View style={[
+                    styles.switchRow, 
+                    { backgroundColor: currentTheme.colors.card, borderColor: currentTheme.colors.border }
+                ]}>
                     <View>
-                        <Text style={styles.switchLabel}>Visibilidad</Text>
-                        <Text style={styles.switchSubLabel}>
+                        <Text style={[styles.switchLabel, { color: currentTheme.colors.text }]}>
+                            Visibilidad
+                        </Text>
+                        <Text style={[styles.switchSubLabel, { color: currentTheme.colors.textSecondary }]}>
                             {isPublic ? 'Público (Visible para todos)' : 'Borrador (Solo admins)'}
                         </Text>
                     </View>
                     <Switch
-                        trackColor={{ false: "#767577", true: "#b388ff" }}
-                        thumbColor={isPublic ? "#8B4BFF" : "#f4f3f4"}
+                        trackColor={{ false: "#767577", true: currentTheme.colors.primary }}
+                        thumbColor={isPublic ? currentTheme.colors.buttonText : "#f4f3f4"}
                         onValueChange={setIsPublic}
                         value={isPublic}
                     />
@@ -126,14 +155,20 @@ export const CreateBlogScreen = () => {
 
                 {/* --- Submit Button --- */}
                 <TouchableOpacity 
-                    style={[styles.submitBtn, submitting && styles.submitBtnDisabled]} 
+                    style={[
+                        styles.submitBtn, 
+                        { backgroundColor: currentTheme.colors.button },
+                        submitting && styles.submitBtnDisabled
+                    ]} 
                     onPress={handleSubmit}
                     disabled={submitting}
                 >
                     {submitting ? (
-                        <ActivityIndicator color="white" />
+                        <ActivityIndicator color={currentTheme.colors.buttonText} />
                     ) : (
-                        <Text style={styles.submitBtnText}>Publicar</Text>
+                        <Text style={[styles.submitBtnText, { color: currentTheme.colors.buttonText }]}>
+                            Publicar
+                        </Text>
                     )}
                 </TouchableOpacity>
             </View>
@@ -145,12 +180,10 @@ export const CreateBlogScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
     },
     // Image Picker Styles
     imagePickerContainer: {
         height: 200,
-        backgroundColor: '#f0f0f0',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -162,7 +195,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     placeholderText: {
-        color: '#999',
         marginTop: 10,
         fontWeight: '600'
     },
@@ -199,14 +231,11 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#333',
         marginBottom: 8,
         marginTop: 10,
     },
     input: {
-        backgroundColor: '#f9f9f9',
         borderWidth: 1,
-        borderColor: '#eee',
         borderRadius: 10,
         padding: 15,
         fontSize: 16,
@@ -221,25 +250,20 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginTop: 25,
         marginBottom: 25,
-        backgroundColor: '#f9f9f9',
         padding: 15,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#eee'
     },
     switchLabel: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#333'
     },
     switchSubLabel: {
         fontSize: 13,
-        color: '#666',
         marginTop: 2
     },
     // Button Styles
     submitBtn: {
-        backgroundColor: '#8B4BFF',
         paddingVertical: 15,
         borderRadius: 10,
         alignItems: 'center',
@@ -247,10 +271,9 @@ const styles = StyleSheet.create({
         elevation: 2
     },
     submitBtnDisabled: {
-        backgroundColor: '#b388ff',
+        opacity: 0.7,
     },
     submitBtnText: {
-        color: 'white',
         fontSize: 18,
         fontWeight: 'bold'
     }

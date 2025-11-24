@@ -21,7 +21,7 @@ interface ColorInputProps {
 
 const ColorInput = ({ label, value, onChange, onOpenPicker, colors }: ColorInputProps) => (
     <View style={styles.inputGroup}>
-        <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
+        <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
         <View style={styles.inputRow}>
             <TouchableOpacity onPress={onOpenPicker}>
                 <View style={[styles.colorPreview, { backgroundColor: value, borderColor: colors.border }]} />
@@ -122,7 +122,7 @@ export const AdminThemeEditorScreen = () => {
             {/* 2. Form */}
             {form ? (
                 <View style={[styles.form, { backgroundColor: colors.card }]}>
-                    <Text style={[styles.subHeader, { color: colors.primary }]}>Editando: {form.name}</Text>
+                    <Text style={[styles.subHeader, { color: colors.mainTitle }]}>Editando: {form.name}</Text>
                     
                     <ColorInput label="Color Primario" field="primaryColor" value={form.primaryColor} onChange={(t) => handleChange('primaryColor', t)} onOpenPicker={() => openPicker('primaryColor')} colors={colors} />
                     <ColorInput label="Color Acento" field="accentColor" value={form.accentColor} onChange={(t) => handleChange('accentColor', t)} onOpenPicker={() => openPicker('accentColor')} colors={colors} />

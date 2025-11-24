@@ -3,11 +3,16 @@ import { View, FlatList, StyleSheet, Text, TouchableOpacity } from 'react-native
 import { useNavigation } from '@react-navigation/native';
 import { useBlogStore } from '../../store/useBlogStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useTheme } from '../../context/ThemeContext';
 import { BlogCard } from '../../components/blog/BlogCard';
 import { styles as themeStyles } from '../../theme/appTheme';
 
 export const BlogListScreen = () => {
     const navigation = useNavigation<any>();
+    
+    // Theme Hook
+    const { currentTheme } = useTheme();
+    
     const { posts, fetchPosts, selectPost, loading } = useBlogStore();
     const { user } = useAuthStore();
 
@@ -23,16 +28,21 @@ export const BlogListScreen = () => {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: currentTheme.colors.background }]}>
             {/* Header */}
             <View style={styles.header}>
-                <Text style={themeStyles.title}>Blog</Text>
+                {/* Overriding the global theme style color dynamically */}
+                <Text style={[themeStyles.title, { color: currentTheme.colors.text }]}>
+                    Blog
+                </Text>
                 {canCreate && (
                     <TouchableOpacity 
-                        style={styles.createBtn}
+                        style={[styles.createBtn, { backgroundColor: currentTheme.colors.button }]}
                         onPress={() => navigation.navigate('CreateBlog')}
                     >
-                        <Text style={styles.createBtnText}>+ Nuevo Post</Text>
+                        <Text style={[styles.createBtnText, { color: currentTheme.colors.buttonText }]}>
+                            + Nuevo Post
+                        </Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -46,7 +56,11 @@ export const BlogListScreen = () => {
                 refreshing={loading}
                 onRefresh={fetchPosts}
                 contentContainerStyle={{ paddingBottom: 20 }}
-                ListEmptyComponent={<Text style={styles.empty}>No hay publicaciones aún.</Text>}
+                ListEmptyComponent={
+                    <Text style={[styles.empty, { color: currentTheme.colors.textSecondary }]}>
+                        No hay publicaciones aún.
+                    </Text>
+                }
             />
         </View>
     );
@@ -55,7 +69,6 @@ export const BlogListScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
         padding: 20,
     },
     header: {
@@ -65,18 +78,15 @@ const styles = StyleSheet.create({
         marginBottom: 15,
     },
     createBtn: {
-        backgroundColor: '#8B4BFF',
         paddingHorizontal: 15,
         paddingVertical: 8,
         borderRadius: 20,
     },
     createBtnText: {
-        color: 'white',
         fontWeight: 'bold',
     },
     empty: {
         textAlign: 'center',
         marginTop: 50,
-        color: '#888'
     }
 });

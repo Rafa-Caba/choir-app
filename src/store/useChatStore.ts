@@ -1,18 +1,26 @@
 import { create } from 'zustand';
 import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
 import { getChatHistory, uploadChatImage } from '../services/chat';
-import type { ChatMessage, NewMessagePayload, MessageType } from '../types/chat';
+import type { ChatMessage, NewMessagePayload } from '../types/chat';
 import { useAuthStore } from './useAuthStore';
 
-// ⚠️ REPLACE with your LAN IP if testing on device
-const WS_URL = 'ws://localhost:8080/ws';
-// const WS_URL = 'wss://sweeties-spring-production.up.railway.app/ws'; // Prod
+// 1. CHANGE PROTOCOLS: SockJS needs http/https, not ws/wss
+// Local url
+const WS_URL = 'http://localhost:8080/ws';
+
+// Prod url
+// Note: No "/ws" at the end needed if your backend endpoint is just "/ws", 
+// but usually SockJS clients take the full base endpoint.
+const PROD_WS_URL = 'https://choir-app-api-production.up.railway.app/ws';
+
+const BASE_URL = __DEV__ ? WS_URL : PROD_WS_URL;
 
 interface ChatState {
     messages: ChatMessage[];
     connected: boolean;
     stompClient: Client | null;
-    replyingTo: ChatMessage | null; // <-- New State
+    replyingTo: ChatMessage | null;
     
     connect: () => void;
     disconnect: () => void;
@@ -32,7 +40,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     loadHistory: async () => {
         try {
             const history = await getChatHistory();
-            // Backend returns newest first. Reverse for chronological chat view.
             set({ messages: history.reverse() });
         } catch (error) {
             console.error("Failed to load chat history", error);
@@ -43,22 +50,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const { user, token } = useAuthStore.getState();
         if (!token || !user) return;
 
+        // Prevent double connection
         if (get().stompClient?.active) return;
 
         const client = new Client({
-            brokerURL: WS_URL,
+            // This creates a robust SockJS connection that survives Railway proxies
+            webSocketFactory: () => new SockJS(BASE_URL),
+            
             connectHeaders: {
                 Authorization: `Bearer ${token}`,
             },
-            // Polyfill configs for RN
+            
+            // React Native Configs
             forceBinaryWSFrames: true, 
             appendMissingNULLonIncoming: true,
             
+            // Heartbeat config (Matches Backend)
+            heartbeatIncoming: 10000,
+            heartbeatOutgoing: 10000,
+            
             onConnect: () => {
-                console.log("✅ Connected to WebSocket");
+                console.log("✅ Connected to WebSocket via SockJS");
                 set({ connected: true });
 
-                // Subscribe to public topic
                 client.subscribe('/topic/public', (message) => {
                     const newMessage: ChatMessage = JSON.parse(message.body);
                     set((state) => ({ 
@@ -74,6 +88,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 console.error('Broker reported error: ' + frame.headers['message']);
                 console.error('Additional details: ' + frame.body);
             },
+            // Add a debug function to see connection attempts in logs
+            debug: (str) => {
+                if (__DEV__) console.log('STOMP: ' + str);
+            }
         });
 
         client.activate();
@@ -91,7 +109,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         if (!stompClient || !stompClient.active || !user) return;
 
-        // 1. Handle Image Upload
         let mediaData = undefined;
         if (localImageUri) {
             try {
@@ -106,13 +123,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
         }
 
-        // 2. Construct Content
         const richContent = {
             type: "doc",
             content: textInput ? [{ type: "paragraph", content: [{ type: "text", text: textInput }] }] : []
         };
 
-        // 3. Determine Type & Payload
         const payload: NewMessagePayload = {
             username: user.username,
             content: richContent,
@@ -122,7 +137,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
             replyToId: replyingTo?.id
         };
 
-        // 4. Send
         stompClient.publish({
             destination: '/app/chat.sendMessage',
             body: JSON.stringify(payload),

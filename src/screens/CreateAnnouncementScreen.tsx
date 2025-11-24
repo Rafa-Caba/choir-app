@@ -9,33 +9,39 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useAnnouncementStore } from '../store/useAnnouncementStore';
 import { getPreviewFromRichText } from '../utils/textUtils';
+import { useTheme } from '../context/ThemeContext';
 
 export const CreateAnnouncementScreen = () => {
     const navigation = useNavigation();
     const route = useRoute<any>();
+    
+    // Get Theme
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
+
     const { addAnnouncement, editAnnouncement, loading } = useAnnouncementStore();
 
     // Check if we are editing
     const editingItem = route.params?.announcement;
     const isEditMode = !!editingItem;
 
-    // Helper to extract initial text if editing
     const initialContent = editingItem 
-        ? getPreviewFromRichText(editingItem.content, 5000) // Get full text
+        ? getPreviewFromRichText(editingItem.content, 5000) 
         : '';
 
-    // State
     const [title, setTitle] = useState(editingItem?.title || '');
     const [content, setContent] = useState(initialContent);
     const [imageUri, setImageUri] = useState<string | undefined>(editingItem?.imageUrl);
     const [isPublic, setIsPublic] = useState(editingItem?.isPublic ?? true);
 
-    // Update header title
     useEffect(() => {
         navigation.setOptions({ 
-            title: isEditMode ? 'Editar Aviso' : 'Nuevo Aviso' 
+            title: isEditMode ? 'Editar Aviso' : 'Nuevo Aviso',
+            headerStyle: { backgroundColor: colors.background }, // Dynamic Header
+            headerTintColor: colors.text,
+            headerShadowVisible: false
         });
-    }, [isEditMode]);
+    }, [isEditMode, colors]);
 
     const pickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -78,51 +84,69 @@ export const CreateAnnouncementScreen = () => {
         }
     };
 
+    // Dynamic Styles helpers
+    const inputBg = currentTheme.isDark ? 'rgba(255,255,255,0.05)' : '#f9f9f9';
+    const placeholderColor = currentTheme.isDark ? 'rgba(255,255,255,0.4)' : '#999';
+
     return (
         <KeyboardAvoidingView 
             behavior={Platform.OS === "ios" ? "padding" : "height"} 
             style={{ flex: 1 }}
             keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
         >
-            <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+            <ScrollView 
+                style={[styles.container, { backgroundColor: colors.background }]} 
+                contentContainerStyle={{ paddingBottom: 40 }}
+            >
                 
                 {/* --- Title Input --- */}
                 <View style={styles.formGroup}>
-                    <Text style={styles.label}>Título</Text>
+                    <Text style={[styles.label, { color: colors.text }]}>Título</Text>
                     <TextInput
-                        style={styles.input}
+                        style={[styles.input, { 
+                            backgroundColor: inputBg, 
+                            borderColor: colors.border, 
+                            color: !currentTheme.isDark ? "#000" : "#fff"
+                        }]}
                         value={title}
                         onChangeText={setTitle}
                         placeholder="Ej. Ensayo Cancelado"
-                        placeholderTextColor="#999"
+                        placeholderTextColor={placeholderColor}
                     />
                 </View>
 
                 {/* --- Content Input --- */}
                 <View style={styles.formGroup}>
-                    <Text style={styles.label}>Contenido</Text>
+                    <Text style={[styles.label, { color: colors.text }]}>Contenido</Text>
                     <TextInput
-                        style={[styles.input, styles.textArea]}
+                        style={[styles.input, styles.textArea, { 
+                            backgroundColor: inputBg, 
+                            borderColor: colors.border, 
+                            color: !currentTheme.isDark ? "#000" : "#fff" 
+                        }]}
                         value={content}
                         onChangeText={setContent}
                         placeholder="Escribe los detalles aquí..."
-                        placeholderTextColor="#999"
+                        placeholderTextColor={placeholderColor}
                         multiline
                         textAlignVertical="top"
                     />
                 </View>
 
                 {/* --- Visibility Switch --- */}
-                <View style={styles.switchRow}>
-                    <View>
-                        <Text style={styles.label}>Visible al público</Text>
-                        <Text style={styles.switchSubLabel}>
+                <View style={[styles.switchRow, { 
+                    backgroundColor: inputBg, 
+                    borderColor: colors.border 
+                }]}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.switchLabel, { color: colors.text }]}>Visible al público</Text>
+                        <Text style={[styles.switchSubLabel, { color: colors.textSecondary }]}>
                             {isPublic ? 'Visible para todos' : 'Solo visible para Admins (Borrador)'}
                         </Text>
                     </View>
                     <Switch
-                        trackColor={{ false: "#767577", true: "#b388ff" }}
-                        thumbColor={isPublic ? "#8B4BFF" : "#f4f3f4"}
+                        trackColor={{ false: "#767577", true: colors.primary + "80" }} // Primary with opacity
+                        thumbColor={isPublic ? colors.primary : "#f4f3f4"}
                         ios_backgroundColor="#3e3e3e"
                         onValueChange={setIsPublic}
                         value={isPublic}
@@ -131,15 +155,24 @@ export const CreateAnnouncementScreen = () => {
 
                 {/* --- Image Picker --- */}
                 <View style={styles.formGroup}>
-                    <Text style={styles.label}>Imagen (Opcional)</Text>
+                    <Text style={[styles.label, { color: colors.text }]}>Imagen (Opcional)</Text>
                     
-                    <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
+                    <TouchableOpacity 
+                        style={[styles.imagePicker, { 
+                            backgroundColor: inputBg, 
+                            borderColor: colors.border 
+                        }]} 
+                        onPress={pickImage} 
+                        activeOpacity={0.8}
+                    >
                         {imageUri ? (
                             <Image source={{ uri: imageUri }} style={styles.previewImage} />
                         ) : (
                             <View style={styles.placeholder}>
-                                <Ionicons name="image-outline" size={40} color="#ccc" />
-                                <Text style={styles.placeholderText}>Toca para subir</Text>
+                                <Ionicons name="image-outline" size={40} color={colors.textSecondary} />
+                                <Text style={[styles.placeholderText, { color: colors.textSecondary }]}>
+                                    Toca para subir
+                                </Text>
                             </View>
                         )}
                     </TouchableOpacity>
@@ -156,14 +189,14 @@ export const CreateAnnouncementScreen = () => {
 
                 {/* --- Submit Button --- */}
                 <TouchableOpacity 
-                    style={styles.submitBtn} 
+                    style={[styles.submitBtn, { backgroundColor: colors.button }]} 
                     onPress={handleSubmit}
                     disabled={loading}
                 >
                     {loading ? (
-                        <ActivityIndicator color="#fff" />
+                        <ActivityIndicator color={colors.buttonText} />
                     ) : (
-                        <Text style={styles.submitBtnText}>
+                        <Text style={[styles.submitBtnText, { color: colors.buttonText }]}>
                             {isEditMode ? 'Guardar Cambios' : 'Publicar Aviso'}
                         </Text>
                     )}
@@ -176,7 +209,6 @@ export const CreateAnnouncementScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
         padding: 20,
     },
     formGroup: {
@@ -185,17 +217,13 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#333',
         marginBottom: 8,
     },
     input: {
-        backgroundColor: '#f9f9f9',
         borderWidth: 1,
-        borderColor: '#eee',
         borderRadius: 10,
         padding: 15,
         fontSize: 16,
-        color: '#333',
     },
     textArea: {
         height: 150,
@@ -205,16 +233,17 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#f9f9f9',
         padding: 15,
         borderRadius: 10,
         marginBottom: 20,
         borderWidth: 1,
-        borderColor: '#eee',
+    },
+    switchLabel: {
+        fontSize: 16,
+        fontWeight: 'bold',
     },
     switchSubLabel: {
         fontSize: 12,
-        color: '#666',
         marginTop: 2,
     },
     // Image Picker Styles
@@ -222,9 +251,7 @@ const styles = StyleSheet.create({
         height: 200,
         borderRadius: 10,
         overflow: 'hidden',
-        backgroundColor: '#f0f0f0',
         borderWidth: 1,
-        borderColor: '#eee',
         borderStyle: 'dashed'
     },
     previewImage: {
@@ -238,7 +265,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     placeholderText: {
-        color: '#aaa',
         marginTop: 10,
     },
     removeImageBtn: {
@@ -252,7 +278,6 @@ const styles = StyleSheet.create({
     },
     // Button Styles
     submitBtn: {
-        backgroundColor: '#8B4BFF',
         padding: 15,
         borderRadius: 15,
         alignItems: 'center',
@@ -265,7 +290,6 @@ const styles = StyleSheet.create({
         shadowRadius: 3,
     },
     submitBtnText: {
-        color: '#fff',
         fontSize: 18,
         fontWeight: 'bold',
     }

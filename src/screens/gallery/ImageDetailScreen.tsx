@@ -4,6 +4,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useGalleryStore } from '../../store/useGalleryStore';
+import { useTheme } from '../../context/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -11,7 +12,9 @@ export const ImageDetailScreen = () => {
     const navigation = useNavigation();
     const route = useRoute<any>();
     
-    // We passed the whole object now
+    // Theme Hook
+    const { currentTheme } = useTheme();
+    
     const { image } = route.params; 
 
     const { user } = useAuthStore();
@@ -42,7 +45,7 @@ export const ImageDetailScreen = () => {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: currentTheme.colors.background }]}>
             {/* Top Bar */}
             <View style={styles.topBar}>
                 <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
@@ -74,20 +77,48 @@ export const ImageDetailScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: 'black', justifyContent: 'center' },
-    image: { width: width, height: height },
+    container: { 
+        flex: 1, 
+        justifyContent: 'center' 
+    },
+    image: { 
+        width: width, 
+        height: height 
+    },
     topBar: {
-        position: 'absolute', top: 50, left: 0, right: 0,
-        flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20,
+        position: 'absolute', 
+        top: 50, 
+        left: 0, 
+        right: 0,
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        paddingHorizontal: 20,
         zIndex: 10
     },
     iconBtn: {
-        paddingBottom: 6, paddingTop: 10, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 50
+        paddingBottom: 6, 
+        paddingTop: 10, 
+        paddingHorizontal: 12, 
+        backgroundColor: 'rgba(0,0,0,0.5)', 
+        borderRadius: 50
     },
     infoBar: {
-        position: 'absolute', bottom: 40, left: 20, right: 20,
-        backgroundColor: 'rgba(0,0,0,0.6)', padding: 15, borderRadius: 12
+        position: 'absolute', 
+        bottom: 40, 
+        left: 20, 
+        right: 20,
+        backgroundColor: 'rgba(0,0,0,0.6)', 
+        padding: 15, 
+        borderRadius: 12
     },
-    title: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-    desc: { color: '#ddd', marginTop: 4, fontSize: 14 }
+    title: { 
+        color: 'white', 
+        fontSize: 18, 
+        fontWeight: 'bold' 
+    },
+    desc: { 
+        color: '#ddd', 
+        marginTop: 4, 
+        fontSize: 14 
+    }
 });

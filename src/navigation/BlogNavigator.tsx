@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { BlogListScreen } from '../screens/blog/BlogListScreen';
 import { BlogDetailScreen } from '../screens/blog/BlogDetailScreen';
 import { CreateBlogScreen } from '../screens/blog/CreateBlogScreen';
+import { useTheme } from '../context/ThemeContext';
 
 export type BlogStackParamList = {
     BlogList: undefined;
@@ -13,12 +14,24 @@ export type BlogStackParamList = {
 const Stack = createNativeStackNavigator<BlogStackParamList>();
 
 export const BlogNavigator = () => {
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
+
     return (
         <Stack.Navigator
             screenOptions={{
-                headerTintColor: '#8B4BFF',
-                headerTitleStyle: { color: 'black' },
-                contentStyle: { backgroundColor: 'white' }
+                headerStyle: {
+                    backgroundColor: colors.background, 
+                },
+                headerShadowVisible: false,
+
+                headerTintColor: colors.text, 
+                headerTitleStyle: { 
+                    color: colors.text,
+                    fontWeight: 'bold'
+                },
+
+                contentStyle: { backgroundColor: colors.background }
             }}
         >
             <Stack.Screen 
