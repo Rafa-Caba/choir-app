@@ -128,7 +128,14 @@ export const AdminThemeEditorScreen = () => {
                     
                     {/* Extra fields if you added them */}
                     {form.buttonTextColor && (
-                         <ColorInput label="Texto Botón" field="buttonTextColor" value={form.buttonTextColor} onChange={(t) => handleChange('buttonTextColor', t)} onOpenPicker={() => openPicker('buttonTextColor')} />
+                        <ColorInput label="Texto Botón" field="buttonTextColor" value={form.buttonTextColor} onChange={(t) => handleChange('buttonTextColor', t)} onOpenPicker={() => openPicker('buttonTextColor')} />
+                    )}
+                    {form.secondaryTextColor && (
+                        <ColorInput label="Texto Secundario" field="secondaryTextColor" value={form.secondaryTextColor} onChange={(t) => handleChange('secondaryTextColor', t)} onOpenPicker={() => openPicker('secondaryTextColor')} />
+                         
+                    )}
+                    {form.borderColor && (
+                        <ColorInput label="Bordes" field="borderColor" value={form.borderColor} onChange={(t) => handleChange('borderColor', t)} onOpenPicker={() => openPicker('borderColor')} />
                     )}
 
                     <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { ThemeProvider as StyledThemeProvider } from 'styled-components/native';
+import { DefaultTheme, ThemeProvider as StyledThemeProvider } from 'styled-components/native';
 import { mapDbThemeToStyled } from '../utils/themeMapper';
 import { getAllThemes, updateUserTheme } from '../services/themes';
 import { useAuthStore } from '../store/useAuthStore';
@@ -14,7 +14,7 @@ const defaultDbTheme: ThemeDefinition = {
 };
 
 interface ThemeContextProps {
-    currentTheme: ThemeDefinition;
+    currentTheme: DefaultTheme;
     availableThemes: ThemeDefinition[];
     setThemeById: (id: number) => Promise<void>;
 }
@@ -46,8 +46,6 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         load();
     }, [user?.themeId]); // Reload if user changes (login)
 
-    console.log({ themes });
-
     const setThemeById = async (id: number) => {
         setActiveThemeId(id); // Instant UI update
         if (user) {
@@ -67,7 +65,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
     return (
         <ThemeContext.Provider value={{ 
-            currentTheme: activeThemeDef, 
+            currentTheme: styledTheme, 
             availableThemes: themes, 
             setThemeById 
         }}>

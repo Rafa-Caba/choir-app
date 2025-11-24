@@ -15,9 +15,8 @@ export const HomeScreen = () => {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<any>();
     
-    // 2. Get the current theme colors
+    // Get the current theme colors
     const { currentTheme } = useTheme();
-    const colors = currentTheme; 
     
     const { user } = useAuthStore();
     const { announcements, fetchPublicAnnouncements, fetchAdminAnnouncements, loading } = useAnnouncementStore();
@@ -43,38 +42,38 @@ export const HomeScreen = () => {
     return (
         <View style={[
             styles.container, 
-            { paddingTop: insets.top + 10, backgroundColor: colors.backgroundColor }
+            { paddingTop: insets.top + 10, backgroundColor: currentTheme.colors.background }
         ]}>
             
             {/* Header */}
             <View style={styles.header}>
                 <View>
-                    <Text style={[styles.greeting, { color: colors.secondaryTextColor }]}>
+                    <Text style={[styles.greeting, { color: currentTheme.colors.textSecondary }]}>
                         Hola,
                     </Text>
-                    <Text style={[styles.name, { color: colors.textColor }]}>
+                    <Text style={[styles.name, { color: currentTheme.colors.text }]}>
                         {user?.name}
                     </Text>
                 </View>
                 <TouchableOpacity onPress={() => navigation.openDrawer()}>
                     <Image 
                         source={{ uri: user?.imageUrl || 'https://via.placeholder.com/100' }}
-                        style={[styles.avatar, { borderColor: colors.primaryColor }]}
+                        style={[styles.avatar, { borderColor: currentTheme.colors.primary }]}
                     />
                 </TouchableOpacity>
             </View>
 
             {/* Section Title & Action */}
             <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: colors.textColor }]}>
+                <Text style={[styles.sectionTitle, { color: currentTheme.colors.text }]}>
                     Avisos
                 </Text>
                 {canEdit && (
                     <TouchableOpacity 
-                        style={[styles.addButton, { backgroundColor: colors.buttonColor }]}
+                        style={[styles.addButton, { backgroundColor: currentTheme.colors.button }]}
                         onPress={() => navigation.navigate('CreateAnnouncement')}
                     >
-                        <Text style={[styles.addButtonText, { color: colors.buttonTextColor }]}>
+                        <Text style={[styles.addButtonText, { color: currentTheme.colors.buttonText }]}>
                             + Nuevo
                         </Text>
                     </TouchableOpacity>
@@ -95,7 +94,7 @@ export const HomeScreen = () => {
                 onRefresh={canEdit ? fetchAdminAnnouncements : fetchPublicAnnouncements}
                 contentContainerStyle={{ paddingBottom: 20 }}
                 ListEmptyComponent={
-                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
+                    <Text style={[styles.emptyText, { color: currentTheme.colors.textSecondary }]}>
                         No hay avisos recientes.
                     </Text>
                 }

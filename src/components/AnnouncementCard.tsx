@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, StyleSheet, View, Image } from 'react-native';
 import type { Announcement } from '../types/announcement';
+import { useTheme } from '../context/ThemeContext';
 
 interface Props {
     announcement: Announcement;
@@ -8,6 +9,8 @@ interface Props {
 }
 
 export const AnnouncementCard = ({ announcement, onPress }: Props) => {
+    // Get the current theme colors
+    const { currentTheme } = useTheme();
     
     // Helper to extract plain text from Tiptap JSON
     const getPreviewText = (json: any) => {
@@ -24,8 +27,8 @@ export const AnnouncementCard = ({ announcement, onPress }: Props) => {
     const date = new Date(announcement.createdAt).toLocaleDateString();
 
     return (
-        <TouchableOpacity 
-            style={styles.container}
+        <TouchableOpacity
+            style={[styles.container, { backgroundColor: currentTheme.colors.card }]}
             onPress={onPress}
             activeOpacity={0.8}
         >
@@ -35,7 +38,7 @@ export const AnnouncementCard = ({ announcement, onPress }: Props) => {
             
             <View style={styles.content}>
                 <View style={styles.header}>
-                    <Text style={styles.title}>{announcement.title}</Text>
+                    <Text style={[styles.title, { color: currentTheme.colors.text }]}>{announcement.title}</Text>
                     <Text style={styles.date}>{date}</Text>
                 </View>
                 
@@ -52,7 +55,6 @@ const styles = StyleSheet.create({
         backgroundColor: 'white',
         borderRadius: 15,
         marginBottom: 15,
-        shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 3.84,
@@ -75,7 +77,6 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#333',
         flex: 1,
     },
     date: {
