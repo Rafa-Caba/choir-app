@@ -4,23 +4,32 @@ import { useTheme } from '../../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
 export const ThemeSelectionScreen = () => {
-    const { availableThemes, currentTheme, setThemeById } = useTheme();
+    const { availableThemes, currentTheme, setThemeById, loading } = useTheme();
+    const colors = currentTheme.colors;
 
-    // 1. Safety Check: If undefined or empty, show loading
+    if (loading) {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: 10, color: colors.textSecondary }}>Cargando temas...</Text>
+            </View>
+        );
+    }
+
     if (!availableThemes || availableThemes.length === 0) {
         return (
-            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-                <ActivityIndicator size="large" color="#8B4BFF" />
-                <Text style={{ marginTop: 10, color: '#666' }}>Cargando temas...</Text>
+             <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+                <Ionicons name="alert-circle-outline" size={50} color={colors.textSecondary} />
+                <Text style={{ marginTop: 10, color: colors.textSecondary }}>No se encontraron temas.</Text>
             </View>
         );
     }
 
     return (
-        <ScrollView style={styles.container}>
-            <Text style={styles.title}>Elige tu estilo</Text>
+        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+            <Text style={[styles.title, { color: colors.text }]}>Elige tu estilo</Text>
+            
             <View style={styles.grid}>
-                {/* 2. Use Optional Chaining just in case */}
                 {availableThemes?.map(theme => (
                     <TouchableOpacity 
                         key={theme.id}
@@ -51,7 +60,7 @@ export const ThemeSelectionScreen = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, padding: 20 },
-    title: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center', color: '#555' },
+    title: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
     grid: { flexDirection: 'column', gap: 15 },
     card: {
         flexDirection: 'row',

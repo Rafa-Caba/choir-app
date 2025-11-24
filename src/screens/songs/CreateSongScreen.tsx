@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { 
     View, TextInput, TouchableOpacity, Text, StyleSheet, 
-    Alert, ScrollView, Modal, FlatList, ActivityIndicator 
+    Alert, ScrollView, Modal, FlatList, ActivityIndicator, Platform 
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Store
+// Store & Context
 import { useSongsStore } from '../../store/useSongsStore';
+import { useTheme } from '../../context/ThemeContext';
 
 export const CreateSongScreen = () => {
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
     
+    // Theme
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
+
     const { addSong, songTypes, fetchData, loading } = useSongsStore();
 
     // Form State
@@ -22,7 +27,7 @@ export const CreateSongScreen = () => {
     const [lyrics, setLyrics] = useState('');
     const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null);
     
-    // UI State for the Picker Modal
+    // UI State
     const [isPickerVisible, setPickerVisible] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -33,7 +38,6 @@ export const CreateSongScreen = () => {
         }
     }, []);
 
-    // Helper to get the name of the selected type
     const selectedTypeName = songTypes.find(t => t.id === selectedTypeId)?.name || 'Seleccionar Tipo';
 
     const handleSubmit = async () => {
@@ -45,7 +49,6 @@ export const CreateSongScreen = () => {
         setIsSubmitting(true);
 
         // Convert plain text lyrics to the JSONB structure backend expects
-        // We split by newline to create paragraphs
         const paragraphs = lyrics.split('\n').map(line => ({
             type: "paragraph",
             content: line.trim() ? [{ type: "text", text: line }] : []
@@ -73,15 +76,28 @@ export const CreateSongScreen = () => {
         }
     };
 
+    // Styles for dynamic inputs
+    const inputStyle = {
+        backgroundColor: currentTheme.isDark ? 'rgba(255,255,255,0.05)' : '#f9f9f9',
+        borderColor: colors.border,
+        color: colors.text,
+        borderWidth: 1,
+        borderRadius: 10,
+        padding: 15,
+        fontSize: 16,
+    };
+
+    const placeholderColor = currentTheme.isDark ? 'rgba(255,255,255,0.4)' : '#aaa';
+
     return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
             
             {/* Custom Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { borderBottomColor: colors.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#333" />
+                    <Ionicons name="arrow-back" size={24} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Nuevo Canto</Text>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>Nuevo Canto</Text>
                 <View style={{ width: 24 }} /> 
             </View>
 
@@ -89,51 +105,54 @@ export const CreateSongScreen = () => {
                 
                 {/* Title Input */}
                 <View style={styles.formGroup}>
-                    <Text style={styles.label}>Título</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Título</Text>
                     <TextInput
-                        style={styles.input}
+                        style={inputStyle}
                         value={title}
                         onChangeText={setTitle}
                         placeholder="Ej. Pescador de Hombres"
-                        placeholderTextColor="#aaa"
+                        placeholderTextColor={placeholderColor}
                     />
                 </View>
 
                 {/* Composer Input */}
                 <View style={styles.formGroup}>
-                    <Text style={styles.label}>Compositor (Opcional)</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Compositor (Opcional)</Text>
                     <TextInput
-                        style={styles.input}
+                        style={inputStyle}
                         value={composer}
                         onChangeText={setComposer}
                         placeholder="Ej. Cesáreo Gabaráin"
-                        placeholderTextColor="#aaa"
+                        placeholderTextColor={placeholderColor}
                     />
                 </View>
 
                 {/* Type Selector (Custom Picker) */}
                 <View style={styles.formGroup}>
-                    <Text style={styles.label}>Tipo de Canto</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Tipo de Canto</Text>
                     <TouchableOpacity 
-                        style={styles.pickerTrigger} 
+                        style={[styles.pickerTrigger, { 
+                            backgroundColor: inputStyle.backgroundColor, 
+                            borderColor: colors.border 
+                        }]} 
                         onPress={() => setPickerVisible(true)}
                     >
-                        <Text style={{ color: selectedTypeId ? '#333' : '#aaa', fontSize: 16 }}>
+                        <Text style={{ color: selectedTypeId ? colors.text : placeholderColor, fontSize: 16 }}>
                             {selectedTypeName}
                         </Text>
-                        <Ionicons name="chevron-down" size={20} color="#666" />
+                        <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
                     </TouchableOpacity>
                 </View>
 
                 {/* Lyrics Input */}
                 <View style={styles.formGroup}>
-                    <Text style={styles.label}>Letra</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Letra</Text>
                     <TextInput
-                        style={[styles.input, styles.textArea]}
+                        style={[inputStyle, styles.textArea]}
                         value={lyrics}
                         onChangeText={setLyrics}
                         placeholder="Escribe la letra aquí..."
-                        placeholderTextColor="#aaa"
+                        placeholderTextColor={placeholderColor}
                         multiline
                         textAlignVertical="top"
                     />
@@ -141,14 +160,18 @@ export const CreateSongScreen = () => {
 
                 {/* Submit Button */}
                 <TouchableOpacity 
-                    style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]} 
+                    style={[
+                        styles.submitBtn, 
+                        { backgroundColor: colors.button },
+                        isSubmitting && styles.submitBtnDisabled
+                    ]} 
                     onPress={handleSubmit}
                     disabled={isSubmitting}
                 >
                     {isSubmitting ? (
-                        <ActivityIndicator color="white" />
+                        <ActivityIndicator color={colors.buttonText} />
                     ) : (
-                        <Text style={styles.submitBtnText}>Guardar Canto</Text>
+                        <Text style={[styles.submitBtnText, { color: colors.buttonText }]}>Guardar Canto</Text>
                     )}
                 </TouchableOpacity>
 
@@ -162,22 +185,22 @@ export const CreateSongScreen = () => {
                 onRequestClose={() => setPickerVisible(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Selecciona un Tipo</Text>
+                    <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+                        <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                            <Text style={[styles.modalTitle, { color: colors.text }]}>Selecciona un Tipo</Text>
                             <TouchableOpacity onPress={() => setPickerVisible(false)}>
-                                <Ionicons name="close" size={24} color="#333" />
+                                <Ionicons name="close" size={24} color={colors.text} />
                             </TouchableOpacity>
                         </View>
                         
-                        {loading && <ActivityIndicator style={{margin: 20}} color="#8B4BFF"/>}
+                        {loading && <ActivityIndicator style={{margin: 20}} color={colors.primary}/>}
 
                         <FlatList 
                             data={songTypes}
                             keyExtractor={item => item.id.toString()}
                             renderItem={({ item }) => (
                                 <TouchableOpacity 
-                                    style={styles.modalItem}
+                                    style={[styles.modalItem, { borderBottomColor: colors.border }]}
                                     onPress={() => {
                                         setSelectedTypeId(item.id);
                                         setPickerVisible(false);
@@ -185,12 +208,13 @@ export const CreateSongScreen = () => {
                                 >
                                     <Text style={[
                                         styles.modalItemText, 
-                                        selectedTypeId === item.id && styles.modalItemTextSelected
+                                        { color: colors.text },
+                                        selectedTypeId === item.id && { color: colors.primary, fontWeight: 'bold' }
                                     ]}>
                                         {item.name}
                                     </Text>
                                     {selectedTypeId === item.id && (
-                                        <Ionicons name="checkmark" size={20} color="#8B4BFF" />
+                                        <Ionicons name="checkmark" size={20} color={colors.primary} />
                                     )}
                                 </TouchableOpacity>
                             )}
@@ -204,7 +228,7 @@ export const CreateSongScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff' },
+    container: { flex: 1 },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -212,35 +236,22 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingBottom: 15,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee'
     },
     backBtn: { padding: 5, marginTop: 8 },
-    headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', marginTop: 8 },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', marginTop: 8 },
     scrollContent: { padding: 20 },
     formGroup: { marginBottom: 20 },
-    label: { fontSize: 16, fontWeight: '600', color: '#555', marginBottom: 8 },
-    input: {
-        backgroundColor: '#f9f9f9',
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 10,
-        padding: 15,
-        fontSize: 16,
-        color: '#333',
-    },
+    label: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
     textArea: { height: 200 },
     pickerTrigger: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#f9f9f9',
         borderWidth: 1,
-        borderColor: '#ddd',
         borderRadius: 10,
         padding: 15,
     },
     submitBtn: {
-        backgroundColor: '#8B4BFF',
         padding: 15,
         borderRadius: 15,
         alignItems: 'center',
@@ -249,7 +260,7 @@ const styles = StyleSheet.create({
         elevation: 2
     },
     submitBtnDisabled: { opacity: 0.7 },
-    submitBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+    submitBtnText: { fontSize: 18, fontWeight: 'bold' },
     
     // Modal Styles
     modalOverlay: {
@@ -258,7 +269,6 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: 'white',
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         maxHeight: '70%',
@@ -270,17 +280,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 20,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee'
     },
     modalTitle: { fontSize: 18, fontWeight: 'bold' },
     modalItem: {
         padding: 20,
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center'
     },
-    modalItemText: { fontSize: 16, color: '#333' },
-    modalItemTextSelected: { color: '#8B4BFF', fontWeight: 'bold' }
+    modalItemText: { fontSize: 16 }
 });

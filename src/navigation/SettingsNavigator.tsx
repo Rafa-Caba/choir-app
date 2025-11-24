@@ -8,6 +8,7 @@ import { ManageUserScreen } from '../screens/admin/ManageUserScreen';
 import { ThemeSelectionScreen } from '../screens/settings/ThemeSelectionScreen';
 import { ImageDetailScreen } from '../screens/gallery/ImageDetailScreen';
 import { AdminThemeEditorScreen } from '../screens/settings/AdminThemeEditorScreen';
+import { useTheme } from '../context/ThemeContext';
 
 export type SettingsStackParamList = {
     SettingsScreen: undefined;
@@ -23,12 +24,24 @@ export type SettingsStackParamList = {
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
 
 export const SettingsNavigator = () => {
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
+
     return (
         <Stack.Navigator
             screenOptions={{
-                headerShown: true,
-                headerTintColor: '#8B4BFF',
-                contentStyle: { backgroundColor: 'white' }
+                headerStyle: {
+                    backgroundColor: colors.background, 
+                },
+                headerShadowVisible: false,
+
+                headerTintColor: colors.text, 
+                headerTitleStyle: { 
+                    color: colors.text,
+                    fontWeight: 'bold'
+                },
+
+                contentStyle: { backgroundColor: colors.background }
             }}
         >
             <Stack.Screen 

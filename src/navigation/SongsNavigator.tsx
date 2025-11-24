@@ -1,9 +1,12 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
 import { SongTypesScreen } from '../screens/songs/SongTypesScreen';
 import { SongsListScreen } from '../screens/songs/SongsListScreen';
 import { SongDetailScreen } from '../screens/songs/SongDetailScreen';
 import { CreateSongScreen } from '../screens/songs/CreateSongScreen';
+
+import { useTheme } from '../context/ThemeContext';
 
 export type SongsStackParamList = {
     SongTypes: undefined;
@@ -15,12 +18,24 @@ export type SongsStackParamList = {
 const Stack = createNativeStackNavigator<SongsStackParamList>();
 
 export const SongsNavigator = () => {
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
+
     return (
         <Stack.Navigator
             screenOptions={{
-                headerTintColor: '#8B4BFF',
-                headerTitleStyle: { color: 'black' },
-                contentStyle: { backgroundColor: 'white' }
+                headerStyle: {
+                    backgroundColor: colors.background, 
+                },
+                headerShadowVisible: false,
+
+                headerTintColor: colors.text, 
+                headerTitleStyle: { 
+                    color: colors.text,
+                    fontWeight: 'bold'
+                },
+
+                contentStyle: { backgroundColor: colors.background }
             }}
         >
             <Stack.Screen 

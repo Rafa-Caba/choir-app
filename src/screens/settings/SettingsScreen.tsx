@@ -1,102 +1,117 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/useAuthStore';
-import { styles } from '../../theme/appTheme';
-import { GalleryPhoto } from '../../components/GalleryPhoto';
+import { useTheme } from '../../context/ThemeContext'; // Import Theme
 
 export const SettingsScreen = ({ navigation }: any) => {
     const { user, logout } = useAuthStore();
     const insets = useSafeAreaInsets();
+    
+    // Get Theme
+    const { currentTheme } = useTheme();
+    const colors = currentTheme.colors;
 
     return (
-        <View style={[styles.globalMargin, { flex: 1, marginTop: insets.top + 10 }]}>
-            <Text style={styles.title}>Ajustes</Text>
+        <View style={[styles.container, { paddingTop: insets.top + 10, backgroundColor: colors.background }]}>
+            <Text style={[styles.title, { color: colors.text }]}>Ajustes</Text>
 
             {/* Profile Pic */}
-            <View style={{ display: 'flex', alignItems: 'center', marginVertical: 15 }}>
-                <GalleryPhoto 
-                    uri={user?.imageUrl || ''} 
-                    // 3. PASS THE WHOLE ITEM OR ID, NOT JUST URL
-                    onPress={() => navigation.navigate('ImageDetail', { image: user })} 
-                    style={{
-                        width: 200,
-                        height: 200,
-                        borderRadius: 100,
-                        borderWidth: 2,
-                        borderColor: '#8B4BFF',
-                    }}
-                />
-                {/* <Image 
-                    source={{ uri: user?.imageUrl || 'https://via.placeholder.com/100' }}
-                    style={styles.avatar}
-                /> */}
+            <View style={styles.profileSection}>
+                 <TouchableOpacity onPress={() => navigation.navigate('PerfilScreen')}>
+                    <Image 
+                        source={{ uri: user?.imageUrl || 'https://via.placeholder.com/150' }}
+                        style={[styles.avatar, { borderColor: colors.primary }]}
+                    />
+                </TouchableOpacity>
             </View>
 
-            {/* Ooptios in Settings */}
-            <View style={{ flex: 1, marginVertical: 30 }}>
+            {/* Options List */}
+            <View style={styles.listContainer}>
                 <SettingsItem 
                     icon="person-outline" 
                     text="Perfil" 
+                    colors={colors}
                     onPress={() => navigation.navigate('PerfilScreen')} 
                 />
                 <SettingsItem 
-                    icon="create-outline" // Changed icon for clarity
+                    icon="create-outline"
                     text="Editar Perfil" 
+                    colors={colors}
                     onPress={() => navigation.navigate('EditarPerfilScreen')} 
                 />
                 <SettingsItem 
                     icon="color-palette-outline" 
                     text="Temas" 
+                    colors={colors}
                     onPress={() => navigation.navigate('ThemeSelectionScreen')}
                 />
+                
                 {user?.role === 'ADMIN' && (
-                    <SettingsItem 
-                        icon="color-palette-outline" 
-                        text="Editar Colores (Temas)" 
-                        onPress={() => navigation.navigate('AdminThemeEditor')} 
-                    />
-                )}
-                {user?.role === 'ADMIN' && (
-                    <SettingsItem 
-                        icon="people-outline" 
-                        text="Administrar Usuarios" 
-                        onPress={() => navigation.navigate('UsersListScreen')} 
-                    />
+                    <>
+                        <SettingsItem 
+                            icon="color-filter-outline" 
+                            text="Editor de Temas (Admin)" 
+                            colors={colors}
+                            onPress={() => navigation.navigate('AdminThemeEditor')} 
+                        />
+                        <SettingsItem 
+                            icon="people-outline" 
+                            text="Administrar Usuarios" 
+                            colors={colors}
+                            onPress={() => navigation.navigate('UsersListScreen')} 
+                        />
+                    </>
                 )}
 
-                {/* Log out Option */}
                 <SettingsItem 
-                    icon="exit-outline" 
+                    icon="log-out-outline" 
                     text="Cerrar Sesión" 
+                    colors={colors}
                     onPress={logout} 
+                    isDestructive 
                 />
                 
                 <Icon 
                     name="musical-notes" size={150} 
-                    color="rgba(0,0,0,.1)" 
-                    style={{ 
-                        alignSelf: 'center', 
-                        bottom: innerWidth > 400 ? 150 : 220 }} 
-                    />
+                    color={currentTheme.isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} 
+                    style={styles.bgIcon} 
+                />
             </View>
 
-            <View style={{ marginBottom: 20, alignSelf: 'center' }}>
-                <Text style={{ fontWeight: 'bold', textAlign: 'center' }}>Acerca de:</Text>
-                <Text style={{ textAlign: 'center' }}>Rafael Cabanillas - 2025</Text>
+            <View style={styles.footer}>
+                <Text style={{ fontWeight: 'bold', textAlign: 'center', color: colors.text }}>Acerca de:</Text>
+                <Text style={{ textAlign: 'center', color: colors.textSecondary }}>Rafael Cabanillas - 2025</Text>
             </View>
         </View>
     );
 };
 
-const SettingsItem = ({ icon, text, onPress }: any) => (
+const SettingsItem = ({ icon, text, onPress, colors, isDestructive }: any) => (
     <TouchableOpacity 
-        style={{ borderRadius: 15, marginVertical: innerWidth > 400 ? 9 : 6, flexDirection: 'row', alignItems: 'center' }}
+        style={styles.item}
         activeOpacity={0.6}
         onPress={onPress}
     >
-        <Icon name={icon} size={30} color="black" />
-        <Text style={{ marginLeft: 15, fontSize: innerWidth > 400 ? 20 : 17, color: '#000' }}>{text}</Text>
+        <Icon name={icon} size={28} color={isDestructive ? '#e74c3c' : colors.text} />
+        <Text style={[
+            styles.itemText, 
+            { color: isDestructive ? '#e74c3c' : colors.text }
+        ]}>
+            {text}
+        </Text>
     </TouchableOpacity>
 );
+
+const styles = StyleSheet.create({
+    container: { flex: 1, paddingHorizontal: 20 },
+    title: { fontSize: 28, marginBottom: 5, fontWeight: 'bold' },
+    profileSection: { alignItems: 'center', marginVertical: 15 },
+    avatar: { width: 120, height: 120, borderRadius: 60, borderWidth: 2 },
+    listContainer: { flex: 1, marginVertical: 10 },
+    item: { borderRadius: 15, marginVertical: 8, flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
+    itemText: { marginLeft: 15, fontSize: 18 },
+    bgIcon: { alignSelf: 'center', marginTop: 40 },
+    footer: { marginBottom: 20, alignSelf: 'center' }
+});
