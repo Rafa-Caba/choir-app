@@ -29,8 +29,8 @@ export const ChatScreen = () => {
         }
     }, [messages]);
 
-    const handleSend = (text: string, imageUri?: string) => {
-        sendMessage(text, imageUri);
+    const handleSend = (text: string, imageUri?: string, audioUri?: string) => {
+        sendMessage(text, imageUri, audioUri);
     };
 
     return (

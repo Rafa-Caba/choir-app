@@ -18,51 +18,30 @@ export const getUserProfile = async (): Promise<User> => {
     return data;
 };
 
-export const updateProfile = async (data: any, imageUri?: string): Promise<User> => {
+export const updateProfile = async (userData: any, imageUri?: string) => {
     const formData = new FormData();
 
-    // 1. Append JSON Data
-    // Spring Boot expects a Blob with type 'application/json' for the @RequestPart("data")
-    formData.append('data', new Blob([JSON.stringify(data)], { type: 'application/json' }));
+    // 1. Backend expects 'data' part as String
+    formData.append('data', JSON.stringify(userData));
 
-    // 2. Append Image
-    if (imageUri && !imageUri.startsWith('http')) {
+    // 2. Handle Image
+    if (imageUri) {
         const filename = imageUri.split('/').pop() || 'profile.jpg';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : `image/jpeg`;
-
-        if (Platform.OS === 'web') {
-            const response = await fetch(imageUri);
-            const blob = await response.blob();
-            formData.append('file', blob, filename);
-        } else {
-            // @ts-ignore
-            formData.append('file', {
-                uri: Platform.OS === 'android' ? imageUri : imageUri.replace('file://', ''),
-                name: filename,
-                type: type,
-            });
-        }
+        const type = 'image/jpeg';
+        
+        // @ts-ignore
+        formData.append('file', {
+            uri: Platform.OS === 'android' ? imageUri : imageUri.replace('file://', ''),
+            name: filename,
+            type: type,
+        });
     }
 
-    // 3. Configure Headers dynamically
-    const requestConfig: any = {
-        headers: {
-            // Default for Mobile (usually required)
-            'Content-Type': 'multipart/form-data',
-        }
-    };
-
-    if (Platform.OS === 'web') {
-        // ⚠️ CRITICAL WEB FIX:
-        // Setting Content-Type to 'undefined' removes the default 'application/json'
-        // AND lets the browser automatically generate 'multipart/form-data; boundary=...'
-        requestConfig.headers['Content-Type'] = undefined;
-    }
-
-    const { data: responseData } = await choirApi.put<User>('/users/me', formData, requestConfig);
-    
-    return responseData;
+    // 3. Send as Multipart
+    const { data } = await choirApi.put('/users/me', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
 };
 
 export const updatePushToken = async (token: string): Promise<void> => {

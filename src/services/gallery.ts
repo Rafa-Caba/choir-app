@@ -2,13 +2,11 @@ import choirApi from '../api/choirApi';
 import type { GalleryImage, CreateGalleryPayload } from '../types/gallery';
 import { Platform } from 'react-native';
 
-// GET /api/gallery
 export const getAllImages = async (): Promise<GalleryImage[]> => {
     const { data } = await choirApi.get<GalleryImage[]>('/gallery');
     return data;
 };
 
-// POST /api/gallery (Multipart)
 export const uploadImage = async (payload: CreateGalleryPayload): Promise<GalleryImage> => {
     const formData = new FormData();
 
@@ -16,19 +14,23 @@ export const uploadImage = async (payload: CreateGalleryPayload): Promise<Galler
     formData.append('description', payload.description);
     formData.append('imageGallery', String(payload.imageGallery));
 
-    // --- FIXED IMAGE HANDLING ---
     if (payload.imageUri) {
-        const filename = payload.imageUri.split('/').pop() || 'image.jpg';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : `image/jpeg`;
+        const filename = payload.imageUri.split('/').pop() || 'upload';
+        
+        // --- Detect Mime Type ---
+        let type = 'image/jpeg';
+        const ext = filename.split('.').pop()?.toLowerCase();
+        
+        if (ext === 'mp4') type = 'video/mp4';
+        else if (ext === 'mov') type = 'video/quicktime';
+        else if (ext === 'png') type = 'image/png';
+        else if (ext === 'jpg' || ext === 'jpeg') type = 'image/jpeg';
 
         if (Platform.OS === 'web') {
-            // 🌍 WEB FIX: Fetch blob
             const response = await fetch(payload.imageUri);
             const blob = await response.blob();
             formData.append('image', blob, filename);
         } else {
-            // 📱 MOBILE: Standard way
             // @ts-ignore
             formData.append('image', {
                 uri: Platform.OS === 'android' ? payload.imageUri : payload.imageUri.replace('file://', ''),
@@ -38,15 +40,11 @@ export const uploadImage = async (payload: CreateGalleryPayload): Promise<Galler
         }
     }
 
-    // --- FIXED HEADERS ---
     const requestConfig: any = {
-        headers: {
-            'Content-Type': 'multipart/form-data',
-        }
+        headers: { 'Content-Type': 'multipart/form-data' }
     };
 
     if (Platform.OS === 'web') {
-        // 🌍 WEB FIX: Let browser generate boundary
         requestConfig.headers['Content-Type'] = undefined;
     }
 

@@ -1,72 +1,108 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-    View, TextInput, TouchableOpacity, Text, StyleSheet, 
-    Alert, ScrollView, Modal, FlatList, ActivityIndicator, Platform 
+    View, Text, TextInput, TouchableOpacity, StyleSheet, 
+    ScrollView, ActivityIndicator, Alert 
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { Picker } from '@react-native-picker/picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-// Store & Context
 import { useSongsStore } from '../../store/useSongsStore';
 import { useTheme } from '../../context/ThemeContext';
 
 export const CreateSongScreen = () => {
     const navigation = useNavigation();
-    const insets = useSafeAreaInsets();
-    
-    // Theme
+    const route = useRoute<any>();
+    // preSelectedTypeId comes from the List screen "Add Button"
+    const { songToEdit, preSelectedTypeId } = route.params || {}; 
+
+    const { songTypes, addSong, editSong } = useSongsStore();
     const { currentTheme } = useTheme();
     const colors = currentTheme.colors;
 
-    const { addSong, songTypes, fetchData, loading } = useSongsStore();
-
-    // Form State
-    const [title, setTitle] = useState('');
-    const [composer, setComposer] = useState('');
-    const [lyrics, setLyrics] = useState('');
-    const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null);
-    
-    // UI State
-    const [isPickerVisible, setPickerVisible] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // Load Song Types on mount (if empty)
-    useEffect(() => {
-        if (songTypes.length === 0) {
-            fetchData();
+    // --- HELPER: Parse Tiptap JSON back to Plain Text for editing ---
+    const extractTextFromTiptap = (jsonContent: any) => {
+        if (!jsonContent || !jsonContent.content) return '';
+        try {
+            // Map each paragraph to a text line
+            return jsonContent.content
+                .map((node: any) => {
+                    if (node.type === 'paragraph' && node.content) {
+                        return node.content.map((textNode: any) => textNode.text).join('');
+                    }
+                    return '';
+                })
+                .join('\n'); // Join paragraphs with new lines
+        } catch (e) {
+            return '';
         }
-    }, []);
+    };
 
-    const selectedTypeName = songTypes.find(t => t.id === selectedTypeId)?.name || 'Seleccionar Tipo';
+    const [title, setTitle] = useState(songToEdit?.title || '');
+    const [composer, setComposer] = useState(songToEdit?.composer || '');
+    
+    // FIX: Initialize content using the extractor, NOT JSON.stringify
+    const [content, setContent] = useState(
+        songToEdit ? extractTextFromTiptap(songToEdit.content) : ''
+    );
+    
+    // Default to preSelectedTypeId if available, otherwise first type
+    const [selectedType, setSelectedType] = useState(
+        songToEdit?.songTypeId || preSelectedTypeId || (songTypes[0]?.id || 0)
+    );
+    
+    // Audio State
+    const [audioUri, setAudioUri] = useState<string | null>(null);
+    const [audioName, setAudioName] = useState<string | null>(songToEdit?.audioUrl ? 'Audio actual guardado' : null);
+    
+    const [submitting, setSubmitting] = useState(false);
+
+    const handlePickAudio = async () => {
+        const result = await DocumentPicker.getDocumentAsync({
+            type: 'audio/*',
+            copyToCacheDirectory: true
+        });
+
+        if (!result.canceled) {
+            const file = result.assets[0];
+            setAudioUri(file.uri);
+            setAudioName(file.name);
+        }
+    };
 
     const handleSubmit = async () => {
-        if (!title.trim() || !lyrics.trim() || !selectedTypeId) {
-            Alert.alert("Faltan datos", "Por favor completa Título, Letra y selecciona un Tipo.");
+        if (!title.trim()) {
+            Alert.alert("Error", "El título es obligatorio");
             return;
         }
 
-        setIsSubmitting(true);
+        setSubmitting(true);
 
-        // Convert plain text lyrics to the JSONB structure backend expects
-        const paragraphs = lyrics.split('\n').map(line => ({
-            type: "paragraph",
-            content: line.trim() ? [{ type: "text", text: line }] : []
-        }));
-
+        // Convert Plain Text Input -> Tiptap JSON Structure
+        // We split by newlines and create a paragraph for each line
         const richContent = {
-            type: "doc",
-            content: paragraphs
+            type: 'doc',
+            content: content.split('\n').map((line: string) => ({
+                type: 'paragraph',
+                content: line.trim() ? [{ type: 'text', text: line }] : [] // Handle empty lines
+            }))
         };
 
-        const success = await addSong({
+        const payload = {
             title,
             composer,
             content: richContent,
-            songTypeId: selectedTypeId
-        });
+            songTypeId: selectedType
+        };
 
-        setIsSubmitting(false);
+        let success;
+        if (songToEdit) {
+            success = await editSong(songToEdit.id, payload, audioUri || undefined);
+        } else {
+            success = await addSong(payload, audioUri || undefined);
+        }
+
+        setSubmitting(false);
 
         if (success) {
             Alert.alert("Éxito", "Canto guardado correctamente");
@@ -76,218 +112,83 @@ export const CreateSongScreen = () => {
         }
     };
 
-    // Styles for dynamic inputs
-    const inputStyle = {
-        backgroundColor: currentTheme.isDark ? 'rgba(255,255,255,0.05)' : '#f9f9f9',
-        borderColor: colors.border,
-        color: colors.text,
-        borderWidth: 1,
-        borderRadius: 10,
-        padding: 15,
-        fontSize: 16,
-    };
-
-    const placeholderColor = currentTheme.isDark ? 'rgba(255,255,255,0.4)' : '#aaa';
-
     return (
-        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
-            
-            {/* Custom Header */}
-            <View style={[styles.header, { borderBottomColor: colors.border }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: colors.text }]}>Nuevo Canto</Text>
-                <View style={{ width: 24 }} /> 
+        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+            <Text style={[styles.label, { color: colors.text }]}>Título</Text>
+            <TextInput 
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text }]}
+                value={title} onChangeText={setTitle} 
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Compositor</Text>
+            <TextInput 
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text }]}
+                value={composer} onChangeText={setComposer} 
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Tipo de Canto</Text>
+            <View style={[styles.pickerContainer, { backgroundColor: colors.card }]}>
+                <Picker
+                    selectedValue={selectedType}
+                    onValueChange={(itemValue) => setSelectedType(itemValue)}
+                    style={{ color: colors.text }}
+                    dropdownIconColor={colors.text}
+                >
+                    {songTypes.map(t => <Picker.Item key={t.id} label={t.name} value={t.id} />)}
+                </Picker>
             </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-                
-                {/* Title Input */}
-                <View style={styles.formGroup}>
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>Título</Text>
-                    <TextInput
-                        style={inputStyle}
-                        value={title}
-                        onChangeText={setTitle}
-                        placeholder="Ej. Pescador de Hombres"
-                        placeholderTextColor={placeholderColor}
-                    />
-                </View>
-
-                {/* Composer Input */}
-                <View style={styles.formGroup}>
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>Compositor (Opcional)</Text>
-                    <TextInput
-                        style={inputStyle}
-                        value={composer}
-                        onChangeText={setComposer}
-                        placeholder="Ej. Cesáreo Gabaráin"
-                        placeholderTextColor={placeholderColor}
-                    />
-                </View>
-
-                {/* Type Selector (Custom Picker) */}
-                <View style={styles.formGroup}>
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>Tipo de Canto</Text>
-                    <TouchableOpacity 
-                        style={[styles.pickerTrigger, { 
-                            backgroundColor: inputStyle.backgroundColor, 
-                            borderColor: colors.border 
-                        }]} 
-                        onPress={() => setPickerVisible(true)}
-                    >
-                        <Text style={{ color: selectedTypeId ? colors.text : placeholderColor, fontSize: 16 }}>
-                            {selectedTypeName}
-                        </Text>
-                        <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                </View>
-
-                {/* Lyrics Input */}
-                <View style={styles.formGroup}>
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>Letra</Text>
-                    <TextInput
-                        style={[inputStyle, styles.textArea]}
-                        value={lyrics}
-                        onChangeText={setLyrics}
-                        placeholder="Escribe la letra aquí..."
-                        placeholderTextColor={placeholderColor}
-                        multiline
-                        textAlignVertical="top"
-                    />
-                </View>
-
-                {/* Submit Button */}
+            {/* Audio Picker */}
+            <Text style={[styles.label, { color: colors.text }]}>Audio (MP3)</Text>
+            <View style={styles.audioRow}>
                 <TouchableOpacity 
-                    style={[
-                        styles.submitBtn, 
-                        { backgroundColor: colors.button },
-                        isSubmitting && styles.submitBtnDisabled
-                    ]} 
-                    onPress={handleSubmit}
-                    disabled={isSubmitting}
+                    style={[styles.audioBtn, { backgroundColor: colors.card, borderColor: colors.primary }]} 
+                    onPress={handlePickAudio}
                 >
-                    {isSubmitting ? (
-                        <ActivityIndicator color={colors.buttonText} />
-                    ) : (
-                        <Text style={[styles.submitBtnText, { color: colors.buttonText }]}>Guardar Canto</Text>
-                    )}
+                    <Ionicons name="musical-note" size={20} color={colors.primary} />
+                    <Text style={{ marginLeft: 10, color: colors.text }}>
+                        {audioName || "Seleccionar archivo de audio..."}
+                    </Text>
                 </TouchableOpacity>
+                {audioUri && (
+                    <TouchableOpacity onPress={() => { setAudioUri(null); setAudioName(null); }}>
+                        <Ionicons name="close-circle" size={24} color="#E91E63" />
+                    </TouchableOpacity>
+                )}
+            </View>
 
-            </ScrollView>
+            <Text style={[styles.label, { color: colors.text }]}>Letra (Texto)</Text>
+            <TextInput 
+                style={[styles.input, styles.textArea, { backgroundColor: colors.card, color: colors.text }]}
+                value={content} onChangeText={setContent} 
+                multiline textAlignVertical="top"
+                placeholder="Escribe la letra aquí..."
+                placeholderTextColor={colors.textSecondary}
+            />
 
-            {/* --- Modal for Selecting Song Type --- */}
-            <Modal
-                visible={isPickerVisible}
-                transparent={true}
-                animationType="slide"
-                onRequestClose={() => setPickerVisible(false)}
+            <TouchableOpacity 
+                style={[styles.submitBtn, { backgroundColor: colors.button }]}
+                onPress={handleSubmit}
+                disabled={submitting}
             >
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-                        <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-                            <Text style={[styles.modalTitle, { color: colors.text }]}>Selecciona un Tipo</Text>
-                            <TouchableOpacity onPress={() => setPickerVisible(false)}>
-                                <Ionicons name="close" size={24} color={colors.text} />
-                            </TouchableOpacity>
-                        </View>
-                        
-                        {loading && <ActivityIndicator style={{margin: 20}} color={colors.primary}/>}
-
-                        <FlatList 
-                            data={songTypes}
-                            keyExtractor={item => item.id.toString()}
-                            renderItem={({ item }) => (
-                                <TouchableOpacity 
-                                    style={[styles.modalItem, { borderBottomColor: colors.border }]}
-                                    onPress={() => {
-                                        setSelectedTypeId(item.id);
-                                        setPickerVisible(false);
-                                    }}
-                                >
-                                    <Text style={[
-                                        styles.modalItemText, 
-                                        { color: colors.text },
-                                        selectedTypeId === item.id && { color: colors.primary, fontWeight: 'bold' }
-                                    ]}>
-                                        {item.name}
-                                    </Text>
-                                    {selectedTypeId === item.id && (
-                                        <Ionicons name="checkmark" size={20} color={colors.primary} />
-                                    )}
-                                </TouchableOpacity>
-                            )}
-                        />
-                    </View>
-                </View>
-            </Modal>
-
-        </View>
+                {submitting ? <ActivityIndicator color="white" /> : 
+                    <Text style={[styles.submitText, { color: colors.buttonText }]}>
+                        {songToEdit ? 'Actualizar Canto' : 'Guardar Canto'}
+                    </Text>
+                }
+            </TouchableOpacity>
+        </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingBottom: 15,
-        borderBottomWidth: 1,
-    },
-    backBtn: { padding: 5, marginTop: 8 },
-    headerTitle: { fontSize: 20, fontWeight: 'bold', marginTop: 8 },
-    scrollContent: { padding: 20 },
-    formGroup: { marginBottom: 20 },
-    label: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
-    textArea: { height: 200 },
-    pickerTrigger: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderRadius: 10,
-        padding: 15,
-    },
-    submitBtn: {
-        padding: 15,
-        borderRadius: 15,
-        alignItems: 'center',
-        marginTop: 10,
-        marginBottom: 50,
-        elevation: 2
-    },
-    submitBtnDisabled: { opacity: 0.7 },
-    submitBtnText: { fontSize: 18, fontWeight: 'bold' },
-    
-    // Modal Styles
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
-    },
-    modalContent: {
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        maxHeight: '70%',
-        paddingBottom: 30
-    },
-    modalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 20,
-        borderBottomWidth: 1,
-    },
-    modalTitle: { fontSize: 18, fontWeight: 'bold' },
-    modalItem: {
-        padding: 20,
-        borderBottomWidth: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-    },
-    modalItemText: { fontSize: 16 }
+    container: { flex: 1, padding: 20 },
+    label: { fontSize: 16, fontWeight: 'bold', marginBottom: 8, marginTop: 10 },
+    input: { borderRadius: 8, padding: 12, fontSize: 16 },
+    textArea: { height: 250 }, // Made slightly taller for lyrics
+    pickerContainer: { borderRadius: 8, overflow: 'hidden' },
+    audioRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    audioBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed' },
+    submitBtn: { marginTop: 30, marginBottom: 50, padding: 15, borderRadius: 10, alignItems: 'center' },
+    submitText: { fontSize: 18, fontWeight: 'bold' }
 });

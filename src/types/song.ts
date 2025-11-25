@@ -8,18 +8,19 @@ export interface Song {
     id: number;
     title: string;
     composer?: string;
-    content: { // Rich Text JSON
+    content: { 
         type: string;
         content?: any[];
     };
     songTypeId: number;
     songTypeName: string;
+    audioUrl?: string;
 }
 
-// For Creating/Updating
+// For use in Forms
 export interface SongPayload {
     title: string;
     composer?: string;
-    content: any; // JSON object
+    content: any;
     songTypeId: number;
 }

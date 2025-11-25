@@ -1,7 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { GalleryScreen } from '../screens/gallery/GalleryScreen';
-import { ImageDetailScreen } from '../screens/gallery/ImageDetailScreen';
+import { MediaDetailScreen } from '../screens/gallery/MediaDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -11,7 +11,7 @@ export const GalleryNavigator = () => {
             <Stack.Screen name="GalleryGrid" component={GalleryScreen} />
             <Stack.Screen 
                 name="ImageDetail" 
-                component={ImageDetailScreen} 
+                component={MediaDetailScreen} 
                 options={{ presentation: 'fullScreenModal' }} 
             />
         </Stack.Navigator>

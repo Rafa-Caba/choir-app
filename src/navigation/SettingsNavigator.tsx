@@ -6,7 +6,7 @@ import { EditProfileScreen } from '../screens/settings/EditProfileScreen';
 import { UsersListScreen } from '../screens/admin/UsersListScreen';
 import { ManageUserScreen } from '../screens/admin/ManageUserScreen';
 import { ThemeSelectionScreen } from '../screens/settings/ThemeSelectionScreen';
-import { ImageDetailScreen } from '../screens/gallery/ImageDetailScreen';
+import { MediaDetailScreen } from '../screens/gallery/MediaDetailScreen';
 import { AdminThemeEditorScreen } from '../screens/settings/AdminThemeEditorScreen';
 import { useTheme } from '../context/ThemeContext';
 
@@ -81,7 +81,7 @@ export const SettingsNavigator = () => {
             />
             <Stack.Screen 
                 name="ImageDetail" 
-                component={ImageDetailScreen} 
+                component={MediaDetailScreen} 
                 options={{ presentation: 'fullScreenModal', headerShown: false }} 
             />
         </Stack.Navigator>

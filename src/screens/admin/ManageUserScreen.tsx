@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign:'center' },
     avatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#eee' },
     input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
-    saveBtn: { backgroundColor: '#8B4BFF', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
+    saveBtn: { backgroundColor: '#8B4BFF', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10, marginBottom: 15 },
     saveText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
     row: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 },
     label: { fontSize: 16, fontWeight: '600' },

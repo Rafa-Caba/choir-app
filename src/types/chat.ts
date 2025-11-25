@@ -1,6 +1,6 @@
 import type { User } from './auth';
 
-export type MessageType = 'TEXT' | 'IMAGE' | 'FILE' | 'MEDIA' | 'REACTION';
+export type MessageType = 'TEXT' | 'IMAGE' | 'FILE' | 'MEDIA' | 'REACTION' | 'AUDIO';
 
 export interface MessageReaction {
     emoji: string;
@@ -21,7 +21,8 @@ export interface ChatMessage {
     fileUrl?: string;
     filename?: string;
     imageUrl?: string;
-    imagePublicId?: string; // Added this to match backend
+    imagePublicId?: string;
+    audioUrl?: string;
     
     // Reactions (Now fully typed)
     reactions: MessageReaction[];
@@ -42,6 +43,8 @@ export interface NewMessagePayload {
     filename?: string;
     imageUrl?: string;
     imagePublicId?: string;
+    audioUrl?: string;
+    audioPublicId?: string;
 
     replyToId?: number;
 }

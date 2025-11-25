@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import { getSongTypes, getAllSongs, createSong, updateSong } from '../services/songs';
+import { 
+    getSongTypes, getAllSongs, createSong, updateSong, deleteSong,
+    createSongType, updateSongType, deleteSongType 
+} from '../services/songs';
 import type { Song, SongType, SongPayload } from '../types/song';
 
 interface SongsState {
@@ -7,11 +10,18 @@ interface SongsState {
     songs: Song[];
     loading: boolean;
     
-    fetchData: () => Promise<void>; // Fetches both types and songs
-    addSong: (payload: SongPayload) => Promise<boolean>;
-    editSong: (id: number, payload: SongPayload) => Promise<boolean>;
+    fetchData: () => Promise<void>;
     
-    // Helper: Get songs belonging to a specific type
+    // Songs
+    addSong: (payload: SongPayload, audioUri?: string) => Promise<boolean>;
+    editSong: (id: number, payload: SongPayload, audioUri?: string) => Promise<boolean>;
+    removeSong: (id: number) => Promise<boolean>;
+
+    // Types
+    addType: (name: string, order: number) => Promise<boolean>;
+    editType: (id: number, name: string, order: number) => Promise<boolean>;
+    removeType: (id: number) => Promise<boolean>;
+    
     getSongsByType: (typeId: number) => Song[];
 }
 
@@ -23,7 +33,6 @@ export const useSongsStore = create<SongsState>((set, get) => ({
     fetchData: async () => {
         set({ loading: true });
         try {
-            // Run in parallel
             const [types, allSongs] = await Promise.all([
                 getSongTypes(),
                 getAllSongs()
@@ -36,10 +45,11 @@ export const useSongsStore = create<SongsState>((set, get) => ({
         }
     },
 
-    addSong: async (payload) => {
+    // --- Songs ---
+    addSong: async (payload, audioUri) => {
         set({ loading: true });
         try {
-            const newSong = await createSong(payload);
+            const newSong = await createSong(payload, audioUri);
             set((state) => ({ songs: [...state.songs, newSong] }));
             return true;
         } catch (error) {
@@ -50,10 +60,10 @@ export const useSongsStore = create<SongsState>((set, get) => ({
         }
     },
     
-    editSong: async (id, payload) => {
+    editSong: async (id, payload, audioUri) => {
         set({ loading: true });
         try {
-            const updated = await updateSong(id, payload);
+            const updated = await updateSong(id, payload, audioUri);
             set((state) => ({
                 songs: state.songs.map(s => s.id === id ? updated : s)
             }));
@@ -64,6 +74,53 @@ export const useSongsStore = create<SongsState>((set, get) => ({
         } finally {
             set({ loading: false });
         }
+    },
+
+    removeSong: async (id) => {
+        set({ loading: true });
+        try {
+            await deleteSong(id);
+            set((state) => ({
+                songs: state.songs.filter(s => s.id !== id)
+            }));
+            return true;
+        } catch (error) {
+            console.error("Failed to delete song", error);
+            return false;
+        } finally {
+            set({ loading: false });
+        }
+    },
+
+    // --- Types ---
+    addType: async (name, order) => {
+        try {
+            const newType = await createSongType(name, order);
+            set((state) => ({ 
+                songTypes: [...state.songTypes, newType].sort((a,b) => a.order - b.order) 
+            }));
+            return true;
+        } catch (e) { return false; }
+    },
+
+    editType: async (id, name, order) => {
+        try {
+            const updated = await updateSongType(id, name, order);
+            set((state) => ({
+                songTypes: state.songTypes.map(t => t.id === id ? updated : t).sort((a,b) => a.order - b.order)
+            }));
+            return true;
+        } catch (e) { return false; }
+    },
+
+    removeType: async (id) => {
+        try {
+            await deleteSongType(id);
+            set((state) => ({
+                songTypes: state.songTypes.filter(t => t.id !== id)
+            }));
+            return true;
+        } catch (e) { return false; }
     },
 
     getSongsByType: (typeId) => {
