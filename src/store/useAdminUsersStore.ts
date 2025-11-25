@@ -29,11 +29,12 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
     saveUserAction: async (data, imageUri, id) => {
         set({ loading: true });
         try {
+            // Calls the updated service (which now handles FormData correctly)
             await saveUser(data, imageUri, id);
-            await get().fetchUsers(); // Refresh list
+            await get().fetchUsers();
             return true;
         } catch (e) {
-            console.error(e);
+            console.error("Save User Failed:", e);
             return false;
         } finally {
             set({ loading: false });

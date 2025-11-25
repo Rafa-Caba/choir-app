@@ -10,7 +10,7 @@ export const GalleryNavigator = () => {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
             <Stack.Screen name="GalleryGrid" component={GalleryScreen} />
             <Stack.Screen 
-                name="ImageDetail" 
+                name="MediaDetailScreen"
                 component={MediaDetailScreen} 
                 options={{ presentation: 'fullScreenModal' }} 
             />

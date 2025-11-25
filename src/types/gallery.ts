@@ -3,7 +3,15 @@ export interface GalleryImage {
     title: string;
     description: string;
     imageUrl: string;
-    mediaType: 'IMAGE' | 'VIDEO'; // New
+    mediaType: 'IMAGE' | 'VIDEO';
+    
+    // Flags
+    imageStart: boolean;
+    imageTopBar: boolean;
+    imageUs: boolean;
+    imageLogo: boolean;
+    imageGallery: boolean;
+    
     createdAt: string;
 }
 

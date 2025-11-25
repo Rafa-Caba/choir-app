@@ -4,20 +4,23 @@ import {
     Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView 
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAuthStore } from '../store/useAuthStore';
-import { LoadingScreen } from './LoadingScreen';
+import { useAuthStore } from '../../store/useAuthStore';
+import { LoadingScreen } from '../LoadingScreen';
+import { useAppConfigStore } from '../../store/useAppConfigStore';
+import { useTheme } from '../../context/ThemeContext';
 
 export const LoginScreen = () => {
     const navigation = useNavigation<any>();
     
-    // 1. Use the Zustand Store
     const { login, errorMessage, clearError, loading } = useAuthStore();
+    const { appTitle, appLogoUrl } = useAppConfigStore();
 
-    // 2. Local State
+    const { currentTheme } = useTheme(); 
+    const colors = currentTheme.colors;
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
 
-    // 3. Handle Errors
     useEffect(() => {
         if (errorMessage) {
             Alert.alert('Login Incorrecto', errorMessage, [{
@@ -34,24 +37,24 @@ export const LoginScreen = () => {
             return;
         }
         
-        // Backend expects 'username' key, even if user enters email
         await login({ username: email, password });
     };
 
     if (loading) return <LoadingScreen />;
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
             <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={{ alignItems: 'center' }}>
                     <Image 
-                        // Use a local asset or a generic placeholder
-                        source={require('../assets/EroCras4.jpg')} 
+                        source={appLogoUrl ? { uri: appLogoUrl } : require('../../assets/EroCras4.jpg')}
                         resizeMode="contain"
                         style={styles.logo} 
-                        borderRadius={30}
+                        borderRadius={35}
                     />
                 </View>
+
+                <Text style={[styles.title, { color: colors.text, fontFamily: 'MyCustomFont' }]}>{appTitle}</Text>
 
                 <KeyboardAvoidingView
                     style={{ flex: 1 }}
@@ -59,9 +62,13 @@ export const LoginScreen = () => {
                 >
                     <View style={{ marginHorizontal: 15 }}>
                         <TextInput
+                            style={[styles.input, { 
+                                backgroundColor: colors.card, 
+                                color: colors.text,
+                                borderColor: colors.border
+                            }]}
                             placeholder="Correo o Usuario"
                             value={email}
-                            style={styles.input}
                             placeholderTextColor="rgba(0,0,0,0.4)"
                             keyboardType="email-address"
                             autoCapitalize="none"
@@ -69,9 +76,13 @@ export const LoginScreen = () => {
                             onChangeText={setEmail}
                         />
                         <TextInput
+                            style={[styles.input, { 
+                                backgroundColor: colors.card, 
+                                color: colors.text,
+                                borderColor: colors.border
+                            }]}
                             placeholder="Contraseña"
                             value={password}
-                            style={styles.input}
                             placeholderTextColor="rgba(0,0,0,0.4)"
                             onChangeText={setPassword}
                             secureTextEntry
@@ -79,20 +90,23 @@ export const LoginScreen = () => {
 
                         <View style={styles.buttonContainer}>
                             <TouchableOpacity 
-                                style={styles.btnLogin} 
+                                style={[styles.btnLogin, { backgroundColor: colors.button }]}
                                 activeOpacity={0.6}
                                 onPress={onLogin}
                             >
-                                <Text style={styles.btnLoginText}>Iniciar Sesión</Text>
+                                <Text style={[styles.btnLoginText, { color: colors.buttonText }]}>
+                                    {loading ? 'Cargando...' : 'Iniciar Sesión'}
+                                </Text>
                             </TouchableOpacity>
                         
-                            <TouchableOpacity
-                                activeOpacity={0.7}
-                                onPress={() => navigation.navigate('RegistroScreen')}
-                                style={{ ...styles.btnLogin, width: 140, height: 40, marginTop: 10, backgroundColor: '#b388ff' }}
+                            {/* <TouchableOpacity 
+                                onPress={() => navigation.navigate('RegisterScreen')} 
+                                style={styles.loginLink}
+                                disabled
                             >
-                                <Text style={{ ...styles.btnLoginText, fontWeight: '400', fontSize: 16 }}>Registrarse</Text>
-                            </TouchableOpacity>
+                                <Text style={{ color: colors.textSecondary }}>¿No tienes cuenta? </Text>
+                                <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Regístrate</Text>
+                            </TouchableOpacity> */}
                         </View>
                     </View>
                 </KeyboardAvoidingView>
@@ -106,17 +120,20 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingTop: 70,
         paddingHorizontal: 30,
-        // marginHorizontal: 10,
-        backgroundColor: '#f2f2f2' // Light background
     },
     logo: {
         width: 130,
         height: 130,
         marginBottom: 50,
+        borderRadius: 20
+    },
+    title: {
+        fontSize: 22,
+        textAlign: 'center',
+        marginBottom: 25,
+        fontWeight: '600'
     },
     input: {
-        color: '#000',
-        backgroundColor: '#d1b3ff',
         fontSize: 18,
         paddingHorizontal: 20,
         paddingVertical: 15,
@@ -127,25 +144,23 @@ const styles = StyleSheet.create({
     },
     buttonContainer: {
         alignItems: 'center',
-        marginTop: 20,
-        gap: 10
+        marginTop: 20
     },
     btnLogin: {
-        backgroundColor: '#8B4BFF',
         width: 200,
         paddingVertical: 12,
         borderRadius: 15,
         alignItems: 'center',
         justifyContent: 'center',
-        elevation: 2, // Android shadow
-        shadowColor: '#000', // iOS shadow
+        elevation: 2, 
+        shadowColor: '#000', 
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 2,
     },
     btnLoginText: {
         fontSize: 18,
-        color: '#fff',
         fontWeight: 'bold',
     },
+    loginLink: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 }
 });

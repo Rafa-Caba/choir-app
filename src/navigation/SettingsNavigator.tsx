@@ -9,6 +9,7 @@ import { ThemeSelectionScreen } from '../screens/settings/ThemeSelectionScreen';
 import { MediaDetailScreen } from '../screens/gallery/MediaDetailScreen';
 import { AdminThemeEditorScreen } from '../screens/settings/AdminThemeEditorScreen';
 import { useTheme } from '../context/ThemeContext';
+import { AdminSettingsScreen } from '../screens/settings/AdminSettingsScreen';
 
 export type SettingsStackParamList = {
     SettingsScreen: undefined;
@@ -18,7 +19,8 @@ export type SettingsStackParamList = {
     ManageUserScreen: undefined;
     ThemeSelectionScreen: undefined;
     AdminThemeEditor: undefined;
-    ImageDetail: undefined;
+    MediaDetailScreen: undefined;
+    AdminSettingsScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
@@ -80,9 +82,14 @@ export const SettingsNavigator = () => {
                 options={{ title: 'Editor de Temas' }} 
             />
             <Stack.Screen 
-                name="ImageDetail" 
+                name="MediaDetailScreen" 
                 component={MediaDetailScreen} 
                 options={{ presentation: 'fullScreenModal', headerShown: false }} 
+            />
+            <Stack.Screen 
+                name="AdminSettingsScreen" 
+                component={AdminSettingsScreen} 
+                options={{ title: 'Configuración de la App' }}
             />
         </Stack.Navigator>
     );

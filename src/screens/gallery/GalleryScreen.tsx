@@ -83,14 +83,19 @@ export const GalleryScreen = () => {
 
     // Grid Item Render
     const renderGridItem = ({ item }: { item: any }) => {
-        const thumbUri = getCloudinaryThumbnail(item.imageUrl) ?? '';
+        // Generate Thumbnail or use placeholder
+        const thumbUri = getCloudinaryThumbnail(item.imageUrl) || 'https://via.placeholder.com/150';
 
         return (
             <TouchableOpacity 
                 style={styles.gridItem}
                 onPress={() => navigation.navigate('MediaDetailScreen', { media: item })}
             >
-                <Image source={{ uri: thumbUri }} style={styles.gridImage} />
+                <Image 
+                    source={{ uri: thumbUri }} 
+                    style={styles.gridImage} 
+                    resizeMode="cover"
+                />
                 {item.mediaType === 'VIDEO' && (
                     <View style={styles.videoOverlay}>
                         <Ionicons name="play-circle" size={30} color="rgba(255,255,255,0.8)" />

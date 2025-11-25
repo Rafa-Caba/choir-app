@@ -52,6 +52,12 @@ export const uploadImage = async (payload: CreateGalleryPayload): Promise<Galler
     return data;
 };
 
+// Update Flags
+export const updateImageFlags = async (id: number, flags: any): Promise<GalleryImage> => {
+    const { data } = await choirApi.put<GalleryImage>(`/gallery/${id}/flags`, flags);
+    return data;
+};
+
 export const deleteGalleryImage = async (id: number): Promise<void> => {
     await choirApi.delete(`/gallery/${id}`);
 };

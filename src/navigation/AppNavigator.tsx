@@ -9,9 +9,10 @@ import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useTheme } from '../context/ThemeContext';
 
 // Screens
-import { LoginScreen } from '../screens/LoginScreen';
+import { LoginScreen } from '../screens/auth/LoginScreen';
+import { RegisterScreen } from '../screens/auth/RegisterScreen';
 import { LoadingScreen } from '../screens/LoadingScreen';
-import { CreateAnnouncementScreen } from '../screens/CreateAnnouncementScreen';
+
 import { TabsNavigator } from './TabsNavigator';
 import { updatePushToken } from '../services/auth';
 
@@ -63,6 +64,7 @@ export const AppNavigator = () => {
             {status !== 'authenticated' ? (
                 <>
                     <Drawer.Screen name="LoginScreen" component={LoginScreen} options={{ headerShown: false }} />
+                    <Drawer.Screen name="RegisterScreen" component={RegisterScreen} options={{ headerShown: false }} />
                 </>
             ) : (
                 <>
@@ -78,7 +80,6 @@ export const AppNavigator = () => {
 const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
     const { user, logout } = useAuthStore();
     
-    // 5. Get Theme for the internal content (Text, Icons)
     const { currentTheme } = useTheme();
     const colors = currentTheme.colors;
 
@@ -88,7 +89,7 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
             <View style={styles.avatarContainer}>
                 <Image 
                     source={{ uri: user?.imageUrl || 'https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png' }}
-                    style={[styles.avatar, { borderColor: colors.primary }]} // Dynamic Border
+                    style={[styles.avatar, { borderColor: colors.primary }]}
                 />
                 <Text style={[styles.userName, { color: colors.text }]}>
                     {user?.name || 'Usuario'}
@@ -100,7 +101,7 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
                 <MenuItem 
                     icon="home-outline" 
                     text="Home" 
-                    color={colors.primary} // Pass dynamic color
+                    color={colors.primary}
                     textColor={colors.text}
                     onPress={() => navigation.navigate('Root', { 
                         screen: 'HomeTab',
@@ -124,7 +125,7 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
                     icon="log-out-outline" 
                     text="Cerrar Sesión" 
                     onPress={logout} 
-                    color="#e74c3c" // Logout usually stays red
+                    color="#e74c3c"
                     textColor="#e74c3c"
                 />
             </View>

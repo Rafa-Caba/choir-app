@@ -1,23 +1,27 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { DefaultTheme, ThemeProvider as StyledThemeProvider } from 'styled-components/native';
-import { mapDbThemeToStyled } from '../utils/themeMapper';
-import { getAllThemes, updateUserTheme } from '../services/themes';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { ThemeProvider as StyledThemeProvider } from 'styled-components/native';
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
+import choirApi from '../api/choirApi';
 import { useAuthStore } from '../store/useAuthStore';
 import type { ThemeDefinition } from '../types/theme';
-import { ActivityIndicator, View } from 'react-native';
+import { DefaultTheme } from 'styled-components/native'; 
+import { mapDbThemeToStyled } from '../utils/themeMapper'; 
 
-// Default fallback to prevent crash before load
-const defaultDbTheme: ThemeDefinition = {
-    id: 0, 
-    name: 'Loading', 
+// --- Define a Safe Default Theme (Matches your DB 'Clásico' structure) ---
+const DEFAULT_THEME_DEF: ThemeDefinition = {
+    id: 1,
+    name: 'Clásico',
     isDark: false,
-    primaryColor: '#a88ff7', 
-    accentColor: '#673ab7', 
-    backgroundColor: '#fff',
-    textColor: '#333', 
-    cardColor: '#fff', 
-    buttonColor: '#6a0dad', 
-    navColor: '#fff'
+    primaryColor: '#6200ea',
+    accentColor: '#00b0ff',
+    backgroundColor: '#ffffff',
+    textColor: '#000000',
+    cardColor: '#f5f5f5',
+    buttonColor: '#6200ea',
+    navColor: '#ffffff',
+    buttonTextColor: '#ffffff',
+    secondaryTextColor: '#666666',
+    borderColor: '#eeeeee'
 };
 
 interface ThemeContextProps {
@@ -25,89 +29,84 @@ interface ThemeContextProps {
     availableThemes: ThemeDefinition[];
     setThemeById: (id: number) => Promise<void>;
     loading: boolean;
-    themeName: 'light' | 'dark'; // Legacy prop
+    themeName: 'light' | 'dark';
     isDark: boolean;
     toggleTheme: () => void;
 }
 
 export const ThemeContext = createContext({} as ThemeContextProps);
 
-export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-    const [themes, setThemes] = useState<ThemeDefinition[]>([]);
-    const [activeThemeId, setActiveThemeId] = useState<number | null>(null);
+export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
+    const [themes, setThemes] = useState<ThemeDefinition[]>([DEFAULT_THEME_DEF]);
+    const [activeThemeId, setActiveThemeId] = useState<number>(1);
     const [loading, setLoading] = useState(true);
     const { user } = useAuthStore();
 
+    // --- Initial Load (Local Storage + API) ---
     useEffect(() => {
-        const load = async () => {
-            setLoading(true);
+        const initTheme = async () => {
             try {
-                const data = await getAllThemes();
+                const savedId = await AsyncStorage.getItem('user_theme_id');
+                if (savedId) {
+                    setActiveThemeId(Number(savedId));
+                } else if (user?.themeId) {
+                    setActiveThemeId(user.themeId);
+                }
+
+                const { data } = await choirApi.get<ThemeDefinition[]>('/themes');
                 setThemes(data);
                 
-                // Determine active theme: Priority: User Pref -> LocalStorage -> First Available
-                const storedId = localStorage.getItem('sweeties-theme-id'); // Or AsyncStorage for mobile
-
-                if (user?.themeId) {
-                    setActiveThemeId(user.themeId);
-                } else if (storedId) {
-                    setActiveThemeId(Number(storedId));
-                } else if (data.length > 0) {
-                    setActiveThemeId(data[0].id);
+                if (savedId) {
+                    const exists = data.find(t => t.id === Number(savedId));
+                    if (!exists && data.length > 0) setActiveThemeId(data[0].id);
                 }
+
             } catch (e) {
-                console.error("Failed to load themes", e);
+                console.log("Theme load error (using defaults):", e);
             } finally {
                 setLoading(false);
             }
         };
-        load();
+
+        initTheme();
     }, [user?.themeId]); 
 
     const setThemeById = async (id: number) => {
-        setActiveThemeId(id); // Instant UI update
-        // Optional: Save locally
-        // await AsyncStorage.setItem('sweeties-theme-id', String(id)); 
+        setActiveThemeId(id);
         
+        await AsyncStorage.setItem('user_theme_id', String(id));
+
         if (user) {
             try {
-                await updateUserTheme(id); // Save to DB
+                await choirApi.put('/users/me/theme', { themeId: id });
             } catch (e) {
-                console.error("Failed to save theme preference", e);
+                console.error("Failed to sync theme to cloud", e);
             }
         }
     };
 
-    // Toggle Logic (Sun/Moon button)
     const toggleTheme = () => {
-        if (!themes.length) return;
-        // Look for specific themes by name
-        const lightTheme = themes.find(t => t.name === 'Clásico');
-        const darkTheme = themes.find(t => t.name === 'Noche');
+        const currentDef = themes.find(t => t.id === activeThemeId) || themes[0];
         
-        if (!lightTheme || !darkTheme) return;
-
-        if (activeThemeId === darkTheme.id) {
-            setThemeById(lightTheme.id);
-        } else {
-            setThemeById(darkTheme.id);
+        const targetTheme = themes.find(t => t.isDark !== currentDef.isDark);
+        
+        if (targetTheme) {
+            setThemeById(targetTheme.id);
         }
     };
 
-    // Calculate the styled object
-    const activeThemeDef = themes.find(t => t.id === activeThemeId) || themes[0] || defaultDbTheme;
+    const activeThemeDef = themes.find(t => t.id === activeThemeId) || themes[0] || DEFAULT_THEME_DEF;
+    
     const styledTheme = mapDbThemeToStyled(activeThemeDef);
 
-    // NOTE: We removed the blocking spinner here so the app can render "No themes" or login screen immediately
-    
     return (
         <ThemeContext.Provider value={{ 
             currentTheme: styledTheme, 
             availableThemes: themes, 
             setThemeById,
             loading,
-            themeName: styledTheme.isDark ? 'dark' : 'light',
-            isDark: styledTheme.isDark,
+            themeName: activeThemeDef.isDark ? 'dark' : 'light',
+            isDark: activeThemeDef.isDark,
             toggleTheme
         }}>
             <StyledThemeProvider theme={styledTheme}>

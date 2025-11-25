@@ -62,6 +62,13 @@ export const SettingsScreen = ({ navigation }: any) => {
                             colors={colors}
                             onPress={() => navigation.navigate('UsersListScreen')} 
                         />
+
+                        <SettingsItem 
+                            icon="settings-outline" 
+                            text="Ajustes de la App" 
+                            colors={colors}
+                            onPress={() => navigation.navigate('AdminSettingsScreen')} 
+                        />
                     </>
                 )}
 

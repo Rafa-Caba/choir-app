@@ -2,16 +2,10 @@ import choirApi from '../../api/choirApi';
 import type { User } from '../../types/auth';
 import { Platform } from 'react-native';
 
-export const getAllUsers = async (): Promise<User[]> => {
-    const { data } = await choirApi.get<User[]>('/users');
-    return data;
-};
-
-// Combined Create/Update function for simplicity
-export const saveUser = async (userData: any, imageUri?: string, userId?: number): Promise<User> => {
+// --- Helper: Async FormData Builder ---
+const createFormData = async (userData: any, imageUri?: string) => {
     const formData = new FormData();
 
-    // Build JSON part
     const userDTO = {
         name: userData.name,
         username: userData.username,
@@ -19,22 +13,26 @@ export const saveUser = async (userData: any, imageUri?: string, userId?: number
         role: userData.role,
         instrument: userData.instrument,
         bio: userData.bio,
-        // Add password if exists
         ...(userData.password ? { password: userData.password } : {})
     };
 
-    formData.append('user', new Blob([JSON.stringify(userDTO)], { type: 'application/json' }));
+    // 1. Append JSON
+    formData.append('user', JSON.stringify(userDTO));
 
-    // Build Image part with Web Fix
+    // 2. Append Image (skip if remote URL)
     if (imageUri && !imageUri.startsWith('http')) {
         const filename = imageUri.split('/').pop() || 'p.jpg';
         const match = /\.(\w+)$/.exec(filename);
         const type = match ? `image/${match[1]}` : `image/jpeg`;
         
         if (Platform.OS === 'web') {
-            const response = await fetch(imageUri);
-            const blob = await response.blob();
-            formData.append('image', blob, filename);
+            try {
+                const response = await fetch(imageUri);
+                const blob = await response.blob();
+                formData.append('image', blob, filename);
+            } catch (e) {
+                console.error("Web image fetch failed", e);
+            }
         } else {
             // @ts-ignore
             formData.append('image', {
@@ -45,7 +43,17 @@ export const saveUser = async (userData: any, imageUri?: string, userId?: number
         }
     }
 
-    // --- HEADER FIX ---
+    return formData;
+};
+
+export const getAllUsers = async (): Promise<User[]> => {
+    const { data } = await choirApi.get<User[]>('/users');
+    return data;
+};
+
+export const saveUser = async (userData: any, imageUri?: string, userId?: number): Promise<User> => {
+    const formData = await createFormData(userData, imageUri);
+
     const requestConfig: any = {
         headers: { 'Content-Type': 'multipart/form-data' }
     };
@@ -53,7 +61,6 @@ export const saveUser = async (userData: any, imageUri?: string, userId?: number
     if (Platform.OS === 'web') {
         requestConfig.headers['Content-Type'] = undefined;
     }
-    // ------------------
 
     if (userId) {
         const { data } = await choirApi.put<User>(`/users/${userId}`, formData, requestConfig);
