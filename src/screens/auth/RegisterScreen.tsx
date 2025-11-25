@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppConfigStore } from '../../store/useAppConfigStore';
 
 export const RegisterScreen = () => {
-    const navigation = useNavigation();
+    const navigation = useNavigation<any>();
     const { register, loading, errorMessage, clearError } = useAuthStore();
     const { appLogoUrl } = useAppConfigStore();
     const { currentTheme } = useTheme();
@@ -42,9 +42,9 @@ export const RegisterScreen = () => {
         }
 
         const success = await register({ name, email, username, password });
-        if (success) {
-            // AppNavigator process
-        }
+        
+        if (success) navigation.navigate('HomeScreen');
+
     };
 
     return (

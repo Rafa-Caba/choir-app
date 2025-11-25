@@ -37,7 +37,9 @@ export const LoginScreen = () => {
             return;
         }
         
-        await login({ username: email, password });
+        const success = await login({ username: email, password });
+
+        if (success) navigation.navigate('HomeScreen');
     };
 
     if (loading) return <LoadingScreen />;
