@@ -1,56 +1,80 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react'; // <--- Import useLayoutEffect
 import { 
-    View, TextInput, TouchableOpacity, Text, StyleSheet, 
-    Image, ScrollView, Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform 
+    View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, 
+    Image, Switch, Alert, ActivityIndicator, KeyboardAvoidingView, Platform 
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import * as ImagePicker from 'expo-image-picker';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-
+import * as ImagePicker from 'expo-image-picker';
+import { Announcement } from '../types/announcement';
 import { useAnnouncementStore } from '../store/useAnnouncementStore';
-import { getPreviewFromRichText } from '../utils/textUtils';
 import { useTheme } from '../context/ThemeContext';
+
+type RootStackParamList = {
+    CreateAnnouncement: { announcement?: Announcement };
+};
+
+type CreateAnnouncementRouteProp = RouteProp<RootStackParamList, 'CreateAnnouncement'>;
 
 export const CreateAnnouncementScreen = () => {
     const navigation = useNavigation();
-    const route = useRoute<any>();
-    
-    // Get Theme
+    const route = useRoute<CreateAnnouncementRouteProp>();
+    const { announcement } = route.params || {};
+
+    const { addAnnouncement, editAnnouncement } = useAnnouncementStore();
     const { currentTheme } = useTheme();
     const colors = currentTheme.colors;
 
-    const { addAnnouncement, editAnnouncement, loading } = useAnnouncementStore();
+    // --- Helper: Parse JSON to Text ---
+    const extractText = (jsonContent: any): string => {
+        if (!jsonContent || !jsonContent.content) return '';
+        try {
+            return jsonContent.content
+                .map((node: any) => {
+                    if (node.type === 'paragraph' && node.content) {
+                        return node.content.map((textNode: any) => textNode.text).join('');
+                    }
+                    return '';
+                })
+                .join('\n');
+        } catch (e) { return ''; }
+    };
 
-    // Check if we are editing
-    const editingItem = route.params?.announcement;
-    const isEditMode = !!editingItem;
+    // State
+    const [title, setTitle] = useState(announcement?.title || '');
+    const [content, setContent] = useState(announcement ? extractText(announcement.content) : '');
+    const [imageUri, setImageUri] = useState<string | null>(announcement?.imageUrl || null);
+    const [isPublic, setIsPublic] = useState(announcement?.isPublic ?? true);
+    const [submitting, setSubmitting] = useState(false);
 
-    const initialContent = editingItem 
-        ? getPreviewFromRichText(editingItem.content, 5000) 
-        : '';
-
-    const [title, setTitle] = useState(editingItem?.title || '');
-    const [content, setContent] = useState(initialContent);
-    const [imageUri, setImageUri] = useState<string | undefined>(editingItem?.imageUrl);
-    const [isPublic, setIsPublic] = useState(editingItem?.isPublic ?? true);
+    // --- FIX: DYNAMIC HEADER CONFIGURATION ---
+    useLayoutEffect(() => {
+        const isEditMode = !!announcement;
+        
+        navigation.setOptions({
+            title: isEditMode ? 'Editar Aviso' : 'Nuevo Aviso',
+            headerStyle: { backgroundColor: colors.background },
+            headerTintColor: colors.text,
+            headerShadowVisible: false,
+            headerTitleStyle: { fontWeight: 'bold' }
+        });
+    }, [navigation, announcement, colors]);
+    // ----------------------------------------
 
     useEffect(() => {
-        navigation.setOptions({ 
-            title: isEditMode ? 'Editar Aviso' : 'Nuevo Aviso',
-            headerStyle: { backgroundColor: colors.background }, // Dynamic Header
-            headerTintColor: colors.text,
-            headerShadowVisible: false
-        });
-    }, [isEditMode, colors]);
+        if (announcement) {
+            setTitle(announcement.title);
+            setContent(extractText(announcement.content));
+            setImageUri(announcement.imageUrl || null);
+            setIsPublic(announcement.isPublic);
+        }
+    }, [announcement]);
 
     const pickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [16, 9],
             quality: 0.7,
         });
-
         if (!result.canceled) {
             setImageUri(result.assets[0].uri);
         }
@@ -58,239 +82,102 @@ export const CreateAnnouncementScreen = () => {
 
     const handleSubmit = async () => {
         if (!title.trim() || !content.trim()) {
-            Alert.alert('Error', 'El título y el contenido son obligatorios.');
+            Alert.alert("Error", "El título y el contenido son obligatorios");
             return;
         }
 
+        setSubmitting(true);
+
+        const richContent = {
+            type: 'doc',
+            content: content.split('\n').map((line: string) => ({
+                type: 'paragraph',
+                content: line.trim() ? [{ type: 'text', text: line }] : []
+            }))
+        };
+
         const payload = {
             title,
-            textContent: content,
-            imageUri,
-            isPublic
+            content: richContent,
+            isPublic,
+            imageUri: imageUri || undefined
         };
 
         let success;
-        if (isEditMode) {
-            success = await editAnnouncement(editingItem.id, payload);
+        if (announcement) {
+            success = await editAnnouncement(announcement.id, payload);
         } else {
             success = await addAnnouncement(payload);
         }
 
+        setSubmitting(false);
+
         if (success) {
-            Alert.alert('Éxito', isEditMode ? 'Aviso actualizado' : 'Aviso publicado');
             navigation.goBack();
         } else {
-            Alert.alert('Error', 'No se pudo guardar el aviso');
+            Alert.alert("Error", "No se pudo guardar el aviso.");
         }
     };
 
-    // Dynamic Styles helpers
-    const inputBg = currentTheme.isDark ? 'rgba(255,255,255,0.05)' : '#f9f9f9';
-    const placeholderColor = currentTheme.isDark ? 'rgba(255,255,255,0.4)' : '#999';
-
     return (
-        <KeyboardAvoidingView 
-            behavior={Platform.OS === "ios" ? "padding" : "height"} 
-            style={{ flex: 1 }}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
-        >
-            <ScrollView 
-                style={[styles.container, { backgroundColor: colors.background }]} 
-                contentContainerStyle={{ paddingBottom: 40 }}
-            >
-                
-                {/* --- Title Input --- */}
-                <View style={styles.formGroup}>
-                    <Text style={[styles.label, { color: colors.text }]}>Título</Text>
-                    <TextInput
-                        style={[styles.input, { 
-                            backgroundColor: inputBg, 
-                            borderColor: colors.border, 
-                            color: !currentTheme.isDark ? "#000" : "#fff"
-                        }]}
-                        value={title}
-                        onChangeText={setTitle}
-                        placeholder="Ej. Ensayo Cancelado"
-                        placeholderTextColor={placeholderColor}
-                    />
-                </View>
-
-                {/* --- Content Input --- */}
-                <View style={styles.formGroup}>
-                    <Text style={[styles.label, { color: colors.text }]}>Contenido</Text>
-                    <TextInput
-                        style={[styles.input, styles.textArea, { 
-                            backgroundColor: inputBg, 
-                            borderColor: colors.border, 
-                            color: !currentTheme.isDark ? "#000" : "#fff" 
-                        }]}
-                        value={content}
-                        onChangeText={setContent}
-                        placeholder="Escribe los detalles aquí..."
-                        placeholderTextColor={placeholderColor}
-                        multiline
-                        textAlignVertical="top"
-                    />
-                </View>
-
-                {/* --- Visibility Switch --- */}
-                <View style={[styles.switchRow, { 
-                    backgroundColor: inputBg, 
-                    borderColor: colors.border 
-                }]}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={[styles.switchLabel, { color: colors.text }]}>Visible al público</Text>
-                        <Text style={[styles.switchSubLabel, { color: colors.textSecondary }]}>
-                            {isPublic ? 'Visible para todos' : 'Solo visible para Admins (Borrador)'}
-                        </Text>
-                    </View>
-                    <Switch
-                        trackColor={{ false: "#767577", true: colors.primary + "80" }} // Primary with opacity
-                        thumbColor={isPublic ? colors.primary : "#f4f3f4"}
-                        ios_backgroundColor="#3e3e3e"
-                        onValueChange={setIsPublic}
-                        value={isPublic}
-                    />
-                </View>
-
-                {/* --- Image Picker --- */}
-                <View style={styles.formGroup}>
-                    <Text style={[styles.label, { color: colors.text }]}>Imagen (Opcional)</Text>
-                    
-                    <TouchableOpacity 
-                        style={[styles.imagePicker, { 
-                            backgroundColor: inputBg, 
-                            borderColor: colors.border 
-                        }]} 
-                        onPress={pickImage} 
-                        activeOpacity={0.8}
-                    >
-                        {imageUri ? (
-                            <Image source={{ uri: imageUri }} style={styles.previewImage} />
-                        ) : (
-                            <View style={styles.placeholder}>
-                                <Ionicons name="image-outline" size={40} color={colors.textSecondary} />
-                                <Text style={[styles.placeholderText, { color: colors.textSecondary }]}>
-                                    Toca para subir
-                                </Text>
-                            </View>
-                        )}
-                    </TouchableOpacity>
-
-                    {imageUri && (
-                        <TouchableOpacity 
-                            onPress={() => setImageUri(undefined)} 
-                            style={styles.removeImageBtn}
-                        >
-                            <Text style={styles.removeImageText}>Eliminar imagen</Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-
-                {/* --- Submit Button --- */}
-                <TouchableOpacity 
-                    style={[styles.submitBtn, { backgroundColor: colors.button }]} 
-                    onPress={handleSubmit}
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <ActivityIndicator color={colors.buttonText} />
+        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+            {/* Image Picker */}
+            <View style={styles.form}>
+                <Text style={[styles.label, { color: colors.text }]}>Imagen del Aviso (Opcional)</Text>
+                <TouchableOpacity onPress={pickImage} style={styles.imageContainer}>
+                    {imageUri ? (
+                        <Image source={{ uri: imageUri }} style={styles.image} />
                     ) : (
-                        <Text style={[styles.submitBtnText, { color: colors.buttonText }]}>
-                            {isEditMode ? 'Guardar Cambios' : 'Publicar Aviso'}
+                        <View style={[styles.placeholder, { backgroundColor: colors.card }]}>
+                            <Ionicons name="image-outline" size={50} color={colors.textSecondary} />
+                            <Text style={{ color: colors.textSecondary }}>Agregar Imagen</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
+
+                <Text style={[styles.label, { color: colors.text }]}>Título</Text>
+                <TextInput 
+                    style={[styles.input, { backgroundColor: colors.card, color: colors.text }]}
+                    value={title} onChangeText={setTitle}
+                />
+
+                <Text style={[styles.label, { color: colors.text }]}>Contenido</Text>
+                <TextInput 
+                    style={[styles.input, styles.textArea, { backgroundColor: colors.card, color: colors.text }]}
+                    value={content} onChangeText={setContent}
+                    multiline textAlignVertical="top"
+                />
+
+                <View style={styles.switchRow}>
+                    <Text style={[styles.label, { color: colors.text }]}>Público</Text>
+                    <Switch value={isPublic} onValueChange={setIsPublic} trackColor={{true: colors.primary}} />
+                </View>
+
+                <TouchableOpacity 
+                    style={[styles.btn, { backgroundColor: colors.button }]}
+                    onPress={handleSubmit}
+                    disabled={submitting}
+                >
+                    {submitting ? <ActivityIndicator color="white"/> : (
+                        <Text style={{ color: colors.buttonText, fontWeight: 'bold' }}>
+                            {announcement ? 'Actualizar' : 'Guardar'}
                         </Text>
                     )}
                 </TouchableOpacity>
-            </ScrollView>
-        </KeyboardAvoidingView>
+            </View>
+        </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        padding: 20,
-    },
-    formGroup: {
-        marginBottom: 20,
-    },
-    label: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 8,
-    },
-    input: {
-        borderWidth: 1,
-        borderRadius: 10,
-        padding: 15,
-        fontSize: 16,
-    },
-    textArea: {
-        height: 150,
-    },
-    // Switch Styles
-    switchRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 15,
-        borderRadius: 10,
-        marginBottom: 20,
-        borderWidth: 1,
-    },
-    switchLabel: {
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    switchSubLabel: {
-        fontSize: 12,
-        marginTop: 2,
-    },
-    // Image Picker Styles
-    imagePicker: {
-        height: 200,
-        borderRadius: 10,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderStyle: 'dashed'
-    },
-    previewImage: {
-        width: '100%',
-        height: '100%',
-        resizeMode: 'cover',
-    },
-    placeholder: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    placeholderText: {
-        marginTop: 10,
-    },
-    removeImageBtn: {
-        marginTop: 10,
-        alignSelf: 'flex-end',
-    },
-    removeImageText: {
-        color: '#E91E63',
-        fontWeight: '600',
-        fontSize: 14,
-    },
-    // Button Styles
-    submitBtn: {
-        padding: 15,
-        borderRadius: 15,
-        alignItems: 'center',
-        marginTop: 10,
-        marginBottom: 50,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
-    },
-    submitBtnText: {
-        fontSize: 18,
-        fontWeight: 'bold',
-    }
+    container: { flex: 1 },
+    imageContainer: { height: 200, width: '100%', marginBottom: 20, marginTop: 10, alignSelf: 'center', borderRadius: 10, overflow: 'hidden' },
+    image: { width: '100%', height: '100%', resizeMode: 'cover' },
+    placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    form: { padding: 20 },
+    label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
+    input: { borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
+    textArea: { height: 150 },
+    switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    btn: { padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 }
 });

@@ -52,9 +52,15 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => ({
     addAnnouncement: async (payload) => {
         set({ loading: true });
         try {
-            await createAnnouncement(payload);
-            // If we are admin, fetch admin list. If public, fetch public list.
-            // For simplicity, let's just re-fetch based on what we probably want (Admin)
+            // FIX: Destructure payload to pass arguments separately
+            await createAnnouncement(
+                payload.title, 
+                payload.content, 
+                payload.isPublic, 
+                payload.imageUri
+            );
+            
+            // If we are admin, fetch admin list.
             await get().fetchAdminAnnouncements(); 
             return true;
         } catch (error) {
@@ -68,8 +74,16 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => ({
     editAnnouncement: async (id, payload) => {
         set({ loading: true });
         try {
-            await updateAnnouncement(id, payload); 
-            // Always fetch admin list after edit to see drafts/updates
+            // FIX: Destructure payload to pass arguments separately
+            await updateAnnouncement(
+                id,
+                payload.title, 
+                payload.content, 
+                payload.isPublic, 
+                payload.imageUri
+            );
+
+            // Always fetch admin list after edit
             await get().fetchAdminAnnouncements();
             return true;
         } catch (error) {
