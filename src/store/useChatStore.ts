@@ -87,6 +87,9 @@ export const useChatStore = create<ChatState>()(
                     },
                     onStompError: (frame) => {
                         console.error('🚨 Chat Broker Error:', frame.headers['message']);
+                        console.error('Details:', frame.body);
+
+                        console.error('🚨 Chat Broker Error:', frame.headers['message']);
                     },
                     onWebSocketClose: () => {
                         console.log("🔌 Chat: Socket Closed");
@@ -156,12 +159,19 @@ export const useChatStore = create<ChatState>()(
                     replyToId: replyingTo?.id
                 };
 
-                stompClient.publish({
-                    destination: '/app/chat.sendMessage',
-                    body: JSON.stringify(payload),
-                });
+                console.log("Sending Payload:", JSON.stringify(payload)); // Debug Log
 
-                set({ replyingTo: null });
+                try {
+                    stompClient.publish({
+                        destination: '/app/chat.sendMessage',
+                        body: JSON.stringify(payload),
+                    });
+
+                    set({ replyingTo: null });
+                } catch (err) {
+                    console.error("Publish Error:", err);
+                    alert("Error al enviar mensaje");
+                }
             }
         }),
         {
