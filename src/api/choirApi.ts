@@ -2,10 +2,9 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const PROD_URL = 'https://choir-app-api-production.up.railway.app/api';
-
-// Define your Local IPs
 const LOCAL_IP = '10.10.1.98'; 
+
+const PROD_URL = 'https://choir-app-api-production.up.railway.app/api';
 
 const LOCAL_URL = Platform.OS === 'android' 
     ? 'http://10.0.2.2:8080/api' 
@@ -21,10 +20,11 @@ const choirApi = axios.create({
     },
 });
 
-// Interceptor to add the Token to every request
+// --- REQUEST INTERCEPTOR ---
 choirApi.interceptors.request.use(
     async (config) => {
         const token = await AsyncStorage.getItem('token');
+        
         if (token) {
             config.headers['Authorization'] = `Bearer ${token}`;
         }
@@ -33,19 +33,15 @@ choirApi.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// RESPONSE INTERCEPTOR ---
+// --- RESPONSE INTERCEPTOR ---
 choirApi.interceptors.response.use(
-    (response) => response, // Return success responses as is
+    (response) => response, 
     async (error) => {
-        // Check if error is 401 (Unauthorized) or 403 (Forbidden)
         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
             
-            // 1. Clear tokens
             await AsyncStorage.removeItem('token');
             await AsyncStorage.removeItem('refreshToken');
             
-            // Ideally, import the store directly to reset state:
-            // (This requires you to export the store instance, which you do)
             const { useAuthStore } = require('../store/useAuthStore'); 
             useAuthStore.getState().logout();
         }

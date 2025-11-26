@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loginUser, registerUser, getUserProfile, updateProfile } from '../services/auth';
 import type { LoginPayload, RegisterPayload, User } from '../types/auth';
+import choirApi from '../api/choirApi'; // <--- Import API instance
 
 interface AuthState {
     token: string | null;
@@ -36,10 +37,17 @@ export const useAuthStore = create<AuthState>()(
                 try {
                     const { accessToken, refreshToken } = await loginUser(payload);
                     
-                    // 1. Set tokens immediately so interceptors can use them
+                    // Persist to Storage (Async)
+                    await AsyncStorage.setItem('token', accessToken);
+                    await AsyncStorage.setItem('refreshToken', refreshToken);
+
+                    // Manually inject token into Axios instance immediately
+                    choirApi.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+
+                    // Update State (Sync)
                     set({ token: accessToken, refreshToken: refreshToken });
 
-                    // 2. Get Profile
+                    // Get Profile (Now safe to call)
                     const user = await getUserProfile();
 
                     set({ 
@@ -50,11 +58,11 @@ export const useAuthStore = create<AuthState>()(
                     return true;
 
                 } catch (error: any) {
-                    console.log(error.response?.data);
+                    console.log("Login Error:", error.response?.data || error.message);
                     set({ 
                         status: 'not-authenticated', 
                         token: null, 
-                        refreshToken: null,
+                        refreshToken: null, 
                         user: null,
                         errorMessage: 'Credenciales incorrectas',
                         loading: false 
@@ -68,8 +76,17 @@ export const useAuthStore = create<AuthState>()(
                 try {
                     const { accessToken, refreshToken } = await registerUser(payload);
                     
+                    // Persist
+                    await AsyncStorage.setItem('token', accessToken);
+                    await AsyncStorage.setItem('refreshToken', refreshToken);
+
+                    // Inject Header
+                    choirApi.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+
+                    // Update State
                     set({ token: accessToken, refreshToken: refreshToken });
 
+                    // Get Profile
                     const user = await getUserProfile();
 
                     set({ 
@@ -94,7 +111,7 @@ export const useAuthStore = create<AuthState>()(
                     // Calls the service which handles FormData/Multipart
                     const updatedUser = await updateProfile(data, imageUri);
                     
-                    // Update state (Persist middleware handles saving to disk)
+                    // Update state immediately
                     set({ user: updatedUser });
                     return true;
                 } catch (error) {
@@ -105,7 +122,15 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            logout: () => {
+            logout: async () => {
+                // Clear headers
+                delete choirApi.defaults.headers.common['Authorization'];
+                
+                // Clear storage
+                await AsyncStorage.removeItem('token');
+                await AsyncStorage.removeItem('refreshToken');
+                
+                // Clear state
                 set({ 
                     status: 'not-authenticated', 
                     token: null, 
@@ -122,17 +147,21 @@ export const useAuthStore = create<AuthState>()(
                     return;
                 }
 
+                // Ensure header is set if restoring from disk
+                choirApi.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
                 try {
                     // Verify token with backend
                     const user = await getUserProfile();
                     set({ status: 'authenticated', user });
                 } catch (error: any) {                    
-                    // If it's a 401/403, the token is invalid -> Logout
+                    // If 401/403, token is invalid -> Logout
                     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+                        await AsyncStorage.removeItem('token');
+                        delete choirApi.defaults.headers.common['Authorization'];
                         set({ status: 'not-authenticated', token: null, user: null });
                     } else {
-                        // If it's a Network Error (Offline), keep the user logged in
-                        // The app will run using cached data from other stores
+                        // If Network Error (Offline), keep session alive
                         console.log("Offline or Server Error: Keeping session alive");
                         set({ status: 'authenticated' });
                     }
@@ -141,7 +170,6 @@ export const useAuthStore = create<AuthState>()(
 
             clearError: () => set({ errorMessage: null }),
             
-            // Helper to manually update user state from other components if needed
             setUser: (user) => set({ user }),
         }),
         {
