@@ -1,0 +1,69 @@
+import 'dotenv/config';
+
+export default {
+    expo: {
+        name: "Coro App",
+        slug: "choir-app",
+        version: "1.0.1",
+        orientation: "portrait",
+        icon: "./assets/icon.png",
+        userInterfaceStyle: "light",
+        newArchEnabled: true,
+        splash: {
+            image: "./assets/splash-icon.png",
+            resizeMode: "contain",
+            backgroundColor: "#ffffff"
+        },
+        ios: {
+            supportsTablet: true,
+            infoPlist: {
+                NSMicrophoneUsageDescription: "Permitir a choir-app acceder al micrófono para grabar notas de voz.",
+                NSPhotoLibraryUsageDescription: "Permitir a choir-app acceder a tus fotos para compartirlas en el chat.",
+                NSCameraUsageDescription: "Permitir a choir-app acceder a tu cámara."
+            }
+        },
+        android: {
+            package: "com.rafacaba.choirapp",
+            adaptiveIcon: {
+                foregroundImage: "./assets/adaptive-icon.png",
+                backgroundColor: "#ffffff"
+            },
+            permissions: [
+                "android.permission.AUDIO_CAPTURE",
+                "android.permission.RECORD_AUDIO",
+                "android.permission.MODIFY_AUDIO_SETTINGS",
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE",
+                "android.permission.INTERNET"
+            ]
+        },
+        web: {
+            favicon: "./assets/favicon.png"
+        },
+        extra: {
+            eas: {
+                projectId: "453ab38a-8f9e-4c53-8ac8-9ed975e6415a"
+            },
+            localIp: process.env.LOCAL_IP,
+            port: process.env.PORT,
+            prodUrl: process.env.PROD_URL,
+        },
+        plugins: [
+            "expo-font",
+            [
+                "expo-image-picker",
+                {
+                    "photosPermission": "Permitir a choir-app acceder a tus fotos para compartirlas en el chat y la galería.",
+                    "cameraPermission": "Permitir a choir-app acceder a tu cámara."
+                }
+            ],
+            [
+                "expo-av",
+                {
+                    "microphonePermission": "Permitir a choir-app acceder al micrófono para grabar notas de voz."
+                }
+            ],
+            "expo-document-picker"
+        ]
+    }
+};

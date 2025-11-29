@@ -1,25 +1,38 @@
 import React, { useEffect } from 'react';
-import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+    View, Text, FlatList, Image, TouchableOpacity, StyleSheet,
+    Alert, Platform
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { useTheme } from '../context/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 
-// Stores
+import { useTheme } from '../context/ThemeContext';
 import { useAuthStore } from '../store/useAuthStore';
 import { useAnnouncementStore } from '../store/useAnnouncementStore';
 
-// Components
 import { AnnouncementCard } from '../components/AnnouncementCard';
+import { Announcement } from '../types/announcement';
+import { useChatStore } from '../store/useChatStore';
 
 export const HomeScreen = () => {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<any>();
-    
-    // Get the current theme colors
+    const { connected } = useChatStore();
+
+
     const { currentTheme } = useTheme();
-    
+    const colors = currentTheme;
+
     const { user } = useAuthStore();
-    const { announcements, fetchPublicAnnouncements, fetchAdminAnnouncements, loading } = useAnnouncementStore();
+
+    const {
+        announcements,
+        fetchPublicAnnouncements,
+        fetchAdminAnnouncements,
+        removeAnnouncement,
+        loading
+    } = useAnnouncementStore();
 
     const canEdit = user?.role === 'ADMIN' || user?.role === 'EDITOR';
 
@@ -31,50 +44,76 @@ export const HomeScreen = () => {
         }
     }, [canEdit]);
 
-    const handleCardPress = (announcement: any) => {
+    const handleCardPress = (announcement: Announcement) => {
         if (canEdit) {
             navigation.navigate('CreateAnnouncement', { announcement });
+        }
+    };
+
+    const handleDelete = (id: string) => {
+        if (Platform.OS === 'web') {
+            if (window.confirm("Delete this announcement?")) {
+                removeAnnouncement(id);
+            }
         } else {
-            console.log('Viewing detail:', announcement.id);
+            Alert.alert(
+                "Delete Announcement",
+                "Are you sure you want to delete this?",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => removeAnnouncement(id)
+                    }
+                ]
+            );
         }
     };
 
     return (
-        <View style={[
-            styles.container, 
-            { paddingTop: insets.top + 10, backgroundColor: currentTheme.colors.background }
-        ]}>
-            
+        <View style={[styles.container, { paddingTop: insets.top + 10, backgroundColor: colors.backgroundColor }]}>
+
             {/* Header */}
             <View style={styles.header}>
                 <View>
-                    <Text style={[styles.greeting, { color: currentTheme.colors.textSecondary }]}>
-                        Hola,
+                    <Text style={[styles.greeting, { color: colors.secondaryTextColor }]}>
+                        Hello,
                     </Text>
-                    <Text style={[styles.name, { color: currentTheme.colors.text }]}>
-                        {user?.name}
+                    <Text style={[styles.name, { color: colors.textColor }]}>
+                        {user?.name || 'Guest'}
                     </Text>
                 </View>
                 <TouchableOpacity onPress={() => navigation.openDrawer()}>
-                    <Image 
+                    {/* <Image
                         source={{ uri: user?.imageUrl || 'https://via.placeholder.com/100' }}
-                        style={[styles.avatar, { borderColor: currentTheme.colors.primary }]}
-                    />
+                        style={[styles.avatar, { borderColor: colors.primaryColor }]}
+                    /> */}
+                    <View>
+                        <Image
+                            source={{ uri: user?.imageUrl || 'https://via.placeholder.com/100' }}
+                            style={styles.avatar}
+                        />
+                        <View style={[
+                            styles.statusDot,
+                            { backgroundColor: connected ? '#4CAF50' : '#BDBDBD', borderColor: colors.backgroundColor }
+                        ]} />
+                    </View>
                 </TouchableOpacity>
             </View>
 
             {/* Section Title & Action */}
             <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: currentTheme.colors.text }]}>
-                    Avisos
+                <Text style={[styles.sectionTitle, { color: colors.textColor }]}>
+                    Announcements
                 </Text>
                 {canEdit && (
-                    <TouchableOpacity 
-                        style={[styles.addButton, { backgroundColor: currentTheme.colors.button }]}
+                    <TouchableOpacity
+                        style={[styles.addButton, { backgroundColor: colors.buttonColor }]}
                         onPress={() => navigation.navigate('CreateAnnouncement')}
                     >
-                        <Text style={[styles.addButtonText, { color: currentTheme.colors.buttonText }]}>
-                            + Nuevo
+                        <Text style={[styles.addButtonText, { color: colors.buttonTextColor }]}>
+                            + New
                         </Text>
                     </TouchableOpacity>
                 )}
@@ -83,19 +122,20 @@ export const HomeScreen = () => {
             {/* List */}
             <FlatList
                 data={announcements}
-                keyExtractor={(item) => item.id.toString()}
+                keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                    <AnnouncementCard 
+                    <AnnouncementCard
                         announcement={item}
                         onPress={() => handleCardPress(item)}
+                        onDelete={canEdit ? () => handleDelete(item.id) : undefined}
                     />
                 )}
                 refreshing={loading}
                 onRefresh={canEdit ? fetchAdminAnnouncements : fetchPublicAnnouncements}
                 contentContainerStyle={{ paddingBottom: 20 }}
                 ListEmptyComponent={
-                    <Text style={[styles.emptyText, { color: currentTheme.colors.textSecondary }]}>
-                        No hay avisos recientes.
+                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
+                        No recent announcements.
                     </Text>
                 }
             />
@@ -103,7 +143,6 @@ export const HomeScreen = () => {
     );
 };
 
-// Keep LAYOUT styles here. Remove COLORS from here.
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -114,43 +153,24 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 20,
+        marginTop: 5
     },
-    greeting: {
-        fontSize: 16,
-        // color removed
+    statusDot: {
+        position: 'absolute', bottom: 0, left: 52,
+        width: 16, height: 16, borderRadius: 8,
+        borderWidth: 2
     },
-    name: {
-        fontSize: 22,
-        fontWeight: 'bold',
-    },
-    avatar: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        borderWidth: 2,
-    },
+    greeting: { fontSize: 16 },
+    name: { fontSize: 22, fontWeight: 'bold' },
+    avatar: { width: 75, height: 75, borderRadius: 50, borderWidth: 2 },
     sectionHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 15,
     },
-    sectionTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-    },
-    addButton: {
-        paddingHorizontal: 15,
-        paddingVertical: 6,
-        borderRadius: 20,
-    },
-    addButtonText: {
-        fontWeight: '600',
-        fontSize: 14,
-    },
-    emptyText: {
-        textAlign: 'center',
-        marginTop: 50,
-        fontSize: 16
-    }
+    sectionTitle: { fontSize: 20, fontWeight: 'bold' },
+    addButton: { paddingHorizontal: 15, paddingVertical: 6, borderRadius: 20 },
+    addButtonText: { fontWeight: '600', fontSize: 14 },
+    emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16 }
 });

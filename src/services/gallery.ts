@@ -1,63 +1,108 @@
 import choirApi from '../api/choirApi';
-import type { GalleryImage, CreateGalleryPayload } from '../types/gallery';
 import { Platform } from 'react-native';
+import type { GalleryImage, CreateGalleryPayload } from '../types/gallery';
 
-export const getAllImages = async (): Promise<GalleryImage[]> => {
-    const { data } = await choirApi.get<GalleryImage[]>('/gallery');
-    return data;
-};
-
-export const uploadImage = async (payload: CreateGalleryPayload): Promise<GalleryImage> => {
+// Helper: Async FormData
+const createFormData = async (payload: CreateGalleryPayload) => {
     const formData = new FormData();
 
-    formData.append('title', payload.title);
-    formData.append('description', payload.description);
-    formData.append('imageGallery', String(payload.imageGallery));
+    const dataPayload = {
+        title: payload.title,
+        description: payload.description,
+        imageGallery: payload.imageGallery,
+        // Default other flags to false for new uploads
+        imageStart: false,
+        imageTopBar: false,
+        imageUs: false,
+        imageLogo: false
+    };
+
+    formData.append('data', JSON.stringify(dataPayload));
 
     if (payload.imageUri) {
-        const filename = payload.imageUri.split('/').pop() || 'upload';
-        
-        // --- Detect Mime Type ---
+        const uri = payload.imageUri;
+        let filename = 'upload.jpg';
         let type = 'image/jpeg';
-        const ext = filename.split('.').pop()?.toLowerCase();
-        
-        if (ext === 'mp4') type = 'video/mp4';
-        else if (ext === 'mov') type = 'video/quicktime';
-        else if (ext === 'png') type = 'image/png';
-        else if (ext === 'jpg' || ext === 'jpeg') type = 'image/jpeg';
+
+        // Detect Video from URI extension
+        if (!uri.startsWith('data:')) {
+            const cleanUri = uri.split('?')[0];
+            filename = cleanUri.split('/').pop() || 'upload.jpg';
+            const ext = filename.split('.').pop()?.toLowerCase();
+
+            if (['mp4', 'mov', '3gp', 'm4v', 'webm'].includes(ext || '')) {
+                type = 'video/mp4';
+                if (!filename.endsWith(ext!)) filename += `.${ext}`;
+            }
+        }
+        // Detect from Data URI
+        else {
+            const mimeMatch = uri.match(/^data:(.*?);/);
+            if (mimeMatch && mimeMatch[1].includes('video')) {
+                type = 'video/mp4';
+                filename = 'upload.mp4';
+            }
+        }
 
         if (Platform.OS === 'web') {
-            const response = await fetch(payload.imageUri);
-            const blob = await response.blob();
-            formData.append('image', blob, filename);
+            try {
+                const response = await fetch(uri);
+                const blob = await response.blob();
+                // Force type slice for videos
+                const finalBlob = type.includes('video') ? blob.slice(0, blob.size, type) : blob;
+                formData.append('file', finalBlob, filename);
+            } catch (e) { console.error("Web Blob Error:", e); }
         } else {
             // @ts-ignore
-            formData.append('image', {
-                uri: Platform.OS === 'android' ? payload.imageUri : payload.imageUri.replace('file://', ''),
+            formData.append('file', {
+                uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
                 name: filename,
                 type: type,
             });
         }
     }
 
-    const requestConfig: any = {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    };
+    return formData;
+};
 
-    if (Platform.OS === 'web') {
-        requestConfig.headers['Content-Type'] = undefined;
+// GET All
+export const getAllImages = async (): Promise<GalleryImage[]> => {
+    const { data } = await choirApi.get<GalleryImage[]>('/gallery');
+    return data;
+};
+
+// CREATE
+export const addImage = async (payload: CreateGalleryPayload): Promise<boolean> => {
+    try {
+        const formData = await createFormData(payload);
+
+        const requestConfig: any = { headers: { 'Content-Type': 'multipart/form-data' } };
+        if (Platform.OS === 'web') delete requestConfig.headers['Content-Type'];
+
+        await choirApi.post('/gallery', formData, requestConfig);
+        return true;
+    } catch (error) {
+        console.error("Gallery Upload Error:", error);
+        return false;
     }
-
-    const { data } = await choirApi.post<GalleryImage>('/gallery', formData, requestConfig);
-    return data;
 };
 
-// Update Flags
-export const updateImageFlags = async (id: number, flags: any): Promise<GalleryImage> => {
-    const { data } = await choirApi.put<GalleryImage>(`/gallery/${id}/flags`, flags);
-    return data;
-};
-
-export const deleteGalleryImage = async (id: number): Promise<void> => {
+// DELETE
+export const removeImage = async (id: string): Promise<void> => {
     await choirApi.delete(`/gallery/${id}`);
+};
+
+// PATCH Flags
+export const setFlags = async (id: string, flags: Record<string, boolean>): Promise<void> => {
+    if ('imageGallery' in flags) {
+        await choirApi.patch(`/gallery/mark/imageGallery/${id}`, {
+            value: flags.imageGallery
+        });
+    } else {
+        for (const [key, value] of Object.entries(flags)) {
+            if (value === true) {
+                await choirApi.patch(`/gallery/mark/${key}/${id}`);
+            }
+        }
+    }
 };

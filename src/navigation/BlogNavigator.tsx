@@ -15,39 +15,39 @@ const Stack = createNativeStackNavigator<BlogStackParamList>();
 
 export const BlogNavigator = () => {
     const { currentTheme } = useTheme();
-    const colors = currentTheme.colors;
+    const colors = currentTheme;
 
     return (
         <Stack.Navigator
             screenOptions={{
                 headerStyle: {
-                    backgroundColor: colors.background, 
+                    backgroundColor: colors.backgroundColor,
                 },
                 headerShadowVisible: false,
 
-                headerTintColor: colors.text, 
-                headerTitleStyle: { 
-                    color: colors.text,
+                headerTintColor: colors.textColor,
+                headerTitleStyle: {
+                    color: colors.textColor,
                     fontWeight: 'bold'
                 },
 
-                contentStyle: { backgroundColor: colors.background }
+                contentStyle: { backgroundColor: colors.backgroundColor }
             }}
         >
-            <Stack.Screen 
-                name="BlogList" 
-                component={BlogListScreen} 
-                options={{ headerShown: false }} // Custom header in screen
+            <Stack.Screen
+                name="BlogList"
+                component={BlogListScreen}
+                options={{ headerShown: false }}
             />
-            <Stack.Screen 
-                name="BlogDetail" 
-                component={BlogDetailScreen} 
-                options={{ title: 'Lectura' }} 
+            <Stack.Screen
+                name="BlogDetail"
+                component={BlogDetailScreen}
+                options={{ title: 'Detalles' }}
             />
-            <Stack.Screen 
-                name="CreateBlog" 
-                component={CreateBlogScreen} 
-                options={{ title: 'Nuevo Post' }} 
+            <Stack.Screen
+                name="CreateBlog"
+                component={CreateBlogScreen}
+                options={{ title: 'Nuevo Post' }}
             />
         </Stack.Navigator>
     );

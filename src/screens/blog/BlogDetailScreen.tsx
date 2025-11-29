@@ -5,20 +5,25 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import { getPreviewFromRichText } from '../../utils/textUtils';
 import { Ionicons } from '@expo/vector-icons';
+import { MediaViewerModal } from '../../components/shared/MediaViewerModal';
 
 export const BlogDetailScreen = () => {
-    // Theme Hook
     const { currentTheme } = useTheme();
+    const colors = currentTheme;
 
     const { currentPost, likePost, commentOnPost } = useBlogStore();
     const { user } = useAuthStore();
     const [comment, setComment] = useState('');
+    const [showImageModal, setShowImageModal] = useState(false);
 
-    if (!currentPost) return <View><Text style={{ color: currentTheme.colors.text }}>No post selected</Text></View>;
+    if (!currentPost) return (
+        <View style={[styles.center, { backgroundColor: colors.backgroundColor }]}>
+            <Text style={{ color: colors.textColor }}>No post selected</Text>
+        </View>
+    );
 
-    const authorName = currentPost.author?.name || 'Autor Desconocido';
-
-    const isLiked = currentPost.likesUsers.includes(user?.username || '');
+    const authorName = currentPost.author?.name || 'Unknown Author';
+    const isLiked = user ? currentPost.likesUsers.includes(user.id) : false;
 
     const handleComment = () => {
         if (comment.trim()) {
@@ -28,48 +33,57 @@ export const BlogDetailScreen = () => {
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: currentTheme.colors.background }}>
-            <ScrollView style={[styles.container, { backgroundColor: currentTheme.colors.background }]}>
+        <View style={{ flex: 1, backgroundColor: colors.backgroundColor }}>
+            <MediaViewerModal
+                visible={showImageModal}
+                onClose={() => setShowImageModal(false)}
+                mediaUrl={currentPost.imageUrl || null}
+                mediaType="image"
+            />
+
+            <ScrollView style={styles.container}>
                 {currentPost.imageUrl && (
-                    <Image source={{ uri: currentPost.imageUrl }} style={styles.image} />
+                    <TouchableOpacity onPress={() => setShowImageModal(true)}>
+                        <Image source={{ uri: currentPost.imageUrl }} style={styles.image} />
+                    </TouchableOpacity>
                 )}
-                
+
                 <View style={styles.content}>
-                    <Text style={[styles.title, { color: currentTheme.colors.text }]}>
+                    <Text style={[styles.title, { color: colors.textColor }]}>
                         {currentPost.title}
                     </Text>
                     <View style={styles.meta}>
-                        <Text style={[styles.author, { color: currentTheme.colors.primary }]}>
-                            Por: {authorName}
+                        <Text style={[styles.author, { color: colors.primaryColor }]}>
+                            By: {authorName}
                         </Text>
-                        <Text style={[styles.date, { color: currentTheme.colors.textSecondary }]}>
+                        <Text style={[styles.date, { color: colors.secondaryTextColor }]}>
                             {new Date(currentPost.createdAt).toLocaleDateString()}
                         </Text>
                     </View>
 
-                    <Text style={[styles.body, { color: currentTheme.colors.text }]}>
+                    <Text style={[styles.body, { color: colors.textColor }]}>
                         {getPreviewFromRichText(currentPost.content, 10000)}
                     </Text>
 
                     {/* Like Button */}
                     <TouchableOpacity style={styles.likeBtn} onPress={() => likePost(currentPost.id)}>
                         <Ionicons name={isLiked ? "heart" : "heart-outline"} size={24} color="#E91E63" />
-                        <Text style={[styles.likeText, { color: currentTheme.colors.textSecondary }]}>
-                            {currentPost.likes} Me gusta
+                        <Text style={[styles.likeText, { color: colors.secondaryTextColor }]}>
+                            {currentPost.likes} Likes
                         </Text>
                     </TouchableOpacity>
 
-                    {/* Comments List */}
-                    <Text style={[styles.commentHeader, { color: currentTheme.colors.text }]}>
-                        Comentarios ({currentPost.comments.length})
+                    {/* Comments */}
+                    <Text style={[styles.commentHeader, { color: colors.textColor }]}>
+                        Comments ({currentPost.comments.length})
                     </Text>
-                    
+
                     {currentPost.comments.map((c, i) => (
-                        <View key={i} style={[styles.commentItem, { backgroundColor: currentTheme.colors.card }]}>
-                            <Text style={[styles.commentAuthor, { color: currentTheme.colors.textSecondary }]}>
+                        <View key={i} style={[styles.commentItem, { backgroundColor: colors.cardColor }]}>
+                            <Text style={[styles.commentAuthor, { color: colors.secondaryTextColor }]}>
                                 {c.author}
                             </Text>
-                            <Text style={[styles.commentText, { color: currentTheme.colors.text }]}>
+                            <Text style={[styles.commentText, { color: colors.textColor }]}>
                                 {getPreviewFromRichText(c.text)}
                             </Text>
                         </View>
@@ -78,22 +92,16 @@ export const BlogDetailScreen = () => {
             </ScrollView>
 
             {/* Comment Input */}
-            <View style={[
-                styles.inputContainer, 
-                { backgroundColor: currentTheme.colors.primary, borderColor: currentTheme.colors.border }
-            ]}>
-                <TextInput 
-                    style={[
-                        styles.input, 
-                        { backgroundColor: currentTheme.colors.background, color: currentTheme.colors.text }
-                    ]} 
-                    placeholder="Escribe un comentario..."
-                    placeholderTextColor={currentTheme.colors.textSecondary}
+            <View style={[styles.inputContainer, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
+                <TextInput
+                    style={[styles.input, { backgroundColor: colors.backgroundColor, color: colors.textColor }]}
+                    placeholder="Write a comment..."
+                    placeholderTextColor={colors.secondaryTextColor}
                     value={comment}
                     onChangeText={setComment}
                 />
                 <TouchableOpacity onPress={handleComment}>
-                    <Ionicons name="send" size={24} color={currentTheme.colors.buttonText} />
+                    <Ionicons name="send" size={24} color={colors.buttonTextColor} />
                 </TouchableOpacity>
             </View>
         </View>
@@ -102,12 +110,13 @@ export const BlogDetailScreen = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    image: { width: '100%', height: 200 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    image: { width: '100%', height: 250 },
     content: { padding: 20, paddingBottom: 80 },
     title: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
     meta: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
     author: { fontWeight: '600' },
-    date: { },
+    date: {},
     body: { fontSize: 16, lineHeight: 24, marginBottom: 20 },
     likeBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
     likeText: { marginLeft: 5, fontSize: 16 },
@@ -115,17 +124,6 @@ const styles = StyleSheet.create({
     commentItem: { padding: 10, borderRadius: 8, marginBottom: 10 },
     commentAuthor: { fontWeight: 'bold', fontSize: 12, marginBottom: 2 },
     commentText: { fontSize: 14 },
-    inputContainer: { 
-        flexDirection: 'row', 
-        padding: 15, 
-        borderTopWidth: 1, 
-        alignItems: 'center' 
-    },
-    input: { 
-        flex: 1, 
-        borderRadius: 20, 
-        paddingHorizontal: 15, 
-        paddingVertical: 8, 
-        marginRight: 10 
-    }
+    inputContainer: { flexDirection: 'row', padding: 15, borderTopWidth: 1, alignItems: 'center' },
+    input: { flex: 1, borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8, marginRight: 10 }
 });

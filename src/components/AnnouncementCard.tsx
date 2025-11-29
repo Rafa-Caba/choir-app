@@ -1,92 +1,102 @@
-import React from 'react';
-import { Text, TouchableOpacity, StyleSheet, View, Image } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { Announcement } from '../types/announcement';
+import { getPreviewFromRichText } from '../utils/textUtils';
 import { useTheme } from '../context/ThemeContext';
+import { MediaViewerModal } from './shared/MediaViewerModal';
+
 
 interface Props {
     announcement: Announcement;
-    onPress: () => void;
+    onPress?: () => void; // For editing
+    onDelete?: () => void; // For admin delete
 }
 
-export const AnnouncementCard = ({ announcement, onPress }: Props) => {
-    // Get the current theme colors
+export const AnnouncementCard = ({ announcement, onPress, onDelete }: Props) => {
     const { currentTheme } = useTheme();
-    
-    // Helper to extract plain text from Tiptap JSON
-    const getPreviewText = (json: any) => {
-        try {
-            if (!json?.content) return '';
-            // Grab the first paragraph's text
-            const paragraph = json.content.find((n: any) => n.type === 'paragraph');
-            return paragraph?.content?.[0]?.text || 'Ver detalles...';
-        } catch {
-            return 'Ver detalles...';
-        }
-    };
+    const colors = currentTheme;
+    const [showModal, setShowModal] = useState(false);
 
-    const date = new Date(announcement.createdAt).toLocaleDateString();
+    const dateStr = new Date(announcement.createdAt).toLocaleDateString();
+    // Preview logic handles TipTap JSON structure
+    const preview = getPreviewFromRichText(announcement.content, 150);
 
     return (
-        <TouchableOpacity
-            style={[styles.container, { backgroundColor: currentTheme.colors.card }]}
-            onPress={onPress}
-            activeOpacity={0.8}
-        >
+        <View style={[styles.container, { backgroundColor: colors.cardColor }]}>
+
+            {/* 🆕 Image Viewer Modal */}
+            <MediaViewerModal
+                visible={showModal}
+                onClose={() => setShowModal(false)}
+                mediaUrl={announcement.imageUrl || null}
+                mediaType="image"
+            />
+
             {announcement.imageUrl && (
-                <Image source={{ uri: announcement.imageUrl }} style={styles.image} />
+                <TouchableOpacity onPress={() => setShowModal(true)}>
+                    <Image source={{ uri: announcement.imageUrl }} style={styles.image} />
+                </TouchableOpacity>
             )}
-            
+
             <View style={styles.content}>
-                <View style={styles.header}>
-                    <Text style={[styles.title, { color: currentTheme.colors.text }]}>{announcement.title}</Text>
-                    <Text style={styles.date}>{date}</Text>
+                <View style={styles.headerRow}>
+                    <Text style={[styles.title, { color: colors.textColor }]}>
+                        {announcement.title}
+                    </Text>
+                    <Text style={[styles.date, { color: colors.secondaryTextColor }]}>
+                        {dateStr}
+                    </Text>
                 </View>
-                
-                <Text style={styles.preview} numberOfLines={2}>
-                    {getPreviewText(announcement.content)}
+
+                <Text style={[styles.body, { color: colors.textColor }]}>
+                    {preview}
                 </Text>
+
+                {/* Admin Actions */}
+                {(onPress || onDelete) && (
+                    <View style={[styles.actionsContainer, { borderTopColor: colors.borderColor }]}>
+                        <Ionicons style={styles.earthIcon} name="earth" size={20} color={announcement.isPublic ? colors.primaryColor : colors.secondaryTextColor} />
+                        <View style={[styles.actions]}>
+                            {onPress && (
+                                <TouchableOpacity onPress={onPress} style={styles.actionBtn}>
+                                    <Ionicons name="pencil" size={20} color={colors.primaryColor} />
+                                    <Text style={{ color: colors.primaryColor, marginLeft: 5 }}>Editar</Text>
+                                </TouchableOpacity>
+                            )}
+                            {onDelete && (
+                                <TouchableOpacity onPress={onDelete} style={[styles.actionBtn, { marginLeft: 20 }]}>
+                                    <Ionicons name="trash-outline" size={20} color="#E91E63" />
+                                    <Text style={{ color: '#E91E63', marginLeft: 5 }}>Eliminar</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </View>
+                )}
             </View>
-        </TouchableOpacity>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        backgroundColor: 'white',
-        borderRadius: 15,
-        marginBottom: 15,
+        borderRadius: 12,
+        marginBottom: 20,
+        overflow: 'hidden',
+        elevation: 3,
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
-        shadowRadius: 3.84,
-        elevation: 5,
-        overflow: 'hidden'
+        shadowRadius: 4
     },
-    image: {
-        width: '100%',
-        height: 150,
-    },
-    content: {
-        padding: 15,
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 5,
-    },
-    title: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        flex: 1,
-    },
-    date: {
-        fontSize: 12,
-        color: '#888',
-        marginLeft: 10
-    },
-    preview: {
-        fontSize: 14,
-        color: '#666',
-        lineHeight: 20
-    }
+    image: { width: '100%', height: 180 },
+    content: { padding: 15 },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+    title: { fontSize: 18, fontWeight: 'bold', flex: 1 },
+    date: { fontSize: 12, marginLeft: 10 },
+    body: { fontSize: 14, lineHeight: 20 },
+    actionsContainer: { flexDirection: 'row', borderTopWidth: 1, marginTop: 15, paddingTop: 10 },
+    earthIcon: { alignSelf: 'flex-start', marginRight: 'auto' },
+    actions: { flexDirection: 'row', justifyContent: 'flex-end' },
+    actionBtn: { flexDirection: 'row', alignItems: 'center' },
 });

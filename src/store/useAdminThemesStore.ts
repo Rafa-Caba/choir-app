@@ -1,13 +1,13 @@
 import { create } from 'zustand';
 import { ThemeDefinition } from '../types/theme';
-import { getAllThemes } from '../services/themes';
+import { getAllThemes } from '../services/theme';
 import { updateThemeDefinition } from '../services/admin/themes';
 
 interface AdminThemesState {
     themes: ThemeDefinition[];
     loading: boolean;
     fetchThemes: () => Promise<void>;
-    saveTheme: (id: number, data: ThemeDefinition) => Promise<boolean>;
+    saveTheme: (id: string, data: ThemeDefinition) => Promise<boolean>;
 }
 
 export const useAdminThemesStore = create<AdminThemesState>((set, get) => ({
@@ -30,7 +30,7 @@ export const useAdminThemesStore = create<AdminThemesState>((set, get) => ({
         set({ loading: true });
         try {
             const updated = await updateThemeDefinition(id, data);
-            
+
             // Update local list
             set(state => ({
                 themes: state.themes.map(t => t.id === id ? updated : t)

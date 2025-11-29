@@ -1,25 +1,31 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loginUser, registerUser, getUserProfile, updateProfile } from '../services/auth';
-import type { LoginPayload, RegisterPayload, User } from '../types/auth';
-import choirApi from '../api/choirApi'; // <--- Import API instance
+import {
+    loginUser,
+    registerUser,
+    getUserProfile,
+    updateProfile,
+    logoutUser
+} from '../services/auth';
+import type { User, LoginPayload, RegisterPayload } from '../types/auth';
 
 interface AuthState {
     token: string | null;
     refreshToken: string | null;
     user: User | null;
-    status: 'checking' | 'authenticated' | 'not-authenticated';
-    errorMessage: string | null;
+    status: 'checking' | 'authenticated' | 'unauthenticated';
     loading: boolean;
+    errorMessage: string | null;
 
     login: (payload: LoginPayload) => Promise<boolean>;
     register: (payload: RegisterPayload) => Promise<boolean>;
-    updateUserProfile: (data: any, imageUri?: string) => Promise<boolean>;
-    logout: () => void;
+    logout: () => Promise<void>;
     checkAuth: () => Promise<void>;
     clearError: () => void;
-    setUser: (user: User) => void;
+
+    updateUserProfile: (data: any, imageUri?: string) => Promise<boolean>;
+    setAccessToken: (token: string) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -29,43 +35,26 @@ export const useAuthStore = create<AuthState>()(
             refreshToken: null,
             user: null,
             status: 'checking',
-            errorMessage: null,
             loading: false,
+            errorMessage: null,
 
             login: async (payload) => {
                 set({ loading: true, errorMessage: null });
                 try {
-                    const { accessToken, refreshToken } = await loginUser(payload);
-                    
-                    // Persist to Storage (Async)
-                    await AsyncStorage.setItem('token', accessToken);
-                    await AsyncStorage.setItem('refreshToken', refreshToken);
-
-                    // Manually inject token into Axios instance immediately
-                    choirApi.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-
-                    // Update State (Sync)
-                    set({ token: accessToken, refreshToken: refreshToken });
-
-                    // Get Profile (Now safe to call)
-                    const user = await getUserProfile();
-
-                    set({ 
-                        status: 'authenticated', 
-                        user: user,
-                        loading: false 
+                    const response = await loginUser(payload);
+                    set({
+                        token: response.accessToken,
+                        refreshToken: response.refreshToken,
+                        user: response.user,
+                        status: 'authenticated',
+                        loading: false
                     });
                     return true;
-
                 } catch (error: any) {
-                    console.log("Login Error:", error.response?.data || error.message);
-                    set({ 
-                        status: 'not-authenticated', 
-                        token: null, 
-                        refreshToken: null, 
-                        user: null,
-                        errorMessage: 'Credenciales incorrectas',
-                        loading: false 
+                    set({
+                        loading: false,
+                        status: 'unauthenticated',
+                        errorMessage: error.response?.data?.message || 'Login failed'
                     });
                     return false;
                 }
@@ -74,113 +63,70 @@ export const useAuthStore = create<AuthState>()(
             register: async (payload) => {
                 set({ loading: true, errorMessage: null });
                 try {
-                    const { accessToken, refreshToken } = await registerUser(payload);
-                    
-                    // Persist
-                    await AsyncStorage.setItem('token', accessToken);
-                    await AsyncStorage.setItem('refreshToken', refreshToken);
-
-                    // Inject Header
-                    choirApi.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-
-                    // Update State
-                    set({ token: accessToken, refreshToken: refreshToken });
-
-                    // Get Profile
-                    const user = await getUserProfile();
-
-                    set({ 
-                        status: 'authenticated', 
-                        user: user, 
-                        loading: false 
+                    const response = await registerUser(payload);
+                    set({
+                        token: response.accessToken,
+                        refreshToken: response.refreshToken,
+                        user: response.user,
+                        status: 'authenticated',
+                        loading: false
                     });
                     return true;
                 } catch (error: any) {
-                    set({ 
-                        status: 'not-authenticated', 
-                        errorMessage: error.response?.data?.message || 'Error al registrarse',
-                        loading: false 
+                    set({
+                        loading: false,
+                        errorMessage: error.response?.data?.message || 'Registration failed'
                     });
                     return false;
-                }
-            },
-
-            updateUserProfile: async (data: any, imageUri?: string) => {
-                set({ loading: true });
-                try {
-                    // Calls the service which handles FormData/Multipart
-                    const updatedUser = await updateProfile(data, imageUri);
-                    
-                    // Update state immediately
-                    set({ user: updatedUser });
-                    return true;
-                } catch (error) {
-                    console.error("Update Profile Error", error);
-                    return false;
-                } finally {
-                    set({ loading: false });
                 }
             },
 
             logout: async () => {
-                // Clear headers
-                delete choirApi.defaults.headers.common['Authorization'];
-                
-                // Clear storage
-                await AsyncStorage.removeItem('token');
-                await AsyncStorage.removeItem('refreshToken');
-                
-                // Clear state
-                set({ 
-                    status: 'not-authenticated', 
-                    token: null, 
-                    refreshToken: null, 
-                    user: null 
-                });
+                const { refreshToken } = get();
+                if (refreshToken) {
+                    try { await logoutUser(refreshToken); } catch (e) { console.log("Logout API failed", e); }
+                }
+                set({ token: null, refreshToken: null, user: null, status: 'unauthenticated' });
+                await AsyncStorage.removeItem('auth-storage');
             },
 
             checkAuth: async () => {
-                const token = get().token;
-
+                const { token } = get();
                 if (!token) {
-                    set({ status: 'not-authenticated' });
+                    set({ status: 'unauthenticated' });
                     return;
                 }
-
-                // Ensure header is set if restoring from disk
-                choirApi.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
                 try {
-                    // Verify token with backend
                     const user = await getUserProfile();
-                    set({ status: 'authenticated', user });
-                } catch (error: any) {                    
-                    // If 401/403, token is invalid -> Logout
-                    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-                        await AsyncStorage.removeItem('token');
-                        delete choirApi.defaults.headers.common['Authorization'];
-                        set({ status: 'not-authenticated', token: null, user: null });
-                    } else {
-                        // If Network Error (Offline), keep session alive
-                        console.log("Offline or Server Error: Keeping session alive");
-                        set({ status: 'authenticated' });
-                    }
+                    set({ user, status: 'authenticated' });
+                } catch (error) {
+                    console.log("CheckAuth: Token invalid or expired");
+                    set({ status: 'unauthenticated', token: null, refreshToken: null, user: null });
                 }
             },
 
             clearError: () => set({ errorMessage: null }),
-            
-            setUser: (user) => set({ user }),
+
+            updateUserProfile: async (data, imageUri) => {
+                set({ loading: true });
+                try {
+                    const updatedUser = await updateProfile(data, imageUri);
+                    set({ user: updatedUser, loading: false });
+                    return true;
+                } catch (error) {
+                    console.error(error);
+                    set({ loading: false });
+                    return false;
+                }
+            },
+
+            setAccessToken: (newToken: string) => {
+                set({ token: newToken });
+            }
         }),
         {
             name: 'auth-storage',
             storage: createJSONStorage(() => AsyncStorage),
-            partialize: (state) => ({ 
-                token: state.token, 
-                refreshToken: state.refreshToken,
-                user: state.user,
-                status: state.status 
-            }),
         }
     )
 );

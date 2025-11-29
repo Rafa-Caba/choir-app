@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import type { ThemeDefinition } from '../../types/theme';
-import { Ionicons } from '@expo/vector-icons';
 import ColorPicker, { Panel1, Swatches, Preview, HueSlider } from 'reanimated-color-picker';
 import { useAdminThemesStore } from '../../store/useAdminThemesStore';
 
@@ -21,16 +20,16 @@ interface ColorInputProps {
 
 const ColorInput = ({ label, value, onChange, onOpenPicker, colors }: ColorInputProps) => (
     <View style={styles.inputGroup}>
-        <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+        <Text style={[styles.label, { color: colors.textColor }]}>{label}</Text>
         <View style={styles.inputRow}>
             <TouchableOpacity onPress={onOpenPicker}>
-                <View style={[styles.colorPreview, { backgroundColor: value, borderColor: colors.border }]} />
+                <View style={[styles.colorPreview, { backgroundColor: value || '#fff', borderColor: colors.borderColor }]} />
             </TouchableOpacity>
             <TextInput 
                 style={[styles.input, { 
-                    backgroundColor: colors.background, 
-                    borderColor: colors.border,
-                    color: colors.text 
+                    backgroundColor: colors.backgroundColor, 
+                    borderColor: colors.borderColor,
+                    color: colors.textColor 
                 }]}
                 value={value}
                 onChangeText={onChange}
@@ -44,8 +43,10 @@ const ColorInput = ({ label, value, onChange, onOpenPicker, colors }: ColorInput
 // --- MAIN COMPONENT ---
 export const AdminThemeEditorScreen = () => {
     const { themes, fetchThemes, saveTheme, loading } = useAdminThemesStore();
+    
+    // 🎨 Theme Fix: Flat structure
     const { setThemeById, currentTheme } = useTheme(); 
-    const colors = currentTheme.colors;
+    const colors = currentTheme;
 
     const [selectedTheme, setSelectedTheme] = useState<ThemeDefinition | null>(null);
     const [form, setForm] = useState<ThemeDefinition | null>(null);
@@ -66,13 +67,14 @@ export const AdminThemeEditorScreen = () => {
 
     const handleChange = (key: keyof ThemeDefinition, value: string) => {
         if (!form) return;
+        // @ts-ignore
         setForm(prev => ({ ...prev!, [key]: value }));
     };
 
     const openPicker = (field: keyof ThemeDefinition) => {
         if (!form) return;
         setActiveField(field);
-        setTempColor(String(form[field]));
+        setTempColor(String(form[field]) || '#ffffff');
         setShowPicker(true);
     };
 
@@ -85,6 +87,7 @@ export const AdminThemeEditorScreen = () => {
     const handleSave = async () => {
         if (!form || !selectedTheme) return;
         
+        // Pass String ID to store
         const success = await saveTheme(selectedTheme.id, form);
         if (success) {
             Alert.alert("Éxito", "Tema actualizado correctamente.");
@@ -95,8 +98,8 @@ export const AdminThemeEditorScreen = () => {
     };
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-            <Text style={[styles.header, { color: colors.text }]}>Editor de Temas (Admin)</Text>
+        <ScrollView style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
+            <Text style={[styles.header, { color: colors.textColor }]}>Editor de Temas (Admin)</Text>
             
             {/* 1. Selector */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selector}>
@@ -106,14 +109,14 @@ export const AdminThemeEditorScreen = () => {
                         onPress={() => handleSelect(t)}
                         style={[
                             styles.chip, 
-                            { backgroundColor: colors.card, borderColor: colors.border },
-                            selectedTheme?.id === t.id && { backgroundColor: colors.primary, borderColor: colors.primary }
+                            { backgroundColor: colors.cardColor, borderColor: colors.borderColor },
+                            selectedTheme?.id === t.id && { backgroundColor: colors.primaryColor, borderColor: colors.primaryColor }
                         ]}
                     >
                         <Text style={[
                             styles.chipText,
-                            { color: colors.text },
-                            selectedTheme?.id === t.id && { color: colors.buttonText }
+                            { color: colors.textColor },
+                            selectedTheme?.id === t.id && { color: colors.buttonTextColor }
                         ]}>{t.name}</Text>
                     </TouchableOpacity>
                 ))}
@@ -121,8 +124,8 @@ export const AdminThemeEditorScreen = () => {
 
             {/* 2. Form */}
             {form ? (
-                <View style={[styles.form, { backgroundColor: colors.card }]}>
-                    <Text style={[styles.subHeader, { color: colors.mainTitle }]}>Editando: {form.name}</Text>
+                <View style={[styles.form, { backgroundColor: colors.cardColor }]}>
+                    <Text style={[styles.subHeader, { color: colors.textColor }]}>Editando: {form.name}</Text>
                     
                     <ColorInput label="Color Primario" field="primaryColor" value={form.primaryColor} onChange={(t) => handleChange('primaryColor', t)} onOpenPicker={() => openPicker('primaryColor')} colors={colors} />
                     <ColorInput label="Color Acento" field="accentColor" value={form.accentColor} onChange={(t) => handleChange('accentColor', t)} onOpenPicker={() => openPicker('accentColor')} colors={colors} />
@@ -133,39 +136,33 @@ export const AdminThemeEditorScreen = () => {
                     <ColorInput label="Navbar" field="navColor" value={form.navColor} onChange={(t) => handleChange('navColor', t)} onOpenPicker={() => openPicker('navColor')} colors={colors} />
                     
                     {/* Extra fields */}
-                    {form.buttonTextColor && (
-                        <ColorInput label="Texto Botón" field="buttonTextColor" value={form.buttonTextColor} onChange={(t) => handleChange('buttonTextColor', t)} onOpenPicker={() => openPicker('buttonTextColor')} colors={colors} />
-                    )}
-                    {form.secondaryTextColor && (
-                        <ColorInput label="Texto Secundario" field="secondaryTextColor" value={form.secondaryTextColor} onChange={(t) => handleChange('secondaryTextColor', t)} onOpenPicker={() => openPicker('secondaryTextColor')} colors={colors} />
-                    )}
-                    {form.borderColor && (
-                        <ColorInput label="Bordes" field="borderColor" value={form.borderColor} onChange={(t) => handleChange('borderColor', t)} onOpenPicker={() => openPicker('borderColor')} colors={colors} />
-                    )}
+                    <ColorInput label="Texto Botón" field="buttonTextColor" value={form.buttonTextColor || ''} onChange={(t) => handleChange('buttonTextColor', t)} onOpenPicker={() => openPicker('buttonTextColor')} colors={colors} />
+                    <ColorInput label="Texto Secundario" field="secondaryTextColor" value={form.secondaryTextColor || ''} onChange={(t) => handleChange('secondaryTextColor', t)} onOpenPicker={() => openPicker('secondaryTextColor')} colors={colors} />
+                    <ColorInput label="Bordes" field="borderColor" value={form.borderColor || ''} onChange={(t) => handleChange('borderColor', t)} onOpenPicker={() => openPicker('borderColor')} colors={colors} />
 
                     <TouchableOpacity 
-                        style={[styles.saveBtn, { backgroundColor: colors.button }]} 
+                        style={[styles.saveBtn, { backgroundColor: colors.buttonColor }]} 
                         onPress={handleSave} 
                         disabled={loading}
                     >
                         {loading ? (
-                            <ActivityIndicator color={colors.buttonText} />
+                            <ActivityIndicator color={colors.buttonTextColor || '#fff'} />
                         ) : (
-                            <Text style={[styles.saveText, { color: colors.buttonText }]}>Guardar Cambios</Text>
+                            <Text style={[styles.saveText, { color: colors.buttonTextColor || '#fff' }]}>Guardar Cambios</Text>
                         )}
                     </TouchableOpacity>
                 </View>
             ) : (
                 <View style={styles.emptyState}>
-                    <Text style={{ color: colors.textSecondary }}>Selecciona un tema arriba.</Text>
+                    <Text style={{ color: colors.secondaryTextColor || colors.textColor }}>Selecciona un tema arriba para editar.</Text>
                 </View>
             )}
 
             {/* 3. Color Picker Modal */}
             <Modal visible={showPicker} animationType='slide' transparent>
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-                        <Text style={[styles.modalTitle, { color: colors.text }]}>Seleccionar Color</Text>
+                    <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
+                        <Text style={[styles.modalTitle, { color: colors.textColor }]}>Seleccionar Color</Text>
                         
                         <ColorPicker 
                             style={{ width: '100%', height: 300 }} 
@@ -179,10 +176,10 @@ export const AdminThemeEditorScreen = () => {
                         </ColorPicker>
 
                         <TouchableOpacity 
-                            style={[styles.closeBtn, { backgroundColor: colors.background }]} 
+                            style={[styles.closeBtn, { backgroundColor: colors.backgroundColor }]} 
                             onPress={() => setShowPicker(false)}
                         >
-                            <Text style={[styles.closeBtnText, { color: colors.text }]}>Cerrar</Text>
+                            <Text style={[styles.closeBtnText, { color: colors.textColor }]}>Cerrar</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -219,8 +216,8 @@ const styles = StyleSheet.create({
     saveText: { fontWeight: 'bold', fontSize: 16 },
     emptyState: { padding: 40, alignItems: 'center' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-    modalContent: { borderRadius: 20, padding: 20, alignItems: 'center' },
+    modalContent: { borderRadius: 20, padding: 20, alignItems: 'center', width: '90%' },
     modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20 },
-    closeBtn: { marginTop: 20, padding: 10, borderRadius: 10, width: '100%', alignItems: 'center' },
+    closeBtn: { marginTop: 20, padding: 15, borderRadius: 10, width: '100%', alignItems: 'center' },
     closeBtnText: { fontWeight: 'bold' }
 });

@@ -1,24 +1,35 @@
 export interface User {
-    id: number;
+    id: string;
     name: string;
     username: string;
     email: string;
-    role: 'ADMIN' | 'EDITOR' | 'USER';
-    instrument: string;
-    voice: boolean;
-    bio?: string;
+    role: 'ADMIN' | 'EDITOR' | 'VIEWER';
+
     imageUrl?: string;
-    themeId?: number;
+    imagePublicId?: string;
+
+    instrument?: string;
+    voice?: boolean;
+    bio?: string;
+
+    themeId?: any;
+    pushToken?: string;
+    lastAccess?: string;
+
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface AuthResponse {
+    message?: string;
     accessToken: string;
     refreshToken: string;
     role: string;
+    user: User;
 }
 
 export interface LoginPayload {
-    username: string; // Can be email or username
+    username: string;
     password: string;
 }
 

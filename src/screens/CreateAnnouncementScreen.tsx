@@ -1,93 +1,64 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react'; // <--- Import useLayoutEffect
-import { 
-    View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, 
-    Image, Switch, Alert, ActivityIndicator, KeyboardAvoidingView, Platform 
+import React, { useState, useLayoutEffect } from 'react';
+import {
+    View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
+    Image, Switch, Alert, ActivityIndicator, KeyboardAvoidingView, Platform
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { Announcement } from '../types/announcement';
-import { useAnnouncementStore } from '../store/useAnnouncementStore';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-
-type RootStackParamList = {
-    CreateAnnouncement: { announcement?: Announcement };
-};
-
-type CreateAnnouncementRouteProp = RouteProp<RootStackParamList, 'CreateAnnouncement'>;
+import { useAnnouncementStore } from '../store/useAnnouncementStore';
 
 export const CreateAnnouncementScreen = () => {
     const navigation = useNavigation();
-    const route = useRoute<CreateAnnouncementRouteProp>();
+    const route = useRoute<any>();
     const { announcement } = route.params || {};
+    const isEdit = !!announcement;
 
-    const { addAnnouncement, editAnnouncement } = useAnnouncementStore();
     const { currentTheme } = useTheme();
-    const colors = currentTheme.colors;
+    const colors = currentTheme;
+    const { addAnnouncement, editAnnouncement } = useAnnouncementStore();
 
-    // --- Helper: Parse JSON to Text ---
-    const extractText = (jsonContent: any): string => {
-        if (!jsonContent || !jsonContent.content) return '';
+    // Helper: Extract text from JSON
+    const extractText = (jsonContent: any) => {
+        if (!jsonContent) return '';
         try {
-            return jsonContent.content
-                .map((node: any) => {
-                    if (node.type === 'paragraph' && node.content) {
-                        return node.content.map((textNode: any) => textNode.text).join('');
-                    }
-                    return '';
-                })
-                .join('\n');
+            if (jsonContent.type === 'doc' && Array.isArray(jsonContent.content)) {
+                return jsonContent.content.map((n: any) => n.content?.[0]?.text || '').join('\n');
+            }
         } catch (e) { return ''; }
+        return '';
     };
 
-    // State
     const [title, setTitle] = useState(announcement?.title || '');
-    const [content, setContent] = useState(announcement ? extractText(announcement.content) : '');
+    const [content, setContent] = useState(isEdit ? extractText(announcement.content) : '');
     const [imageUri, setImageUri] = useState<string | null>(announcement?.imageUrl || null);
     const [isPublic, setIsPublic] = useState(announcement?.isPublic ?? true);
-    const [submitting, setSubmitting] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-    // --- FIX: DYNAMIC HEADER CONFIGURATION ---
     useLayoutEffect(() => {
-        const isEditMode = !!announcement;
-        
-        navigation.setOptions({
-            title: isEditMode ? 'Editar Aviso' : 'Nuevo Aviso',
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.text,
-            headerShadowVisible: false,
-            headerTitleStyle: { fontWeight: 'bold' }
-        });
-    }, [navigation, announcement, colors]);
-    // ----------------------------------------
-
-    useEffect(() => {
-        if (announcement) {
-            setTitle(announcement.title);
-            setContent(extractText(announcement.content));
-            setImageUri(announcement.imageUrl || null);
-            setIsPublic(announcement.isPublic);
-        }
-    }, [announcement]);
+        navigation.setOptions({ title: isEdit ? 'Editar Aviso' : 'Nuevo Aviso' });
+    }, [navigation, isEdit]);
 
     const pickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [16, 9],
             quality: 0.7,
         });
-        if (!result.canceled) {
-            setImageUri(result.assets[0].uri);
-        }
+        if (!result.canceled) setImageUri(result.assets[0].uri);
     };
 
     const handleSubmit = async () => {
         if (!title.trim() || !content.trim()) {
-            Alert.alert("Error", "El título y el contenido son obligatorios");
+            Alert.alert('Error', 'Título y contenido obligatorios');
             return;
         }
 
-        setSubmitting(true);
+        setLoading(true);
 
+        // Convert to TipTap JSON
         const richContent = {
             type: 'doc',
             content: content.split('\n').map((line: string) => ({
@@ -99,85 +70,88 @@ export const CreateAnnouncementScreen = () => {
         const payload = {
             title,
             content: richContent,
-            isPublic,
-            imageUri: imageUri || undefined
+            imageUri: imageUri || undefined,
+            isPublic
         };
 
         let success;
-        if (announcement) {
+        if (isEdit) {
             success = await editAnnouncement(announcement.id, payload);
         } else {
             success = await addAnnouncement(payload);
         }
 
-        setSubmitting(false);
+        setLoading(false);
 
         if (success) {
             navigation.goBack();
         } else {
-            Alert.alert("Error", "No se pudo guardar el aviso.");
+            Alert.alert('Error', 'No se pudo guardar el aviso');
         }
     };
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-            {/* Image Picker */}
-            <View style={styles.form}>
-                <Text style={[styles.label, { color: colors.text }]}>Imagen del Aviso (Opcional)</Text>
-                <TouchableOpacity onPress={pickImage} style={styles.imageContainer}>
+        <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ flex: 1, backgroundColor: colors.backgroundColor }}
+        >
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+
+                <TouchableOpacity onPress={pickImage} style={[styles.imagePicker, { backgroundColor: colors.cardColor }]}>
                     {imageUri ? (
                         <Image source={{ uri: imageUri }} style={styles.image} />
                     ) : (
-                        <View style={[styles.placeholder, { backgroundColor: colors.card }]}>
-                            <Ionicons name="image-outline" size={50} color={colors.textSecondary} />
-                            <Text style={{ color: colors.textSecondary }}>Agregar Imagen</Text>
+                        <View style={{ alignItems: 'center' }}>
+                            <Ionicons name="image-outline" size={40} color={colors.secondaryTextColor} />
+                            <Text style={{ color: colors.secondaryTextColor }}>Agregar Portada</Text>
                         </View>
                     )}
                 </TouchableOpacity>
 
-                <Text style={[styles.label, { color: colors.text }]}>Título</Text>
-                <TextInput 
-                    style={[styles.input, { backgroundColor: colors.card, color: colors.text }]}
-                    value={title} onChangeText={setTitle}
+                <Text style={[styles.label, { color: colors.textColor }]}>Título</Text>
+                <TextInput
+                    style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor }]}
+                    value={title}
+                    onChangeText={setTitle}
                 />
 
-                <Text style={[styles.label, { color: colors.text }]}>Contenido</Text>
-                <TextInput 
-                    style={[styles.input, styles.textArea, { backgroundColor: colors.card, color: colors.text }]}
-                    value={content} onChangeText={setContent}
-                    multiline textAlignVertical="top"
+                <Text style={[styles.label, { color: colors.textColor }]}>Contenido</Text>
+                <TextInput
+                    style={[styles.input, { height: 150, textAlignVertical: 'top', color: colors.textColor, borderColor: colors.borderColor }]}
+                    value={content}
+                    onChangeText={setContent}
+                    multiline
                 />
 
                 <View style={styles.switchRow}>
-                    <Text style={[styles.label, { color: colors.text }]}>Público</Text>
-                    <Switch value={isPublic} onValueChange={setIsPublic} trackColor={{true: colors.primary}} />
+                    <Text style={[styles.label, { color: colors.textColor }]}>Público</Text>
+                    <Switch
+                        value={isPublic}
+                        onValueChange={setIsPublic}
+                        trackColor={{ false: "#767577", true: colors.primaryColor }}
+                        thumbColor={isPublic ? colors.buttonTextColor : "#f4f3f4"}
+                    />
                 </View>
 
-                <TouchableOpacity 
-                    style={[styles.btn, { backgroundColor: colors.button }]}
+                <TouchableOpacity
+                    style={[styles.btn, { backgroundColor: colors.buttonColor }]}
                     onPress={handleSubmit}
-                    disabled={submitting}
+                    disabled={loading}
                 >
-                    {submitting ? <ActivityIndicator color="white"/> : (
-                        <Text style={{ color: colors.buttonText, fontWeight: 'bold' }}>
-                            {announcement ? 'Actualizar' : 'Guardar'}
-                        </Text>
-                    )}
+                    {loading ? <ActivityIndicator color="white" /> : <Text style={styles.btnText}>Guardar</Text>}
                 </TouchableOpacity>
-            </View>
-        </ScrollView>
+
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    imageContainer: { height: 200, width: '100%', marginBottom: 20, marginTop: 10, alignSelf: 'center', borderRadius: 10, overflow: 'hidden' },
-    image: { width: '100%', height: '100%', resizeMode: 'cover' },
-    placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    form: { padding: 20 },
+    imagePicker: { height: 200, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+    image: { width: '100%', height: '100%', borderRadius: 10 },
     label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
-    input: { borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
-    textArea: { height: 150 },
-    switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    btn: { padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 }
+    input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 20 },
+    switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
+    btn: { padding: 15, borderRadius: 10, alignItems: 'center' },
+    btnText: { color: 'white', fontWeight: 'bold', fontSize: 18 }
 });

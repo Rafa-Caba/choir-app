@@ -1,35 +1,53 @@
-export const getPreviewFromRichText = (json: any, maxLength = 100): string => {
+// utils/textUtils.ts
+
+export const getPreviewFromRichText = (content: any, limit = 5000): string => {
+    if (!content) return '';
+
+    let jsonContent = content;
+
+    // 1. Handle Stringified JSON
+    if (typeof content === 'string') {
+        try {
+            jsonContent = JSON.parse(content);
+        } catch (e) {
+            return content.substring(0, limit);
+        }
+    }
+
+    // 2. Handle TipTap JSON Structure
     try {
-        if (!json) return '';
-        
-        // If it's just a string (legacy data), return it
-        if (typeof json === 'string') return json;
+        if (jsonContent.type === 'doc' && Array.isArray(jsonContent.content)) {
+            let text = '';
 
-        // If it's the JSON object
-        if (!json.content || !Array.isArray(json.content)) return '';
-        
-        let text = '';
-
-        // Traverse the JSON to find text nodes
-        // This relies on the standard Tiptap/ProseMirror structure
-        for (const node of json.content) {
-            if (node.content && Array.isArray(node.content)) {
-                for (const innerNode of node.content) {
-                    if (innerNode.type === 'text' && innerNode.text) {
-                        text += innerNode.text + ' ';
+            jsonContent.content.forEach((block: any) => {
+                // Handle Paragraphs
+                if (block.type === 'paragraph') {
+                    if (block.content && Array.isArray(block.content)) {
+                        block.content.forEach((inline: any) => {
+                            // A. Standard Text
+                            if (inline.type === 'text' && inline.text) {
+                                text += inline.text;
+                            }
+                            // B. Hard Breaks (<br>)
+                            else if (inline.type === 'hardBreak') {
+                                text += '\n';
+                            }
+                        });
                     }
+                    // End of paragraph = New Line
+                    text += '\n';
                 }
-            }
-            // Add a newline for paragraphs
-            if (node.type === 'paragraph') text += '\n';
+            });
+
+            return text.trim().substring(0, limit);
         }
 
-        text = text.trim();
+        // Fallback
+        if (jsonContent.text) return jsonContent.text;
 
-        return text.length > maxLength 
-            ? text.substring(0, maxLength) + '...' 
-            : text;
-    } catch (e) {
-        return 'Ver contenido...';
+    } catch (error) {
+        console.warn("Rich Text Parse Error", error);
     }
+
+    return '';
 };

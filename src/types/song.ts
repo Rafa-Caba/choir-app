@@ -1,26 +1,35 @@
 export interface SongType {
-    id: number;
+    id: string;
     name: string;
     order: number;
+    parentId?: string;
+    isParent: boolean;
 }
 
 export interface Song {
-    id: number;
+    id: string;
     title: string;
     composer?: string;
-    content: { 
+    // TipTap JSON
+    content: {
         type: string;
         content?: any[];
     };
-    songTypeId: number;
+
+    // Hierarchy Reference
+    songTypeId: string | null;
     songTypeName: string;
+
     audioUrl?: string;
+
+    createdAt: string;
+    updatedAt: string;
 }
 
-// For use in Forms
-export interface SongPayload {
+// Payload for Forms
+export interface CreateSongPayload {
     title: string;
     composer?: string;
     content: any;
-    songTypeId: number;
+    songTypeId: string;
 }

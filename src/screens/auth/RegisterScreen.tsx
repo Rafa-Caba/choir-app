@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, 
-    KeyboardAvoidingView, Platform, Alert, ActivityIndicator, 
+import {
+    View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
+    KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
     Image
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
-import { Ionicons } from '@expo/vector-icons';
 import { useAppConfigStore } from '../../store/useAppConfigStore';
 
 export const RegisterScreen = () => {
     const navigation = useNavigation<any>();
     const { register, loading, errorMessage, clearError } = useAuthStore();
     const { appLogoUrl } = useAppConfigStore();
-    const { currentTheme } = useTheme();
-    const colors = currentTheme.colors;
 
-    // Form State
+    const { currentTheme } = useTheme();
+    const colors = currentTheme;
+
+    // Form State (English keys)
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
@@ -42,58 +42,57 @@ export const RegisterScreen = () => {
         }
 
         const success = await register({ name, email, username, password });
-        
-        if (success) navigation.navigate('HomeScreen');
 
+        if (success) {
+            Alert.alert("Bienvenido", "Cuenta creada exitosamente.");
+        }
     };
 
+    const inputStyle = [
+        styles.input, {
+            backgroundColor: colors.cardColor,
+            color: colors.textColor,
+            borderColor: colors.borderColor || '#ccc'
+        }
+    ];
+
     return (
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
-                <ScrollView contentContainerStyle={styles.scrollContent}>
-                    
-                    {/* Back Button */}
-                    {/* <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                        <Ionicons name="arrow-back" size={30} color={colors.text} />
-                    </TouchableOpacity> */}
-                    <View style={{ alignItems: 'center' }}>
-                        <Image 
-                            source={appLogoUrl ? { uri: appLogoUrl } : require('../../assets/EroCras4.jpg')}
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+                    <View style={{ alignItems: 'center', marginTop: 40 }}>
+                        <Image
+                            source={appLogoUrl ? { uri: appLogoUrl } : require('../../../assets/icon.png')}
                             resizeMode="contain"
-                            style={styles.logo} 
+                            style={styles.logo}
                             borderRadius={35}
                         />
                     </View>
 
-                    <Text style={[styles.title, { color: colors.text, fontFamily: 'MyCustomFont' }]}>
+                    <Text style={[styles.title, { color: colors.textColor }]}>
                         Crear Cuenta
                     </Text>
-                    <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                    <Text style={[styles.subtitle, { color: colors.secondaryTextColor }]}>
                         Únete a nuestra comunidad
                     </Text>
 
                     <View style={styles.form}>
                         <TextInput
-                            style={[
-                                styles.input, { 
-                                    backgroundColor: colors.card, 
-                                    color: colors.text, 
-                                    borderColor: colors.border 
-                                }
-                            ]}
+                            style={inputStyle}
                             placeholder="Nombre Completo"
-                            placeholderTextColor={colors.textSecondary}
+                            placeholderTextColor={colors.secondaryTextColor}
                             value={name}
                             onChangeText={setName}
                         />
-                        
+
                         <TextInput
-                            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                            style={inputStyle}
                             placeholder="Email"
-                            placeholderTextColor={colors.textSecondary}
+                            placeholderTextColor={colors.secondaryTextColor}
                             keyboardType="email-address"
                             autoCapitalize="none"
                             value={email}
@@ -101,48 +100,48 @@ export const RegisterScreen = () => {
                         />
 
                         <TextInput
-                            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                            style={inputStyle}
                             placeholder="Usuario"
-                            placeholderTextColor={colors.textSecondary}
+                            placeholderTextColor={colors.secondaryTextColor}
                             autoCapitalize="none"
                             value={username}
                             onChangeText={setUsername}
                         />
 
                         <TextInput
-                            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                            style={inputStyle}
                             placeholder="Contraseña"
-                            placeholderTextColor={colors.textSecondary}
+                            placeholderTextColor={colors.secondaryTextColor}
                             secureTextEntry
                             value={password}
                             onChangeText={setPassword}
                         />
 
                         <TextInput
-                            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                            style={inputStyle}
                             placeholder="Confirmar Contraseña"
-                            placeholderTextColor={colors.textSecondary}
+                            placeholderTextColor={colors.secondaryTextColor}
                             secureTextEntry
                             value={confirmPassword}
                             onChangeText={setConfirmPassword}
                         />
 
-                        <TouchableOpacity 
-                            style={[styles.btnRegister, { backgroundColor: colors.button }]} 
+                        <TouchableOpacity
+                            style={[styles.btnRegister, { backgroundColor: colors.buttonColor }]}
                             onPress={handleRegister}
                             disabled={loading}
                         >
                             {loading ? (
-                                <ActivityIndicator color={colors.buttonText} />
+                                <ActivityIndicator color={colors.buttonTextColor} />
                             ) : (
-                                <Text style={[styles.btnText, { color: colors.buttonText }]}>Registrarse</Text>
+                                <Text style={[styles.btnText, { color: colors.buttonTextColor }]}>Registrarse</Text>
                             )}
                         </TouchableOpacity>
                     </View>
 
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.loginLink}>
-                        <Text style={{ color: colors.textSecondary }}>¿Ya tienes cuenta? </Text>
-                        <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Inicia Sesión</Text>
+                        <Text style={{ color: colors.secondaryTextColor }}>¿Ya tienes cuenta? </Text>
+                        <Text style={{ color: colors.primaryColor, fontWeight: 'bold' }}>Inicia Sesión</Text>
                     </TouchableOpacity>
 
                 </ScrollView>
@@ -153,15 +152,14 @@ export const RegisterScreen = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    scrollContent: { flexGrow: 1, padding: 20, justifyContent: 'center' },
-    backButton: { position: 'absolute', top: 50, left: 20, zIndex: 10 },
-    title: { fontSize: 22, fontWeight: '600', textAlign: 'center', marginBottom: 10 },
-    subtitle: { fontSize: 16, textAlign: 'center', marginBottom: 15 },
-    form: { gap: 15, marginHorizontal: 15 },
+    scrollContent: { flexGrow: 1, paddingHorizontal: 30, paddingBottom: 40 },
+    title: { fontSize: 24, fontWeight: '600', textAlign: 'center', marginBottom: 5 },
+    subtitle: { fontSize: 16, textAlign: 'center', marginBottom: 30 },
+    form: { gap: 15 },
     logo: {
-        width: 130,
-        height: 130,
-        marginBottom: 50,
+        width: 100,
+        height: 100,
+        marginBottom: 20,
         borderRadius: 20
     },
     input: {
@@ -171,18 +169,17 @@ const styles = StyleSheet.create({
         fontSize: 16,
     },
     btnRegister: {
-        width: 200,
-        paddingVertical: 12,
-        borderRadius: 15,
+        width: '100%',
+        paddingVertical: 15,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 10,
-        marginHorizontal: 'auto',
         elevation: 2,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 2,
-        shadowColor: '#000', 
+        shadowColor: '#000',
     },
     btnText: { fontSize: 18, fontWeight: 'bold' },
     loginLink: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 }

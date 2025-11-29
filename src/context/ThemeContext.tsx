@@ -1,117 +1,117 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ThemeProvider as StyledThemeProvider } from 'styled-components/native';
-import AsyncStorage from '@react-native-async-storage/async-storage'; 
-import choirApi from '../api/choirApi';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { getAllThemes } from '../services/theme';
+import { updateTheme as persistUserTheme } from '../services/auth'; // Persist to user profile
 import { useAuthStore } from '../store/useAuthStore';
-import type { ThemeDefinition } from '../types/theme';
-import { DefaultTheme } from 'styled-components/native'; 
-import { mapDbThemeToStyled } from '../utils/themeMapper'; 
+import type { Theme } from '../types/theme';
 
-// --- Define a Safe Default Theme (Matches your DB 'Clásico' structure) ---
-const DEFAULT_THEME_DEF: ThemeDefinition = {
-    id: 1,
-    name: 'Clásico',
+// Default Fallback Theme
+const DEFAULT_THEME: Theme = {
+    id: 'default',
+    name: 'Default Light',
     isDark: false,
-    primaryColor: '#6200ea',
-    accentColor: '#00b0ff',
+    primaryColor: '#6200EE',
+    accentColor: '#03DAC6',
     backgroundColor: '#ffffff',
     textColor: '#000000',
     cardColor: '#f5f5f5',
-    buttonColor: '#6200ea',
+    buttonColor: '#6200EE',
     navColor: '#ffffff',
     buttonTextColor: '#ffffff',
     secondaryTextColor: '#666666',
-    borderColor: '#eeeeee'
+    borderColor: '#e0e0e0'
 };
 
-interface ThemeContextProps {
-    currentTheme: DefaultTheme;
-    availableThemes: ThemeDefinition[];
-    setThemeById: (id: number) => Promise<void>;
+interface ThemeContextType {
+    currentTheme: Theme;
+    availableThemes: Theme[];
+    setTheme: (theme: Theme) => void; // Direct setter
+    setThemeById: (id: string) => void; // ID-based setter
     loading: boolean;
-    themeName: 'light' | 'dark';
-    isDark: boolean;
-    toggleTheme: () => void;
+    colors: Theme; // Alias
 }
 
-export const ThemeContext = createContext({} as ThemeContextProps);
+const ThemeContext = createContext<ThemeContextType>({
+    currentTheme: DEFAULT_THEME,
+    availableThemes: [],
+    setTheme: () => { },
+    setThemeById: () => { },
+    loading: false,
+    colors: DEFAULT_THEME
+});
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-    const [themes, setThemes] = useState<ThemeDefinition[]>([DEFAULT_THEME_DEF]);
-    const [activeThemeId, setActiveThemeId] = useState<number>(1);
+    const [availableThemes, setAvailableThemes] = useState<Theme[]>([]);
+    const [currentTheme, setCurrentTheme] = useState<Theme>(DEFAULT_THEME);
     const [loading, setLoading] = useState(true);
+
     const { user } = useAuthStore();
 
-    // --- Initial Load (Local Storage + API) ---
+    const initThemes = async () => {
+        try {
+            setLoading(true);
+            // Fetch all themes from backend
+            const themes = await getAllThemes();
+            setAvailableThemes(themes);
+
+            // Determine active theme
+            if (themes.length > 0) {
+                let active = themes[0]; // Default to first
+
+                // 1. User Preference (if logged in)
+                if (user?.themeId) {
+                    // themeId might be a string ID or a populated Object
+                    const userThemeId = typeof user.themeId === 'object' ? user.themeId.id : user.themeId;
+                    const found = themes.find(t => t.id === userThemeId);
+                    if (found) active = found;
+                }
+
+                setCurrentTheme(active);
+            }
+        } catch (error) {
+            console.error('Error initializing themes:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Reload when user logs in/out to apply their preference
     useEffect(() => {
-        const initTheme = async () => {
-            try {
-                const savedId = await AsyncStorage.getItem('user_theme_id');
-                if (savedId) {
-                    setActiveThemeId(Number(savedId));
-                } else if (user?.themeId) {
-                    setActiveThemeId(user.themeId);
+        initThemes();
+    }, [user]);
+
+    // Manual Setter (Optimistic)
+    const setTheme = (theme: Theme) => {
+        setCurrentTheme(theme);
+    };
+
+    // ID-based Setter (Persists to Backend)
+    const setThemeById = async (id: string) => {
+        const theme = availableThemes.find(t => t.id === id);
+        if (theme) {
+            // 1. Update UI immediately
+            setCurrentTheme(theme);
+
+            // 2. Persist to User Profile (if logged in)
+            if (user) {
+                try {
+                    await persistUserTheme(id);
+                } catch (error) {
+                    console.error("Failed to save theme preference", error);
                 }
-
-                const { data } = await choirApi.get<ThemeDefinition[]>('/themes');
-                setThemes(data);
-                
-                if (savedId) {
-                    const exists = data.find(t => t.id === Number(savedId));
-                    if (!exists && data.length > 0) setActiveThemeId(data[0].id);
-                }
-
-            } catch (e) {
-                console.log("Theme load error (using defaults):", e);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        initTheme();
-    }, [user?.themeId]); 
-
-    const setThemeById = async (id: number) => {
-        setActiveThemeId(id);
-        
-        await AsyncStorage.setItem('user_theme_id', String(id));
-
-        if (user) {
-            try {
-                await choirApi.put('/users/me/theme', { themeId: id });
-            } catch (e) {
-                console.error("Failed to sync theme to cloud", e);
             }
         }
     };
-
-    const toggleTheme = () => {
-        const currentDef = themes.find(t => t.id === activeThemeId) || themes[0];
-        
-        const targetTheme = themes.find(t => t.isDark !== currentDef.isDark);
-        
-        if (targetTheme) {
-            setThemeById(targetTheme.id);
-        }
-    };
-
-    const activeThemeDef = themes.find(t => t.id === activeThemeId) || themes[0] || DEFAULT_THEME_DEF;
-    
-    const styledTheme = mapDbThemeToStyled(activeThemeDef);
 
     return (
-        <ThemeContext.Provider value={{ 
-            currentTheme: styledTheme, 
-            availableThemes: themes, 
+        <ThemeContext.Provider value={{
+            currentTheme,
+            availableThemes,
+            setTheme,
             setThemeById,
             loading,
-            themeName: activeThemeDef.isDark ? 'dark' : 'light',
-            isDark: activeThemeDef.isDark,
-            toggleTheme
+            colors: currentTheme // Alias for convenience
         }}>
-            <StyledThemeProvider theme={styledTheme}>
-                {children}
-            </StyledThemeProvider>
+            {children}
         </ThemeContext.Provider>
     );
 };

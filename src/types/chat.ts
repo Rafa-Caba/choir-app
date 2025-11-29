@@ -1,56 +1,56 @@
 import type { User } from './auth';
 
-export type MessageType = 'TEXT' | 'IMAGE' | 'FILE' | 'MEDIA' | 'REACTION' | 'AUDIO';
+export type MessageType = 'TEXT' | 'IMAGE' | 'FILE' | 'MEDIA' | 'REACTION' | 'AUDIO' | 'VIDEO';
 
 export interface MessageReaction {
     emoji: string;
-    username: string;
+    user: User | string;
+    username?: string;
 }
 
 export interface ChatMessage {
-    id: number;
+    id: string;
     author: User;
-    // This matches the JSONB content from Spring
-    content: { 
+
+    // TipTap JSON
+    content: {
         type: string;
         content?: any[];
     };
+
     type: MessageType;
-    
+
     // Media fields
     fileUrl?: string;
     filename?: string;
     imageUrl?: string;
-    imagePublicId?: string;
     audioUrl?: string;
-    
-    // Reactions (Now fully typed)
+    imagePublicId?: string;
+
+    // Reactions
     reactions: MessageReaction[];
-    
+
     replyTo?: ReplyPreview;
 
     createdAt: string;
+    updatedAt?: string;
 }
 
-// Payload for sending a new message via WebSocket
 export interface NewMessagePayload {
-    username: string; // Backend looks up user by this string
-    content: any;     // Rich Text JSON
+    username: string;
+    content: any;
     type: MessageType;
-    
-    // Optional media fields
+
     fileUrl?: string;
     filename?: string;
     imageUrl?: string;
-    imagePublicId?: string;
     audioUrl?: string;
-    audioPublicId?: string;
 
-    replyToId?: number;
+    replyToId?: string;
 }
 
 export interface ReplyPreview {
-    id: number;
+    id: string;
     username: string;
     textPreview: string;
 }

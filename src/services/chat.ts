@@ -1,46 +1,94 @@
 import choirApi from '../api/choirApi';
-import type { ChatMessage } from '../types/chat';
 import { Platform } from 'react-native';
+import type { ChatMessage } from '../types/chat';
 
-// GET /api/chat/history
-export const getChatHistory = async (): Promise<ChatMessage[]> => {
-    const { data } = await choirApi.get<ChatMessage[]>('/chat/history');
+// Helper: Async FormData
+const createChatFormData = async (fileUri: string, type: 'image' | 'video' | 'audio' | 'file') => {
+    const formData = new FormData();
+
+    let filename = 'upload';
+    let mimeType = 'application/octet-stream';
+
+    if (fileUri.startsWith('data:')) {
+        const mimeMatch = fileUri.match(/^data:(.*?);/);
+        if (mimeMatch) mimeType = mimeMatch[1];
+    }
+
+    if (type === 'image') {
+        mimeType = 'image/jpeg';
+        filename += '.jpg';
+    } else if (type === 'video') {
+        mimeType = 'video/mp4';
+        filename += '.mp4';
+    } else if (type === 'audio') {
+        mimeType = 'audio/m4a';
+        filename += '.m4a';
+    } else if (type === 'file') {
+        if (mimeType.includes('pdf')) filename += '.pdf';
+        else if (mimeType.includes('text')) filename += '.txt';
+        else if (mimeType.includes('word')) filename += '.docx';
+        else if (mimeType.includes('sheet') || mimeType.includes('excel')) filename += '.xlsx';
+        else if (mimeType.includes('zip')) filename += '.zip';
+        else filename += '.bin';
+    }
+
+    if (Platform.OS === 'web') {
+        try {
+            const response = await fetch(fileUri);
+            const originalBlob = await response.blob();
+            const blob = originalBlob.slice(0, originalBlob.size, mimeType);
+            formData.append('file', blob, filename);
+        } catch (e) {
+            console.error("Web Blob Error:", e);
+        }
+    } else {
+        // @ts-ignore
+        formData.append('file', {
+            uri: Platform.OS === 'android' ? fileUri : fileUri.replace('file://', ''),
+            name: filename,
+            type: mimeType,
+        });
+    }
+
+    return formData;
+};
+
+// GET HISTORY
+export const getChatHistory = async (limit = 50): Promise<ChatMessage[]> => {
+    const { data } = await choirApi.get<ChatMessage[]>(`/chat/history?limit=${limit}`);
     return data;
 };
 
-// POST /api/chat/upload
-// Handles both Images and Audio
-export const uploadChatMedia = async (uri: string): Promise<{ url: string, publicId: string }> => {
-    const formData = new FormData();
-    const filename = uri.split('/').pop() || 'upload';
-    
-    // --- MIME TYPE DETECTION ---
-    let type = 'image/jpeg'; // Default
-    const ext = filename.split('.').pop()?.toLowerCase();
+// UPLOAD
+export const uploadChatMedia = async (uri: string, type: 'image' | 'video' | 'audio' | 'file') => {
+    const formData = await createChatFormData(uri, type);
 
-    // Image formats
-    if (ext === 'png') type = 'image/png';
-    else if (ext === 'jpg' || ext === 'jpeg') type = 'image/jpeg';
-    else if (ext === 'gif') type = 'image/gif';
-    
-    // Audio formats (Expo AV usually records to .m4a or .caf on iOS, .3gp or .m4a on Android)
-    else if (ext === 'm4a') type = 'audio/m4a';
-    else if (ext === 'mp4') type = 'audio/mp4'; // Android sometimes treats audio as mp4 container
-    else if (ext === '3gp') type = 'audio/3gpp';
-    else if (ext === 'caf') type = 'audio/x-caf';
-    else if (ext === 'wav') type = 'audio/wav';
+    const requestConfig: any = { headers: { 'Content-Type': 'multipart/form-data' } };
+    if (Platform.OS === 'web') delete requestConfig.headers['Content-Type'];
 
-    // Construct FormData
-    // @ts-ignore
-    formData.append('file', {
-        uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
-        name: filename,
-        type: type, // <--- Sent to backend
-    });
+    let endpoint = '/chat/upload-file';
+    if (type === 'image') endpoint = '/chat/upload-image';
+    else if (type === 'video' || type === 'audio') endpoint = '/chat/upload-media';
 
-    // Cloudinary service on backend is set to "resource_type: auto", so it will adapt
-    const { data } = await choirApi.post('/chat/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+    console.log(`📤 Uploading ${type} to ${endpoint}`);
+
+    const { data } = await choirApi.post(endpoint, formData, requestConfig);
+
+    const msg = data.message;
+    return msg?.fileUrl || msg?.imageUrl || msg?.audioUrl || data.url || "";
+};
+
+// SEND TEXT
+export const sendTextMessage = async (content: any): Promise<ChatMessage> => {
+    const { data } = await choirApi.post<ChatMessage>('/chat', {
+        content,
+        type: 'TEXT'
     });
     return data;
+};
+
+// 🆕 TOGGLE REACTION
+export const toggleReaction = async (messageId: string, emoji: string): Promise<ChatMessage> => {
+    const { data } = await choirApi.patch<{ message: ChatMessage }>(`/chat/${messageId}/reaction`, { emoji });
+    return data.message;
 };

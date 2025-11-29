@@ -19,44 +19,44 @@ const Stack = createNativeStackNavigator<SongsStackParamList>();
 
 export const SongsNavigator = () => {
     const { currentTheme } = useTheme();
-    const colors = currentTheme.colors;
+    const colors = currentTheme;
 
     return (
         <Stack.Navigator
             screenOptions={{
                 headerStyle: {
-                    backgroundColor: colors.background, 
+                    backgroundColor: colors.backgroundColor,
                 },
                 headerShadowVisible: false,
 
-                headerTintColor: colors.text, 
-                headerTitleStyle: { 
-                    color: colors.text,
+                headerTintColor: colors.textColor,
+                headerTitleStyle: {
+                    color: colors.textColor,
                     fontWeight: 'bold'
                 },
 
-                contentStyle: { backgroundColor: colors.background }
+                contentStyle: { backgroundColor: colors.backgroundColor }
             }}
         >
-            <Stack.Screen 
-                name="SongTypes" 
-                component={SongTypesScreen} 
+            <Stack.Screen
+                name="SongTypes"
+                component={SongTypesScreen}
                 options={{ headerShown: false }}
             />
-            <Stack.Screen 
-                name="SongsListScreen" 
-                component={SongsListScreen} 
+            <Stack.Screen
+                name="SongsListScreen"
+                component={SongsListScreen}
                 options={({ route }) => ({ title: route.params.typeName })}
             />
-            <Stack.Screen 
-                name="SongDetailScreen" 
-                component={SongDetailScreen} 
-                options={{ title: 'Detalle' }} 
+            <Stack.Screen
+                name="SongDetailScreen"
+                component={SongDetailScreen}
+                options={{ title: 'Detalle' }}
             />
-            <Stack.Screen 
-                name="CreateSongScreen" 
-                component={CreateSongScreen} 
-                options={{ headerShown: false }}
+            <Stack.Screen
+                name="CreateSongScreen"
+                component={CreateSongScreen}
+                options={{ title: 'Detalles del Canto' }}
             />
         </Stack.Navigator>
     );

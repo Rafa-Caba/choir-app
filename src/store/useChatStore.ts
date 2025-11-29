@@ -1,26 +1,49 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Client } from '@stomp/stompjs';
-import SockJS from 'sockjs-client';
-import { getChatHistory, uploadChatMedia } from '../services/chat';
-import type { ChatMessage, MessageType, NewMessagePayload } from '../types/chat';
+import { io, Socket } from 'socket.io-client';
+import { getChatHistory, sendTextMessage, uploadChatMedia, toggleReaction } from '../services/chat';
+import type { ChatMessage } from '../types/chat';
 import { useAuthStore } from './useAuthStore';
+import { Platform } from 'react-native';
+import choirApi from '../api/choirApi';
+import ENV from '../config/env';
 
-// Prod url
-const PROD_WS_URL = 'https://choir-app-api-production.up.railway.app/ws';
-const BASE_URL = PROD_WS_URL;
+const { LOCAL_IP, PORT, PROD_URL } = ENV;
+
+const LOCAL_URL = Platform.OS === 'android'
+    ? `http://10.0.2.2:${PORT}`
+    : `http://${LOCAL_IP}:${PORT}`;
+
+const SOCKET_URL = __DEV__ ? LOCAL_URL : PROD_URL;
+
+interface ConnectedUser {
+    id: string;
+    name: string;
+    username: string;
+    imageUrl?: string;
+}
 
 interface ChatState {
     messages: ChatMessage[];
     connected: boolean;
-    stompClient: Client | null;
+    socket: Socket | null;
     replyingTo: ChatMessage | null;
-    
+    loading: boolean;
+
+    onlineUsers: ConnectedUser[];
+    allUsers: ConnectedUser[];
+    typingUsers: string[];
+
     connect: () => void;
     disconnect: () => void;
-    sendMessage: (textInput: string, localImageUri?: string, localAudioUri?: string) => Promise<void>;
+    sendMessage: (textInput: string, attachment?: { uri: string, type: 'image' | 'video' | 'audio' | 'file' }) => Promise<void>;
+    sendTyping: (isTyping: boolean) => void;
+
+    reactToMessage: (messageId: string, emoji: string) => Promise<void>;
+
     loadHistory: () => Promise<void>;
+    fetchDirectory: () => Promise<void>;
     setReplyingTo: (message: ChatMessage | null) => void;
 }
 
@@ -28,150 +51,184 @@ export const useChatStore = create<ChatState>()(
     persist(
         (set, get) => ({
             messages: [],
+            onlineUsers: [],
+            allUsers: [],
+            typingUsers: [],
             connected: false,
-            stompClient: null,
+            socket: null,
             replyingTo: null,
+            loading: false,
 
             setReplyingTo: (message) => set({ replyingTo: message }),
 
             loadHistory: async () => {
+                set({ loading: true });
                 try {
                     const history = await getChatHistory();
-                    set({ messages: history.reverse() });
+                    set({ messages: history });
                 } catch (error) {
                     console.log("Offline: Loading cached chat history");
+                } finally {
+                    set({ loading: false });
                 }
+            },
+
+            fetchDirectory: async () => {
+                try {
+                    const { data } = await choirApi.get('/users/directory');
+                    set({ allUsers: data });
+                } catch (e) { console.error("Directory fetch failed", e); }
             },
 
             connect: () => {
-                const { user, token } = useAuthStore.getState();
+                const { token, user } = useAuthStore.getState();
                 const state = get();
 
-                if (!token || !user) return;
-                if (state.stompClient?.active || state.connected) return;
+                if (!token || (state.socket && state.socket.connected)) return;
 
-                console.log("🔌 Chat: Attempting connection to:", BASE_URL);
+                console.log("🔌 Chat: Connecting to", SOCKET_URL);
 
-                const client = new Client({
-                    webSocketFactory: () => new SockJS(BASE_URL),
-                    connectHeaders: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                    forceBinaryWSFrames: true, 
-                    appendMissingNULLonIncoming: true,
-                    heartbeatIncoming: 10000,
-                    heartbeatOutgoing: 10000,
-                    
-                    onConnect: () => {
-                        console.log("✅ Chat: Connected");
-                        set({ connected: true });
-
-                        client.subscribe('/topic/public', (message) => {
-                            try {
-                                const newMessage: ChatMessage = JSON.parse(message.body);
-                                
-                                set((current) => {
-                                    if (current.messages.some(m => m.id === newMessage.id)) {
-                                        return current;
-                                    }
-                                    return { messages: [...current.messages, newMessage] };
-                                });
-                            } catch (e) {
-                                console.error("Error parsing message", e);
-                            }
-                        });
-                    },
-                    onDisconnect: () => {
-                        console.log("❌ Chat: Disconnected");
-                        set({ connected: false });
-                    },
-                    onStompError: (frame) => {
-                        console.error('🚨 Chat Broker Error:', frame.headers['message']);
-                        console.error('Details:', frame.body);
-
-                        console.error('🚨 Chat Broker Error:', frame.headers['message']);
-                    },
-                    onWebSocketClose: () => {
-                        console.log("🔌 Chat: Socket Closed");
-                        set({ connected: false });
-                    }
+                const socket = io(SOCKET_URL, {
+                    auth: { token, user },
+                    transports: ['websocket'],
+                    reconnection: true,
                 });
 
-                client.activate();
-                set({ stompClient: client });
+                socket.on('connect', () => {
+                    console.log("✅ Socket Connected");
+                    set({ connected: true });
+                });
+
+                socket.on('disconnect', () => {
+                    console.log("❌ Socket Disconnected");
+                    set({ connected: false, onlineUsers: [] });
+                });
+
+                socket.on('new-message', (newMessage: ChatMessage) => {
+                    set((current) => {
+                        if (current.messages.some(m => m.id === newMessage.id)) return current;
+                        return { messages: [...current.messages, newMessage] };
+                    });
+                });
+
+                socket.on('message-updated', (updatedMessage: ChatMessage) => {
+                    set((current) => ({
+                        messages: current.messages.map(m => m.id === updatedMessage.id ? updatedMessage : m)
+                    }));
+                });
+
+                socket.on('online-users', (users: ConnectedUser[]) => {
+                    const uniqueUsers = users.filter((v, i, a) => a.findIndex(v2 => v2.id === v.id) === i);
+                    set({ onlineUsers: uniqueUsers });
+                });
+
+                socket.on('user-typing', ({ username, isTyping }) => {
+                    set((state) => {
+                        let newTyping = [...state.typingUsers];
+                        if (isTyping) {
+                            if (!newTyping.includes(username)) newTyping.push(username);
+                        } else {
+                            newTyping = newTyping.filter(u => u !== username);
+                        }
+                        return { typingUsers: newTyping };
+                    });
+                });
+
+                set({ socket });
             },
 
             disconnect: () => {
-                get().stompClient?.deactivate();
-                set({ connected: false, stompClient: null });
+                get().socket?.disconnect();
+                set({ connected: false, socket: null, onlineUsers: [] });
             },
 
-            sendMessage: async (textInput, localImageUri, localAudioUri) => {
-                const { stompClient, replyingTo } = get();
+            sendTyping: (isTyping) => {
+                const { socket } = get();
+                if (socket?.connected) socket.emit('typing', isTyping);
+            },
+
+            reactToMessage: async (messageId, emoji) => {
                 const { user } = useAuthStore.getState();
+                if (!user) return;
 
-                if (!stompClient || !stompClient.active || !user) {
-                    // Optional: Queue message for later if offline (advanced feature)
-                    console.log("Cannot send: Offline");
-                    return;
+                const previousMessages = get().messages;
+
+                set(state => ({
+                    messages: state.messages.map(m => {
+                        if (m.id.toString() === messageId.toString()) {
+                            const currentReactions = m.reactions || [];
+
+                            const userReactionIndex = currentReactions.findIndex(r => {
+                                const rUserId = (r.user as any).id || (r.user as any)._id || r.user;
+                                return rUserId?.toString() === user.id;
+                            });
+
+                            let newReactions = [...currentReactions];
+
+                            if (userReactionIndex > -1) {
+                                if (currentReactions[userReactionIndex].emoji === emoji) {
+                                    newReactions.splice(userReactionIndex, 1);
+                                } else {
+                                    newReactions[userReactionIndex] = { ...newReactions[userReactionIndex], emoji };
+                                }
+                            } else {
+                                newReactions.push({
+                                    emoji,
+                                    user: { id: user.id, username: user.username, name: user.name } as any
+                                });
+                            }
+
+                            return { ...m, reactions: newReactions };
+                        }
+                        return m;
+                    })
+                }));
+
+                // 2. Server Call
+                try {
+                    await toggleReaction(messageId, emoji);
+                } catch (e) {
+                    console.error("Reaction failed", e);
+                    // 3. Rollback on Error
+                    set({ messages: previousMessages });
+                    alert("Failed to react. Please try again.");
                 }
+            },
 
-                let mediaData = undefined;
-
-                if (localImageUri) {
-                    try {
-                        const uploadResult = await uploadChatMedia(localImageUri);
-                        mediaData = {
-                            imageUrl: uploadResult.url,
-                            imagePublicId: uploadResult.publicId
-                        };
-                    } catch (error) {
-                        console.error("Failed to upload image", error);
-                        return; 
-                    }
-                } else if (localAudioUri) {
-                    try {
-                        const uploadResult = await uploadChatMedia(localAudioUri); 
-                        mediaData = {
-                            audioUrl: uploadResult.url,
-                            audioPublicId: uploadResult.publicId
-                        };
-                    } catch (error) { return; }
-                }
-
-                const richContent = {
-                    type: "doc",
-                    content: textInput ? [{ type: "paragraph", content: [{ type: "text", text: textInput }] }] : []
-                };
-
-                let msgType: MessageType = 'TEXT';
-                if (localImageUri) msgType = 'IMAGE';
-                else if (localAudioUri) msgType = 'AUDIO';
-
-                const payload: NewMessagePayload = {
-                    username: user.username,
-                    content: richContent,
-                    type: msgType,
-                    imageUrl: mediaData?.imageUrl,
-                    imagePublicId: mediaData?.imagePublicId,
-                    audioUrl: mediaData?.audioUrl,
-                    audioPublicId: mediaData?.audioPublicId,
-                    replyToId: replyingTo?.id
-                };
-
-                console.log("Sending Payload:", JSON.stringify(payload)); // Debug Log
+            sendMessage: async (textInput, attachment) => {
+                const { replyingTo, socket } = get();
+                if (!socket) { alert("No connection."); return; }
 
                 try {
-                    stompClient.publish({
-                        destination: '/app/chat.sendMessage',
-                        body: JSON.stringify(payload),
-                    });
+                    get().sendTyping(false);
+                    let uploadedUrl = '';
+                    let messageType = 'TEXT';
 
+                    if (attachment) {
+                        uploadedUrl = await uploadChatMedia(attachment.uri, attachment.type);
+                        switch (attachment.type) {
+                            case 'video': messageType = 'VIDEO'; break;
+                            case 'image': messageType = 'IMAGE'; break;
+                            case 'audio': messageType = 'AUDIO'; break;
+                            case 'file': messageType = 'FILE'; break;
+                        }
+                    }
+
+                    const payload: any = {
+                        content: {
+                            type: 'doc',
+                            content: textInput ? [{ type: 'paragraph', content: [{ type: 'text', text: textInput }] }] : []
+                        },
+                        type: messageType,
+                        ...(uploadedUrl ? { fileUrl: uploadedUrl } : {}),
+                        replyToId: replyingTo?.id
+                    };
+
+                    if (!attachment && textInput) {
+                        await sendTextMessage(payload.content);
+                    }
                     set({ replyingTo: null });
-                } catch (err) {
-                    console.error("Publish Error:", err);
-                    alert("Error al enviar mensaje");
-                }
+                } catch (err) { console.error("Send Error:", err); }
             }
         }),
         {

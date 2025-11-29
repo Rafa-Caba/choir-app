@@ -2,34 +2,42 @@ import 'styled-components/native';
 
 declare module 'styled-components/native' {
     export interface DefaultTheme {
-        id: number;
+        id: string;
         name: string;
         isDark: boolean;
         colors: {
+            // Core
             primary: string;
             accent: string;
             background: string;
             text: string;
+            card: string;
             button: string;
-            buttonHover: string;
-            waveTop: string;
-            waveBottom: string;
+            
+            // Text
+            buttonText: string;
+            textSecondary: string;
             mainTitle: string;
             mainSubtitle: string;
             creatorName: string;
-            buttonText: string;
-            card: string;
+            
+            // Structural
             border: string;
-            navBg: string;
+            navBg: string; // Note: Mapper outputs 'navBg', not 'navColor'
             sidebarBg: string;
+            
+            // Visuals
+            buttonHover: string;
+            waveTop: string;
+            waveBottom: string;
             pageBg: string;
             cardBackground: string;
-            cardShadow: string;      // Kept for legacy references
-            cardHoverShadow: string; // Kept for legacy references
-            textSecondary: string;
+            
+            // Legacy
+            cardShadow: string;      
+            cardHoverShadow: string; 
         };
         shadows: {
-        // We updated this to be an Object for React Native styles
             card: {
                 shadowColor: string;
                 shadowOffset: { width: number; height: number };

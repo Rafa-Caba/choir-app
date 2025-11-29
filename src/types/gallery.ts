@@ -1,18 +1,19 @@
 export interface GalleryImage {
-    id: number;
+    id: string;
     title: string;
     description: string;
     imageUrl: string;
     mediaType: 'IMAGE' | 'VIDEO';
-    
+
     // Flags
     imageStart: boolean;
     imageTopBar: boolean;
     imageUs: boolean;
     imageLogo: boolean;
     imageGallery: boolean;
-    
+
     createdAt: string;
+    updatedAt: string;
 }
 
 export interface CreateGalleryPayload {

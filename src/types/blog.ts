@@ -1,17 +1,26 @@
 import type { User } from './auth';
 
+// Recursive-ish type for TipTap Content to allow flexibility (Bold, Italic, Empty lines)
+export interface TipTapNode {
+    type: string;
+    text?: string;
+    content?: TipTapNode[];
+    marks?: { type: string }[];
+    attrs?: Record<string, any>;
+}
+
 export interface BlogComment {
-    author: string; // Username
-    text: { type: string, content?: any[] }; // Rich Text
-    date: string; // ISO Date
+    author: string;
+    text: { type: string, content?: TipTapNode[] };
+    date: string;
 }
 
 export interface BlogPost {
-    id: number;
+    id: string;
     title: string;
-    content: { type: string, content?: any[] };
-    author: { // Matches BlogPostDTO.AuthorInfo
-        id: number;
+    content: { type: string, content?: TipTapNode[] };
+    author: {
+        id: string;
         name: string;
         username: string;
         imageUrl: string;
@@ -19,14 +28,17 @@ export interface BlogPost {
     imageUrl?: string;
     isPublic: boolean;
     likes: number;
-    likesUsers: string[]; // List of usernames
+    likesUsers: string[];
     comments: BlogComment[];
     createdAt: string;
 }
 
 export interface CreateBlogPayload {
     title: string;
-    textContent: string;
+    content: {
+        type: string;
+        content: TipTapNode[];
+    };
     imageUri?: string;
     isPublic: boolean;
 }

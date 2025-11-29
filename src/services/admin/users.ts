@@ -2,40 +2,47 @@ import choirApi from '../../api/choirApi';
 import type { User } from '../../types/auth';
 import { Platform } from 'react-native';
 
-// --- Helper: Async FormData Builder ---
+// Helper: Async FormData Builder
 const createFormData = async (userData: any, imageUri?: string) => {
     const formData = new FormData();
+
+    // 1. Map UI fields to English Backend Fields
+    let safeRole = 'VIEWER';
+    if (userData.role) {
+        safeRole = userData.role.toUpperCase(); // Backend uses uppercase Enum
+    }
 
     const userDTO = {
         name: userData.name,
         username: userData.username,
         email: userData.email,
-        role: userData.role,
+        role: safeRole,
         instrument: userData.instrument,
         bio: userData.bio,
+        voice: userData.voice,
+        // Send password only if provided
         ...(userData.password ? { password: userData.password } : {})
     };
 
-    // 1. Append JSON
-    formData.append('user', JSON.stringify(userDTO));
+    formData.append('data', JSON.stringify(userDTO));
 
-    // 2. Append Image (skip if remote URL)
+    // 2. Append Image
     if (imageUri && !imageUri.startsWith('http')) {
-        const filename = imageUri.split('/').pop() || 'p.jpg';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : `image/jpeg`;
-        
+        const filename = 'profile.jpg';
+        const type = 'image/jpeg';
+
         if (Platform.OS === 'web') {
             try {
                 const response = await fetch(imageUri);
                 const blob = await response.blob();
-                formData.append('image', blob, filename);
+                // Backend expects 'file'
+                formData.append('file', blob, filename);
             } catch (e) {
                 console.error("Web image fetch failed", e);
             }
         } else {
             // @ts-ignore
-            formData.append('image', {
+            formData.append('file', {
                 uri: Platform.OS === 'android' ? imageUri : imageUri.replace('file://', ''),
                 name: filename,
                 type: type,
@@ -46,12 +53,18 @@ const createFormData = async (userData: any, imageUri?: string) => {
     return formData;
 };
 
-export const getAllUsers = async (): Promise<User[]> => {
-    const { data } = await choirApi.get<User[]>('/users');
-    return data;
+// GET ALL (Paginated)
+export const getAllUsers = async (page = 1, limit = 10): Promise<{ users: User[], totalPages: number }> => {
+    // Backend returns { users: [], totalPages: number, ... }
+    const { data } = await choirApi.get<any>(`/users?page=${page}&limit=${limit}`);
+    return {
+        users: data.users || [],
+        totalPages: data.totalPages || 1
+    };
 };
 
-export const saveUser = async (userData: any, imageUri?: string, userId?: number): Promise<User> => {
+// SAVE (Create/Update)
+export const saveUser = async (userData: any, imageUri?: string, userId?: string): Promise<User> => {
     const formData = await createFormData(userData, imageUri);
 
     const requestConfig: any = {
@@ -59,18 +72,22 @@ export const saveUser = async (userData: any, imageUri?: string, userId?: number
     };
 
     if (Platform.OS === 'web') {
-        requestConfig.headers['Content-Type'] = undefined;
+        delete requestConfig.headers['Content-Type'];
     }
 
     if (userId) {
-        const { data } = await choirApi.put<User>(`/users/${userId}`, formData, requestConfig);
-        return data;
+        // UPDATE
+        const { data } = await choirApi.put<{ user: User }>(`/users/${userId}`, formData, requestConfig);
+        // Backend response structure might be { message, user } or direct user. Adjust if needed.
+        return (data as any).updatedUser || data;
     } else {
-        const { data } = await choirApi.post<User>('/users', formData, requestConfig);
-        return data;
+        // CREATE
+        const { data } = await choirApi.post<{ user: User }>(`/users`, formData, requestConfig);
+        return (data as any).user || data;
     }
 };
 
-export const deleteUser = async (id: number): Promise<void> => {
+// DELETE
+export const deleteUser = async (id: string): Promise<void> => {
     await choirApi.delete(`/users/${id}`);
 };

@@ -1,48 +1,52 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { 
-    getSongTypes, getAllSongs, createSong, updateSong, deleteSong,
-    createSongType, updateSongType, deleteSongType 
-} from '../services/songs';
-import type { Song, SongType, SongPayload } from '../types/song';
+import {
+    getAllSongs, createSong, updateSong, deleteSong,
+    getSongTypes, createSongType, updateSongType, deleteSongType
+} from '../services/song';
+import type { Song, SongType, CreateSongPayload } from '../types/song';
 
 interface SongsState {
-    songTypes: SongType[];
     songs: Song[];
+    songTypes: SongType[];
     loading: boolean;
-    fetchData: () => Promise<void>;
-    
-    // Songs
-    addSong: (payload: SongPayload, audioUri?: string) => Promise<boolean>;
-    editSong: (id: number, payload: SongPayload, audioUri?: string) => Promise<boolean>;
-    removeSong: (id: number) => Promise<boolean>;
 
-    // Types
-    addType: (name: string, order: number) => Promise<boolean>;
-    editType: (id: number, name: string, order: number) => Promise<boolean>;
-    removeType: (id: number) => Promise<boolean>;
-    
-    getSongsByType: (typeId: number) => Song[];
+    fetchData: () => Promise<void>;
+
+    // Songs
+    addSong: (payload: CreateSongPayload, audioUri?: string) => Promise<boolean>;
+    editSong: (id: string, payload: Partial<CreateSongPayload>, audioUri?: string) => Promise<boolean>;
+    removeSong: (id: string) => Promise<boolean>;
+    getSongsByType: (typeId: string) => Song[];
+
+    // 🆕 Song Types (Categories)
+    addType: (name: string, order: number, parentId?: string | null, isParent?: boolean) => Promise<boolean>;
+    editType: (id: string, name: string, order: number, isParent?: boolean) => Promise<boolean>;
+    removeType: (id: string) => Promise<boolean>;
 }
 
 export const useSongsStore = create<SongsState>()(
     persist(
         (set, get) => ({
-            songTypes: [],
             songs: [],
+            songTypes: [],
             loading: false,
 
             fetchData: async () => {
                 set({ loading: true });
                 try {
-                    const [types, allSongs] = await Promise.all([
-                        getSongTypes(),
-                        getAllSongs()
+                    const [songsData, typesData] = await Promise.all([
+                        getAllSongs(),
+                        getSongTypes()
                     ]);
-                    set({ songTypes: types, songs: allSongs });
-                } catch (error) {
-                    console.error("Offline mode: Using cached data");
+
+                    set({
+                        songs: Array.isArray(songsData) ? songsData : [],
+                        songTypes: Array.isArray(typesData) ? typesData : []
+                    });
+                } catch (e) {
+                    console.log("Offline: Using cached songs");
                 } finally {
                     set({ loading: false });
                 }
@@ -52,27 +56,25 @@ export const useSongsStore = create<SongsState>()(
             addSong: async (payload, audioUri) => {
                 set({ loading: true });
                 try {
-                    const newSong = await createSong(payload, audioUri);
-                    set((state) => ({ songs: [...state.songs, newSong] }));
+                    await createSong(payload, audioUri);
+                    await get().fetchData();
                     return true;
-                } catch (error) {
-                    console.error("Failed to create song", error);
+                } catch (e) {
+                    console.error("Create Song Failed:", e);
                     return false;
                 } finally {
                     set({ loading: false });
                 }
             },
-            
+
             editSong: async (id, payload, audioUri) => {
                 set({ loading: true });
                 try {
-                    const updated = await updateSong(id, payload, audioUri);
-                    set((state) => ({
-                        songs: state.songs.map(s => s.id === id ? updated : s)
-                    }));
+                    await updateSong(id, payload, audioUri);
+                    await get().fetchData();
                     return true;
-                } catch (error) {
-                    console.error("Failed to update song", error);
+                } catch (e) {
+                    console.error("Update Song Failed:", e);
                     return false;
                 } finally {
                     set({ loading: false });
@@ -80,54 +82,46 @@ export const useSongsStore = create<SongsState>()(
             },
 
             removeSong: async (id) => {
-                set({ loading: true });
                 try {
                     await deleteSong(id);
-                    set((state) => ({
-                        songs: state.songs.filter(s => s.id !== id)
-                    }));
-                    return true;
-                } catch (error) {
-                    console.error("Failed to delete song", error);
-                    return false;
-                } finally {
-                    set({ loading: false });
-                }
-            },
-
-            // --- Types ---
-            addType: async (name, order) => {
-                try {
-                    const newType = await createSongType(name, order);
-                    set((state) => ({ 
-                        songTypes: [...state.songTypes, newType].sort((a,b) => a.order - b.order) 
-                    }));
-                    return true;
-                } catch (e) { return false; }
-            },
-
-            editType: async (id, name, order) => {
-                try {
-                    const updated = await updateSongType(id, name, order);
-                    set((state) => ({
-                        songTypes: state.songTypes.map(t => t.id === id ? updated : t).sort((a,b) => a.order - b.order)
-                    }));
-                    return true;
-                } catch (e) { return false; }
-            },
-
-            removeType: async (id) => {
-                try {
-                    await deleteSongType(id);
-                    set((state) => ({
-                        songTypes: state.songTypes.filter(t => t.id !== id)
-                    }));
+                    set(state => ({ songs: state.songs.filter(s => s.id !== id) }));
                     return true;
                 } catch (e) { return false; }
             },
 
             getSongsByType: (typeId) => {
-                return get().songs.filter(s => s.songTypeId === typeId);
+                const { songs } = get();
+                if (!typeId) return songs;
+                return songs.filter(s => s.songTypeId === typeId);
+            },
+
+            // --- 🆕 Song Types ---
+            addType: async (name, order, parentId, isParent) => {
+                set({ loading: true });
+                try {
+                    await createSongType(name, order, parentId || undefined, isParent);
+                    await get().fetchData();
+                    return true;
+                } catch (e) { return false; }
+                finally { set({ loading: false }); }
+            },
+
+            editType: async (id, name, order, isParent) => {
+                set({ loading: true });
+                try {
+                    await updateSongType(id, name, order, isParent);
+                    await get().fetchData();
+                    return true;
+                } catch (e) { return false; }
+                finally { set({ loading: false }); }
+            },
+
+            removeType: async (id) => {
+                try {
+                    await deleteSongType(id);
+                    await get().fetchData(); // Refresh to ensure hierarchy is clean
+                    return true;
+                } catch (e) { return false; }
             }
         }),
         {

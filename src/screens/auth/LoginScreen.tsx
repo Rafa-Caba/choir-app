@@ -1,24 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { 
-    View, StyleSheet, Image, TextInput, Text, TouchableOpacity, 
-    Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView 
+import {
+    View, StyleSheet, Image, TextInput, Text, TouchableOpacity,
+    Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import Config from 'react-native-config';
 import { useAuthStore } from '../../store/useAuthStore';
 import { LoadingScreen } from '../LoadingScreen';
 import { useAppConfigStore } from '../../store/useAppConfigStore';
 import { useTheme } from '../../context/ThemeContext';
+import ENV from '../../config/env';
 
 export const LoginScreen = () => {
     const navigation = useNavigation<any>();
-    
+
     const { login, errorMessage, clearError, loading } = useAuthStore();
     const { appTitle, appLogoUrl } = useAppConfigStore();
 
-    const { currentTheme } = useTheme(); 
-    const colors = currentTheme.colors;
+    const { currentTheme } = useTheme();
+    const colors = currentTheme;
 
-    const [email, setEmail] = useState('');
+    // State (English)
+    const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
 
     useEffect(() => {
@@ -32,83 +35,83 @@ export const LoginScreen = () => {
 
     const onLogin = async () => {
         Keyboard.dismiss();
-        if (!email || !password) {
+        if (!username || !password) {
             Alert.alert('Error', 'Por favor ingrese usuario y contraseña');
             return;
         }
-        
-        const success = await login({ username: email, password });
 
-        if (success) navigation.navigate('HomeScreen');
+        // The store handles the API call and Token storage
+        await login({ username, password });
+        // Navigation is usually handled automatically by the AppNavigator observing 'user' state
     };
 
     if (loading) return <LoadingScreen />;
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
                 <View style={{ alignItems: 'center' }}>
-                    <Image 
-                        source={appLogoUrl ? { uri: appLogoUrl } : require('../../assets/EroCras4.jpg')}
+                    <Image
+                        source={appLogoUrl ? { uri: appLogoUrl } : require('../../../assets/icon.png')}
                         resizeMode="contain"
-                        style={styles.logo} 
+                        style={styles.logo}
                         borderRadius={35}
                     />
                 </View>
 
-                <Text style={[styles.title, { color: colors.text, fontFamily: 'MyCustomFont' }]}>{appTitle}</Text>
+                <Text style={[styles.title, { color: colors.textColor }]}>
+                    {appTitle || 'Ero Cras'}
+                </Text>
 
                 <KeyboardAvoidingView
-                    style={{ flex: 1 }}
-                    behavior={(Platform.OS === 'ios') ? 'padding' : 'height'}
+                    behavior={(Platform.OS === 'ios') ? 'padding' : undefined}
                 >
                     <View style={{ marginHorizontal: 15 }}>
                         <TextInput
-                            style={[styles.input, { 
-                                backgroundColor: colors.card, 
-                                color: colors.text,
-                                borderColor: colors.border
+                            style={[styles.input, {
+                                backgroundColor: colors.cardColor,
+                                color: colors.textColor,
+                                borderColor: colors.borderColor || '#ccc'
                             }]}
                             placeholder="Correo o Usuario"
-                            value={email}
-                            placeholderTextColor="rgba(0,0,0,0.4)"
+                            value={username}
+                            placeholderTextColor={colors.secondaryTextColor}
                             keyboardType="email-address"
                             autoCapitalize="none"
                             autoCorrect={false}
-                            onChangeText={setEmail}
+                            onChangeText={setUsername}
                         />
                         <TextInput
-                            style={[styles.input, { 
-                                backgroundColor: colors.card, 
-                                color: colors.text,
-                                borderColor: colors.border
+                            style={[styles.input, {
+                                backgroundColor: colors.cardColor,
+                                color: colors.textColor,
+                                borderColor: colors.borderColor || '#ccc'
                             }]}
                             placeholder="Contraseña"
                             value={password}
-                            placeholderTextColor="rgba(0,0,0,0.4)"
+                            placeholderTextColor={colors.secondaryTextColor}
                             onChangeText={setPassword}
                             secureTextEntry
                         />
 
                         <View style={styles.buttonContainer}>
-                            <TouchableOpacity 
-                                style={[styles.btnLogin, { backgroundColor: colors.button }]}
+                            <TouchableOpacity
+                                style={[styles.btnLogin, { backgroundColor: colors.buttonColor }]}
                                 activeOpacity={0.6}
                                 onPress={onLogin}
                             >
-                                <Text style={[styles.btnLoginText, { color: colors.buttonText }]}>
+                                <Text style={[styles.btnLoginText, { color: colors.buttonTextColor }]}>
                                     {loading ? 'Cargando...' : 'Iniciar Sesión'}
                                 </Text>
                             </TouchableOpacity>
-                        
-                            {/* <TouchableOpacity 
-                                onPress={() => navigation.navigate('RegisterScreen')} 
+
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('Register')}
                                 style={styles.loginLink}
-                                disabled
                             >
-                                <Text style={{ color: colors.textSecondary }}>¿No tienes cuenta? </Text>
-                                <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Regístrate</Text>
-                            </TouchableOpacity> */}
+                                <Text style={{ color: colors.secondaryTextColor }}>¿No tienes cuenta? </Text>
+                                <Text style={{ color: colors.primaryColor, fontWeight: 'bold' }}>Regístrate</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 </KeyboardAvoidingView>
@@ -120,28 +123,27 @@ export const LoginScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        paddingTop: 70,
         paddingHorizontal: 30,
     },
     logo: {
         width: 130,
         height: 130,
-        marginBottom: 50,
+        marginBottom: 30,
         borderRadius: 20
     },
     title: {
-        fontSize: 22,
+        fontSize: 28,
         textAlign: 'center',
         marginBottom: 25,
         fontWeight: '600'
     },
     input: {
-        fontSize: 18,
+        fontSize: 16,
         paddingHorizontal: 20,
         paddingVertical: 15,
         marginBottom: 15,
-        marginHorizontal: 5,
-        borderRadius: 10,
+        borderRadius: 12,
+        borderWidth: 1,
         width: '100%',
     },
     buttonContainer: {
@@ -149,13 +151,13 @@ const styles = StyleSheet.create({
         marginTop: 20
     },
     btnLogin: {
-        width: 200,
-        paddingVertical: 12,
-        borderRadius: 15,
+        width: '100%',
+        paddingVertical: 15,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        elevation: 2, 
-        shadowColor: '#000', 
+        elevation: 2,
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 2,
@@ -164,5 +166,5 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold',
     },
-    loginLink: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 }
+    loginLink: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 }
 });

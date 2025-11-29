@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, TextInput, View, TouchableOpacity, Platform, Text, Image, Alert } from 'react-native';
+import {
+    StyleSheet, TextInput, View, TouchableOpacity, Platform, Text, Modal
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { Audio } from 'expo-av';
 
 import { useChatStore } from '../../store/useChatStore';
@@ -9,32 +12,28 @@ import { getPreviewFromRichText } from '../../utils/textUtils';
 import { useTheme } from '../../context/ThemeContext';
 
 interface Props {
-    onSend: (text: string, imageUri?: string, audioUri?: string) => void;
+    onSend: (text: string, attachment?: { uri: string, type: 'image' | 'video' | 'audio' | 'file' }) => void;
+    onTyping?: () => void; // 🆕 Added
 }
 
-export const ChatInput = ({ onSend }: Props) => {
+export const ChatInput = ({ onSend, onTyping }: Props) => {
     const [message, setMessage] = useState('');
-    const [selectedImage, setSelectedImage] = useState<string | null>(null);
-    
-    // Recording State
+    const [selectedMedia, setSelectedMedia] = useState<{ uri: string, type: 'image' | 'video' | 'file' } | null>(null);
+
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [isRecording, setIsRecording] = useState(false);
-    const [recordingDuration, setRecordingDuration] = useState(0);
+    const [showAttachmentModal, setShowAttachmentModal] = useState(false);
 
     const { replyingTo, setReplyingTo } = useChatStore();
     const { currentTheme } = useTheme();
-    const colors = currentTheme.colors;
+    const colors = currentTheme;
 
     useEffect(() => {
-        // Cleanup recording on unmount
         return () => {
-            if (recording) {
-                recording.stopAndUnloadAsync();
-            }
+            if (recording) recording.stopAndUnloadAsync();
         };
     }, []);
 
-    // --- AUDIO LOGIC ---
     const startRecording = async () => {
         try {
             const permission = await Audio.requestPermissionsAsync();
@@ -48,8 +47,6 @@ export const ChatInput = ({ onSend }: Props) => {
                 );
                 setRecording(recording);
                 setIsRecording(true);
-            } else {
-                Alert.alert("Permiso denegado", "Se requiere permiso para usar el micrófono.");
             }
         } catch (err) {
             console.error('Failed to start recording', err);
@@ -59,97 +56,181 @@ export const ChatInput = ({ onSend }: Props) => {
     const stopRecording = async () => {
         setIsRecording(false);
         if (!recording) return;
-        
+
         await recording.stopAndUnloadAsync();
-        const uri = recording.getURI(); 
+        const uri = recording.getURI();
         setRecording(null);
-        
+
         if (uri) {
-            // Send immediately (Whatsapp style)
-            onSend('', undefined, uri); 
+            onSend('', { uri, type: 'audio' });
         }
     };
 
-    const pickImage = async () => {
+    const pickMedia = async () => {
+        setShowAttachmentModal(false);
         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ImagePicker.MediaTypeOptions.All,
             quality: 0.5,
+            videoMaxDuration: 60,
         });
-        if (!result.canceled) setSelectedImage(result.assets[0].uri);
+
+        if (!result.canceled) {
+            const asset = result.assets[0];
+            setSelectedMedia({
+                uri: asset.uri,
+                type: asset.type === 'video' ? 'video' : 'image'
+            });
+        }
+    };
+
+    const pickFile = async () => {
+        setShowAttachmentModal(false);
+        const result = await DocumentPicker.getDocumentAsync({
+            type: '*/*',
+            copyToCacheDirectory: true
+        });
+
+        if (!result.canceled) {
+            setSelectedMedia({
+                uri: result.assets[0].uri,
+                type: 'file'
+            });
+        }
     };
 
     const onSubmit = () => {
-        if (message.trim().length > 0 || selectedImage) {
-            onSend(message, selectedImage || undefined, undefined);
+        const textToSend = message.trim();
+
+        if (textToSend.length > 0 || selectedMedia) {
+            onSend(textToSend, selectedMedia || undefined);
+
             setMessage('');
-            setSelectedImage(null);
+            setSelectedMedia(null);
             if (replyingTo) setReplyingTo(null);
         }
     };
 
+    const handleTextChange = (text: string) => {
+        setMessage(text);
+        if (onTyping) onTyping();
+    };
+
+    const getPreviewIcon = () => {
+        if (!selectedMedia) return "help";
+        switch (selectedMedia.type) {
+            case 'video': return "videocam";
+            case 'image': return "image";
+            case 'file': return "document-attach";
+            default: return "attach";
+        }
+    };
+
+    const renderAttachmentModal = () => (
+        <Modal visible={showAttachmentModal} transparent animationType="fade" onRequestClose={() => setShowAttachmentModal(false)}>
+            <View style={styles.modalOverlay}>
+                <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
+                    <Text style={[styles.modalTitle, { color: colors.textColor }]}>Adjuntar Contenido</Text>
+
+                    <TouchableOpacity style={styles.modalOption} onPress={pickMedia}>
+                        <Ionicons name="images-outline" size={24} color={colors.primaryColor} />
+                        <Text style={[styles.modalOptionText, { color: colors.textColor }]}>Imagen o Video</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.modalOption} onPress={pickFile}>
+                        <Ionicons name="document-attach-outline" size={24} color={colors.primaryColor} />
+                        <Text style={[styles.modalOptionText, { color: colors.textColor }]}>Archivo (PDF/DOC/ZIP)</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.modalCancel, { borderColor: colors.borderColor }]} onPress={() => setShowAttachmentModal(false)}>
+                        <Text style={[styles.modalCancelText, { color: colors.secondaryTextColor }]}>Cancelar</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+
     return (
         <View>
-            {/* Reply Bar & Image Preview (Existing code...) */}
+            {renderAttachmentModal()}
+
             {replyingTo && (
-                <View style={[styles.replyBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-                    <View style={[styles.replyBarLine, { backgroundColor: colors.primary }]} />
+                <View style={[styles.replyBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}>
+                    <View style={[styles.replyBarLine, { backgroundColor: colors.primaryColor }]} />
                     <View style={{ flex: 1 }}>
-                        <Text style={[styles.replyBarName, { color: colors.primary }]}>Respondiendo a {replyingTo.author.name.split(' ')[0]}</Text>
-                        <Text numberOfLines={1} style={[styles.replyBarText, { color: colors.textSecondary }]}>{getPreviewFromRichText(replyingTo.content)}</Text>
+                        <Text style={[styles.replyBarName, { color: colors.primaryColor }]}>
+                            Respondiendo a {replyingTo.author?.name?.split(' ')[0] || 'Usuario'}
+                        </Text>
+                        <Text numberOfLines={1} style={[styles.replyBarText, { color: colors.secondaryTextColor }]}>
+                            {getPreviewFromRichText(replyingTo.content)}
+                        </Text>
                     </View>
-                    <TouchableOpacity onPress={() => setReplyingTo(null)}><Ionicons name="close-circle" size={24} color={colors.text} /></TouchableOpacity>
-                </View>
-            )}
-            {selectedImage && (
-                <View style={[styles.imagePreviewBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-                    <Image source={{ uri: selectedImage }} style={styles.previewThumb} />
-                    <TouchableOpacity onPress={() => setSelectedImage(null)} style={styles.removeImageBtn}><Ionicons name="close-circle" size={24} color={colors.text} /></TouchableOpacity>
+                    <TouchableOpacity onPress={() => setReplyingTo(null)}>
+                        <Ionicons name="close-circle" size={24} color={colors.textColor} />
+                    </TouchableOpacity>
                 </View>
             )}
 
-            {/* Input Area */}
-            <View style={[styles.container, { backgroundColor: colors.primary }]}>
+            {selectedMedia && (
+                <View style={[styles.imagePreviewBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons
+                            name={getPreviewIcon()}
+                            size={24}
+                            color={colors.textColor}
+                            style={{ marginRight: 10 }}
+                        />
+                        <Text style={{ color: colors.textColor, maxWidth: 200 }} numberOfLines={1}>
+                            {selectedMedia.type === 'video' ? 'Video seleccionado' : 'Archivo adjunto'}
+                        </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setSelectedMedia(null)} style={styles.removeImageBtn}>
+                        <Ionicons name="close-circle" size={24} color={colors.textColor} />
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            <View style={[styles.container, { backgroundColor: colors.primaryColor }]}>
                 <View style={styles.itemInput}>
-                    {/* Hide attachment button while recording */}
                     {!isRecording && (
-                        <TouchableOpacity onPress={pickImage} style={styles.attachBtn}>
-                            <Ionicons name="add-circle-outline" size={32} color={colors.buttonText} />
+                        <TouchableOpacity onPress={() => setShowAttachmentModal(true)} style={styles.attachBtn}>
+                            <Ionicons name="add-circle-outline" size={32} color={colors.buttonTextColor} />
                         </TouchableOpacity>
                     )}
-                    
+
                     {isRecording ? (
-                        <View style={[styles.recordingContainer, { backgroundColor: colors.card }]}>
-                            <Text style={{color: 'red', fontWeight: 'bold'}}>Grabando audio...</Text>
+                        <View style={[styles.recordingContainer, { backgroundColor: colors.cardColor }]}>
+                            <Text style={{ color: 'red', fontWeight: 'bold' }}>Grabando audio...</Text>
                         </View>
                     ) : (
-                        <TextInput 
-                            style={[styles.input, { 
+                        <TextInput
+                            style={[styles.input, {
                                 backgroundColor: currentTheme.isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.2)',
-                                color: colors.buttonText 
+                                color: colors.buttonTextColor
                             }]}
                             placeholder="Mensaje..."
                             placeholderTextColor="rgba(255,255,255,0.6)"
                             multiline
+                            numberOfLines={1}
+                            textAlignVertical="top"
                             value={message}
-                            onChangeText={setMessage}
+                            onChangeText={handleTextChange}
                         />
                     )}
 
-                    {/* Mic vs Send Button Logic */}
-                    {message.trim().length > 0 || selectedImage ? (
+                    {message.trim().length > 0 || selectedMedia ? (
                         <TouchableOpacity style={styles.iconSend} onPress={onSubmit}>
-                            <Ionicons name="send" color={colors.buttonText} size={28} />
+                            <Ionicons name="send" color={colors.buttonTextColor} size={24} />
                         </TouchableOpacity>
                     ) : (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             style={styles.iconSend}
-                            onPressIn={startRecording} // Hold to Record
-                            onPressOut={stopRecording} // Release to Send
+                            onPressIn={startRecording}
+                            onPressOut={stopRecording}
                         >
-                            <Ionicons 
-                                name={isRecording ? "mic" : "mic-outline"} 
-                                color={isRecording ? "red" : colors.buttonText} 
-                                size={28} 
+                            <Ionicons
+                                name={isRecording ? "mic" : "mic-outline"}
+                                color={isRecording ? "red" : colors.buttonTextColor}
+                                size={24}
                             />
                         </TouchableOpacity>
                     )}
@@ -162,16 +243,25 @@ export const ChatInput = ({ onSend }: Props) => {
 const styles = StyleSheet.create({
     container: { width: '100%', paddingBottom: Platform.OS === "ios" ? 20 : 10, paddingHorizontal: 10, paddingVertical: 10 },
     itemInput: { flexDirection: 'row', alignItems: 'flex-end' },
-    input: { flex: 1, fontSize: 16, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 25, maxHeight: 100, marginLeft: 5 },
-    attachBtn: { marginVertical: 'auto', paddingLeft: 5 },
-    iconSend: { marginLeft: 10, marginVertical: 'auto' },
+    input: {
+        flex: 1, fontSize: 16,
+        paddingTop: 10, paddingBottom: 10, paddingHorizontal: 15,
+        borderRadius: 25, maxHeight: 100, marginLeft: 5, minHeight: 40
+    },
+    attachBtn: { marginVertical: 'auto', paddingHorizontal: 3 },
+    iconSend: { marginLeft: 10, marginVertical: 'auto', padding: 5 },
     recordingContainer: { flex: 1, height: 40, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginLeft: 5 },
-    // ... existing preview styles
     replyBar: { flexDirection: 'row', alignItems: 'center', padding: 10, borderTopWidth: 1 },
     replyBarLine: { width: 4, height: '100%', marginRight: 10, borderRadius: 2 },
     replyBarName: { fontWeight: 'bold', fontSize: 12, marginBottom: 2 },
     replyBarText: { fontSize: 12 },
-    imagePreviewBar: { padding: 10, flexDirection: 'row', alignItems: 'center', borderTopWidth: 1 },
-    previewThumb: { width: 60, height: 60, borderRadius: 8 },
-    removeImageBtn: { marginLeft: 10 }
+    imagePreviewBar: { padding: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1 },
+    removeImageBtn: { marginLeft: 10 },
+    modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+    modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%' },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+    modalOption: { flexDirection: 'row', paddingVertical: 15, alignItems: 'center' },
+    modalOptionText: { marginLeft: 15, fontSize: 16 },
+    modalCancel: { paddingVertical: 15, alignItems: 'center', borderTopWidth: 1, marginTop: 10 },
+    modalCancelText: { fontWeight: '600' }
 });

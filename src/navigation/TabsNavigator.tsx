@@ -1,8 +1,7 @@
 import React from 'react';
-import { View, Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../context/ThemeContext'; // 1. Import Hook
+import { useTheme } from '../context/ThemeContext';
 
 // Navigators & Screens
 import { HomeNavigator } from './HomeNavigator';
@@ -17,7 +16,7 @@ const Tab = createBottomTabNavigator();
 export const TabsNavigator = () => {
     // Get Current Theme Colors
     const { currentTheme } = useTheme();
-    const colors = currentTheme.colors;
+    const colors = currentTheme;
 
     return (
         <Tab.Navigator
@@ -25,21 +24,22 @@ export const TabsNavigator = () => {
                 headerShown: false,
                 
                 // 3. Dynamic Colors
-                tabBarActiveTintColor: colors.primary,
-                tabBarInactiveTintColor: colors.textSecondary, // or 'gray' if you prefer
+                tabBarActiveTintColor: colors.primaryColor,
+                // Fallback to gray if secondary text color isn't defined
+                tabBarInactiveTintColor: colors.secondaryTextColor || '#888',
+                
                 tabBarStyle: {
-                    backgroundColor: colors.navBg, // The background of the bar itself
-                    borderTopColor: colors.border, // The thin line on top
+                    backgroundColor: colors.navColor, 
+                    borderTopColor: colors.borderColor || 'transparent', 
                     borderTopWidth: 1,
                     elevation: 0,
-                    height: 70,
+                    height: 80, 
                     paddingTop: 5,
-                    paddingBottom: 8
+                    paddingBottom: 20
                 },
                 tabBarLabelStyle: {
                     fontSize: 12,
                     marginBottom: 5,
-                    // You can also set dynamic font weight here if needed
                 },
                 
                 tabBarIcon: ({ color, size, focused }) => {
