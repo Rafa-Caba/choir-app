@@ -4,7 +4,7 @@ export default {
     expo: {
         name: "Coro App",
         slug: "choir-app",
-        version: "1.0.1",
+        version: "1.0.4",
         orientation: "portrait",
         icon: "./assets/icon.png",
         userInterfaceStyle: "light",

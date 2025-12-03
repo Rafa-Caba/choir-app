@@ -9,13 +9,12 @@ const LOCAL_URL = Platform.OS === 'android'
     ? `http://10.0.2.2:${PORT}`
     : `http://${LOCAL_IP}:${PORT}`;
 
-// Switch to PROD_URL when building for release
 const BASE_URL = `${__DEV__ ? LOCAL_URL : PROD_URL}/api`;
 console.log({ BASE_URL });
 
 
 const choirApi = axios.create({
-    baseURL: BASE_URL,
+    baseURL: "https://ero-cras-webapp-api-production.up.railway.app/api",
 });
 
 // --- REQUEST INTERCEPTOR ---

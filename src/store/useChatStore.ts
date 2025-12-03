@@ -5,15 +5,17 @@ import { io, Socket } from 'socket.io-client';
 import { getChatHistory, sendTextMessage, uploadChatMedia, toggleReaction } from '../services/chat';
 import type { ChatMessage } from '../types/chat';
 import { useAuthStore } from './useAuthStore';
-import { Platform } from 'react-native';
 import choirApi from '../api/choirApi';
 import ENV from '../config/env';
+import { Platform } from 'react-native';
 
-const { LOCAL_IP, PORT, PROD_URL } = ENV;
+const { LOCAL_IP, PORT, PROD_URL: PROD_URL_ENV } = ENV;
 
 const LOCAL_URL = Platform.OS === 'android'
     ? `http://10.0.2.2:${PORT}`
     : `http://${LOCAL_IP}:${PORT}`;
+
+const PROD_URL = PROD_URL_ENV || "https://ero-cras-webapp-api-production.up.railway.app";
 
 const SOCKET_URL = __DEV__ ? LOCAL_URL : PROD_URL;
 
@@ -22,6 +24,7 @@ interface ConnectedUser {
     name: string;
     username: string;
     imageUrl?: string;
+    _id?: string;
 }
 
 interface ChatState {
@@ -39,7 +42,6 @@ interface ChatState {
     disconnect: () => void;
     sendMessage: (textInput: string, attachment?: { uri: string, type: 'image' | 'video' | 'audio' | 'file' }) => Promise<void>;
     sendTyping: (isTyping: boolean) => void;
-
     reactToMessage: (messageId: string, emoji: string) => Promise<void>;
 
     loadHistory: () => Promise<void>;
@@ -77,7 +79,9 @@ export const useChatStore = create<ChatState>()(
                 try {
                     const { data } = await choirApi.get('/users/directory');
                     set({ allUsers: data });
-                } catch (e) { console.error("Directory fetch failed", e); }
+                } catch (e) {
+                    console.error("Directory fetch failed", e);
+                }
             },
 
             connect: () => {
@@ -92,10 +96,11 @@ export const useChatStore = create<ChatState>()(
                     auth: { token, user },
                     transports: ['websocket'],
                     reconnection: true,
+                    forceNew: true
                 });
 
                 socket.on('connect', () => {
-                    console.log("✅ Socket Connected");
+                    console.log("✅ Socket Connected ID:", socket.id);
                     set({ connected: true });
                 });
 
@@ -107,6 +112,7 @@ export const useChatStore = create<ChatState>()(
                 socket.on('new-message', (newMessage: ChatMessage) => {
                     set((current) => {
                         if (current.messages.some(m => m.id === newMessage.id)) return current;
+
                         return { messages: [...current.messages, newMessage] };
                     });
                 });
@@ -138,7 +144,8 @@ export const useChatStore = create<ChatState>()(
             },
 
             disconnect: () => {
-                get().socket?.disconnect();
+                const { socket } = get();
+                if (socket) socket.disconnect();
                 set({ connected: false, socket: null, onlineUsers: [] });
             },
 
@@ -177,27 +184,26 @@ export const useChatStore = create<ChatState>()(
                                     user: { id: user.id, username: user.username, name: user.name } as any
                                 });
                             }
-
                             return { ...m, reactions: newReactions };
                         }
                         return m;
                     })
                 }));
 
-                // 2. Server Call
                 try {
                     await toggleReaction(messageId, emoji);
                 } catch (e) {
                     console.error("Reaction failed", e);
-                    // 3. Rollback on Error
                     set({ messages: previousMessages });
-                    alert("Failed to react. Please try again.");
                 }
             },
 
             sendMessage: async (textInput, attachment) => {
                 const { replyingTo, socket } = get();
-                if (!socket) { alert("No connection."); return; }
+
+                if (!socket?.connected) {
+                    console.warn("Socket not connected. Attempting HTTP fallback...");
+                }
 
                 try {
                     get().sendTyping(false);
@@ -215,20 +221,20 @@ export const useChatStore = create<ChatState>()(
                     }
 
                     const payload: any = {
-                        content: {
-                            type: 'doc',
-                            content: textInput ? [{ type: 'paragraph', content: [{ type: 'text', text: textInput }] }] : []
-                        },
+                        content: textInput,
                         type: messageType,
                         ...(uploadedUrl ? { fileUrl: uploadedUrl } : {}),
                         replyToId: replyingTo?.id
                     };
 
-                    if (!attachment && textInput) {
+                    if (attachment || textInput.trim().length > 0) {
                         await sendTextMessage(payload.content);
                     }
+
                     set({ replyingTo: null });
-                } catch (err) { console.error("Send Error:", err); }
+                } catch (err) {
+                    console.error("Send Error:", err);
+                }
             }
         }),
         {
