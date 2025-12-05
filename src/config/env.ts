@@ -1,11 +1,14 @@
-import Constants from 'expo-constants';
+// config/env.ts
+
+// Single source of truth for the API host
+const API_HOST = 'https://ero-cras-webapp-api-production.up.railway.app';
 
 const ENV = {
-    LOCAL_IP: Constants.expoConfig?.extra?.localIp || 'localhost',
-    PORT: Constants.expoConfig?.extra?.port || '10000',
-    PROD_URL: Constants.expoConfig?.extra?.prodUrl || '',
+    API_HOST,
+    API_BASE_URL: `${API_HOST}/api`,
+    SOCKET_URL: API_HOST,
 };
 
-console.log("🔧 Environment Loaded:", ENV);
+console.log('🔧 Environment Loaded:', ENV);
 
 export default ENV;

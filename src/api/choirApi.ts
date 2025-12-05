@@ -3,19 +3,12 @@ import { Platform } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import ENV from '../config/env';
 
-const { LOCAL_IP, PORT, PROD_URL } = ENV;
-
-const LOCAL_URL = Platform.OS === 'android'
-    ? `http://10.0.2.2:${PORT}`
-    : `http://${LOCAL_IP}:${PORT}`;
-
-const BASE_URL = `${__DEV__ ? LOCAL_URL : PROD_URL}/api`;
-console.log({ BASE_URL });
-
-
 const choirApi = axios.create({
-    baseURL: "https://ero-cras-webapp-api-production.up.railway.app/api",
+    baseURL: ENV.API_BASE_URL,
+    withCredentials: false,
 });
+
+console.log('🎯 choirApi baseURL:', ENV.API_BASE_URL);
 
 // --- REQUEST INTERCEPTOR ---
 choirApi.interceptors.request.use(
@@ -46,7 +39,7 @@ choirApi.interceptors.response.use(
                 if (!refreshToken) throw new Error("No refresh token");
 
                 // 1. Request new token
-                const response = await axios.post(`${BASE_URL}/auth/refresh`, {
+                const response = await axios.post(`${ENV.API_BASE_URL}/auth/refresh`, {
                     token: refreshToken
                 });
 

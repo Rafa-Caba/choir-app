@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { io } from 'socket.io-client';
-import type { Socket } from 'socket.io-client';
+import { io, type Socket } from 'socket.io-client';
 import { Platform } from 'react-native';
 
 import { getChatHistory, sendTextMessage, uploadChatMedia, toggleReaction } from '../services/chat';
@@ -11,16 +10,9 @@ import { useAuthStore } from './useAuthStore';
 import choirApi from '../api/choirApi';
 import ENV from '../config/env';
 
-const { LOCAL_IP, PORT, PROD_URL: PROD_URL_ENV } = ENV;
+const SOCKET_URL = ENV.SOCKET_URL;
 
-const LOCAL_URL = Platform.OS === 'android'
-    ? `http://10.0.2.2:${PORT}`
-    : `http://${LOCAL_IP}:${PORT}`;
-
-const PROD_URL = PROD_URL_ENV || 'https://ero-cras-webapp-api-production.up.railway.app';
-
-// In prod APK, __DEV__ is false → SOCKET_URL will be PROD_URL
-const SOCKET_URL = __DEV__ ? LOCAL_URL : PROD_URL;
+console.log('🔌 Socket URL:', SOCKET_URL);
 
 interface ConnectedUser {
     id: string;
@@ -94,27 +86,15 @@ export const useChatStore = create<ChatState>()(
                 const { token, user } = useAuthStore.getState();
                 const state = get();
 
-                if (!token) {
-                    console.log('🔌 Chat: No token, skipping socket connection');
-                    return;
-                }
+                if (!token || (state.socket && state.socket.connected)) return;
 
-                if (state.socket && state.socket.connected) {
-                    console.log('🔌 Chat: Socket already connected, skipping');
-                    return;
-                }
-
-                console.log('🔌 Chat: Connecting to', SOCKET_URL, '(__DEV__ =', __DEV__, ')');
+                console.log('🔌 Chat: Connecting to', SOCKET_URL);
 
                 const socket = io(SOCKET_URL, {
-                    path: '/socket.io',
                     auth: { token, user },
-                    transports: ['polling', 'websocket'],
+                    transports: ['websocket'],
                     reconnection: true,
-                    reconnectionAttempts: Infinity,
-                    reconnectionDelay: 1000,
-                    reconnectionDelayMax: 5000,
-                    forceNew: true
+                    forceNew: true,
                 });
 
                 socket.on('connect', () => {
@@ -122,50 +102,40 @@ export const useChatStore = create<ChatState>()(
                     set({ connected: true });
                 });
 
-                socket.on('connect_error', (err: any) => {
-                    console.log(
-                        '❌ Socket connect_error:',
-                        err?.message,
-                        err?.description ?? '',
-                        err?.data ?? ''
-                    );
-                    set({ connected: false });
-                });
-
-                socket.on('disconnect', (reason: string) => {
-                    console.log('❌ Socket Disconnected:', reason);
+                socket.on('disconnect', () => {
+                    console.log('❌ Socket Disconnected');
                     set({ connected: false, onlineUsers: [] });
                 });
 
                 socket.on('new-message', (newMessage: ChatMessage) => {
                     set((current) => {
-                        if (current.messages.some(m => m.id === newMessage.id)) return current;
+                        if (current.messages.some((m) => m.id === newMessage.id)) return current;
                         return { messages: [...current.messages, newMessage] };
                     });
                 });
 
                 socket.on('message-updated', (updatedMessage: ChatMessage) => {
                     set((current) => ({
-                        messages: current.messages.map(m =>
+                        messages: current.messages.map((m) =>
                             m.id === updatedMessage.id ? updatedMessage : m
-                        )
+                        ),
                     }));
                 });
 
                 socket.on('online-users', (users: ConnectedUser[]) => {
                     const uniqueUsers = users.filter(
-                        (v, i, a) => a.findIndex(v2 => v2.id === v.id) === i
+                        (v, i, a) => a.findIndex((v2) => v2.id === v.id) === i
                     );
                     set({ onlineUsers: uniqueUsers });
                 });
 
-                socket.on('user-typing', ({ username, isTyping }: { username: string; isTyping: boolean }) => {
+                socket.on('user-typing', ({ username, isTyping }) => {
                     set((state) => {
                         let newTyping = [...state.typingUsers];
                         if (isTyping) {
                             if (!newTyping.includes(username)) newTyping.push(username);
                         } else {
-                            newTyping = newTyping.filter(u => u !== username);
+                            newTyping = newTyping.filter((u) => u !== username);
                         }
                         return { typingUsers: newTyping };
                     });
@@ -176,10 +146,7 @@ export const useChatStore = create<ChatState>()(
 
             disconnect: () => {
                 const { socket } = get();
-                if (socket) {
-                    console.log('🔌 Chat: Manual disconnect');
-                    socket.disconnect();
-                }
+                if (socket) socket.disconnect();
                 set({ connected: false, socket: null, onlineUsers: [] });
             },
 
@@ -194,13 +161,14 @@ export const useChatStore = create<ChatState>()(
 
                 const previousMessages = get().messages;
 
-                set(state => ({
-                    messages: state.messages.map(m => {
+                set((state) => ({
+                    messages: state.messages.map((m) => {
                         if (m.id.toString() === messageId.toString()) {
                             const currentReactions = m.reactions || [];
 
-                            const userReactionIndex = currentReactions.findIndex(r => {
-                                const rUserId = (r.user as any).id || (r.user as any)._id || r.user;
+                            const userReactionIndex = currentReactions.findIndex((r) => {
+                                const rUserId =
+                                    (r.user as any).id || (r.user as any)._id || r.user;
                                 return rUserId?.toString() === user.id;
                             });
 
@@ -212,7 +180,7 @@ export const useChatStore = create<ChatState>()(
                                 } else {
                                     newReactions[userReactionIndex] = {
                                         ...newReactions[userReactionIndex],
-                                        emoji
+                                        emoji,
                                     };
                                 }
                             } else {
@@ -221,14 +189,15 @@ export const useChatStore = create<ChatState>()(
                                     user: {
                                         id: user.id,
                                         username: user.username,
-                                        name: user.name
-                                    } as any
+                                        name: user.name,
+                                    } as any,
                                 });
                             }
+
                             return { ...m, reactions: newReactions };
                         }
                         return m;
-                    })
+                    }),
                 }));
 
                 try {
@@ -248,17 +217,24 @@ export const useChatStore = create<ChatState>()(
 
                 try {
                     get().sendTyping(false);
-
                     let uploadedUrl = '';
-                    let messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' = 'TEXT';
+                    let messageType = 'TEXT';
 
                     if (attachment) {
                         uploadedUrl = await uploadChatMedia(attachment.uri, attachment.type);
                         switch (attachment.type) {
-                            case 'video': messageType = 'VIDEO'; break;
-                            case 'image': messageType = 'IMAGE'; break;
-                            case 'audio': messageType = 'AUDIO'; break;
-                            case 'file': messageType = 'FILE'; break;
+                            case 'video':
+                                messageType = 'VIDEO';
+                                break;
+                            case 'image':
+                                messageType = 'IMAGE';
+                                break;
+                            case 'audio':
+                                messageType = 'AUDIO';
+                                break;
+                            case 'file':
+                                messageType = 'FILE';
+                                break;
                         }
                     }
 
@@ -266,7 +242,7 @@ export const useChatStore = create<ChatState>()(
                         content: textInput,
                         type: messageType,
                         ...(uploadedUrl ? { fileUrl: uploadedUrl } : {}),
-                        replyToId: replyingTo?.id
+                        replyToId: replyingTo?.id,
                     };
 
                     if (attachment || textInput.trim().length > 0) {
@@ -277,7 +253,7 @@ export const useChatStore = create<ChatState>()(
                 } catch (err) {
                     console.error('Send Error:', err);
                 }
-            }
+            },
         }),
         {
             name: 'chat-storage',

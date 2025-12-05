@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -9,7 +9,8 @@ export const SettingsScreen = ({ navigation }: any) => {
     const { user, logout } = useAuthStore();
     const insets = useSafeAreaInsets();
     const { currentTheme } = useTheme();
-    const middleScreens = innerWidth > 400;
+    const { width } = useWindowDimensions();
+    const middleScreens = width > 400;
     const colors = currentTheme;
 
     const Item = ({ icon, text, target, action, destructive }: any) => (

@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
@@ -17,7 +17,8 @@ import { updatePushToken } from './src/services/auth';
 
 import { AppNavigator } from './src/navigation/AppNavigator';
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {
+});
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -30,7 +31,6 @@ Notifications.setNotificationHandler({
 async function registerForPushNotificationsAsync() {
   if (Platform.OS === 'web') return null;
 
-  let token;
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
@@ -41,16 +41,23 @@ async function registerForPushNotificationsAsync() {
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
+      console.log('Push permissions not granted, skipping token registration.');
       return null;
     }
 
-    token = (await Notifications.getExpoPushTokenAsync()).data;
-  } catch (e) {
-    console.error("Error getting push token:", e);
-  }
+    const token = (await Notifications.getExpoPushTokenAsync()).data;
+    return token;
+  } catch (e: any) {
+    if (e?.code === 'E_REGISTRATION_FAILED') {
+      console.log(
+        '🔕 Push registration failed (FCM not configured for native build). Skipping token.'
+      );
+      return null;
+    }
 
-  return token;
+    console.error('Error getting push token:', e);
+    return null;
+  }
 }
 
 const AppContent = ({ onReady }: { onReady: () => void }) => {
@@ -64,31 +71,32 @@ const AppContent = ({ onReady }: { onReady: () => void }) => {
       try {
         await Promise.all([
           checkAuth(),
-          fetchAppConfig()
+          fetchAppConfig(),
         ]);
       } catch (e) {
-        console.warn(e);
+        console.warn('App init error:', e);
       } finally {
         onReady();
       }
     }
+
     prepare();
-  }, []);
+  }, [checkAuth, fetchAppConfig, onReady]);
 
   useEffect(() => {
     if (user) {
       connect();
 
-      registerForPushNotificationsAsync().then(token => {
+      registerForPushNotificationsAsync().then((token) => {
         if (token) {
-          console.log("🔔 Push Token:", token);
+          console.log('🔔 Push Token:', token);
           updatePushToken(token);
         }
       });
     } else {
       disconnect();
     }
-  }, [user]);
+  }, [user, connect, disconnect]);
 
   return (
     <NavigationContainer>
@@ -102,15 +110,23 @@ export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
 
   const [fontsLoaded] = useFonts({
-    'MyCustomFont': require('./assets/fonts/Pacifico-Regular.ttf'),
-    'MyRoboFont': require('./assets/fonts/Roboto-VariableFont_wdth,wght.ttf'),
-    'MyRoboItalicFont': require('./assets/fonts/Roboto-Italic-VariableFont_wdth,wght.ttf'),
+    MyCustomFont: require('./assets/fonts/Pacifico-Regular.ttf'),
+    MyRoboFont: require('./assets/fonts/Roboto-VariableFont_wdth,wght.ttf'),
+    MyRoboItalicFont: require('./assets/fonts/Roboto-Italic-VariableFont_wdth,wght.ttf'),
   });
 
-  const onLayoutRootView = useCallback(async () => {
-    if (appIsReady && fontsLoaded) {
-      await SplashScreen.hideAsync();
+  useEffect(() => {
+    async function hideSplashIfReady() {
+      if (appIsReady && fontsLoaded) {
+        try {
+          await SplashScreen.hideAsync();
+        } catch (e) {
+          console.warn('Error hiding splash screen:', e);
+        }
+      }
     }
+
+    hideSplashIfReady();
   }, [appIsReady, fontsLoaded]);
 
   if (!fontsLoaded) {
@@ -120,7 +136,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <View style={styles.container} onLayout={onLayoutRootView}>
+        <View style={styles.container}>
           <AppContent onReady={() => setAppIsReady(true)} />
         </View>
       </ThemeProvider>
