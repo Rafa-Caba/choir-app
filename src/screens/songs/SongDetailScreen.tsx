@@ -8,6 +8,7 @@ import { useSongsStore } from '../../store/useSongsStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import { getPreviewFromRichText } from '../../utils/textUtils';
+import { RichTextViewer } from '../../components/common/RichTextViewer';
 
 export const SongDetailScreen = () => {
     const route = useRoute<any>();
@@ -109,7 +110,6 @@ export const SongDetailScreen = () => {
         </View>
     );
 
-    // If getPreviewFromRichText returns limited lines, pass a huge number here to get FULL text
     const lyrics = getPreviewFromRichText(song.content, 10000);
 
     return (
@@ -162,9 +162,10 @@ export const SongDetailScreen = () => {
                 </View>
             )}
 
-            <View style={styles.lyricsContainer}>
-                <Text style={[styles.lyrics, { color: colors.textColor }]}>{lyrics}</Text>
+            <View style={{ marginTop: 20 }}>
+                <RichTextViewer content={song.content} tight />
             </View>
+
         </ScrollView>
     );
 };

@@ -5,6 +5,7 @@ import type { Announcement } from '../types/announcement';
 import { getPreviewFromRichText } from '../utils/textUtils';
 import { useTheme } from '../context/ThemeContext';
 import { MediaViewerModal } from './shared/MediaViewerModal';
+import { RichTextViewer } from './common/RichTextViewer';
 
 
 interface Props {
@@ -19,8 +20,7 @@ export const AnnouncementCard = ({ announcement, onPress, onDelete }: Props) => 
     const [showModal, setShowModal] = useState(false);
 
     const dateStr = new Date(announcement.createdAt).toLocaleDateString();
-    // Preview logic handles TipTap JSON structure
-    const preview = getPreviewFromRichText(announcement.content, 150);
+    // const preview = getPreviewFromRichText(announcement.content, 150);
 
     return (
         <View style={[styles.container, { backgroundColor: colors.cardColor }]}>
@@ -49,9 +49,9 @@ export const AnnouncementCard = ({ announcement, onPress, onDelete }: Props) => 
                     </Text>
                 </View>
 
-                <Text style={[styles.body, { color: colors.textColor }]}>
-                    {preview}
-                </Text>
+                <View style={{ marginTop: 20 }}>
+                    <RichTextViewer content={announcement.content} tight />
+                </View>
 
                 {/* Admin Actions */}
                 {(onPress || onDelete) && (

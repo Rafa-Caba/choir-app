@@ -5,6 +5,7 @@ import { getPreviewFromRichText } from '../../utils/textUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { MediaViewerModal } from '../shared/MediaViewerModal';
+import { RichTextViewer } from '../common/RichTextViewer';
 
 interface Props {
     post: BlogPost;
@@ -61,9 +62,9 @@ export const BlogCard = ({ post, onPress, onEdit, onDelete }: Props) => {
                     </Text>
                 </View>
 
-                <Text style={[styles.preview, { color: colors.secondaryTextColor }]}>
-                    {preview}
-                </Text>
+                <View style={{ marginTop: 20 }}>
+                    <RichTextViewer content={post.content} tight />
+                </View>
             </TouchableOpacity>
 
             {/* Footer */}

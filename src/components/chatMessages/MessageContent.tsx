@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ChatMessage } from '../../types/chat';
 import { getPreviewFromRichText } from '../../utils/textUtils';
 import { MediaViewerModal } from '../shared/MediaViewerModal';
+import { RichTextViewer } from '../common/RichTextViewer';
 
 interface MessageContentProps {
     message: ChatMessage;
@@ -116,7 +117,11 @@ export const MessageContent = ({ message, isMe, colors, textColor, timeColor }: 
                         </View>
                     )}
                 </TouchableOpacity>
-                {shouldRenderText && <Text style={[styles.mensajeText, { color: textColor, marginTop: 5 }]}>{textContent}</Text>}
+                {shouldRenderText &&
+                    <View style={{ marginTop: 20 }}>
+                        <RichTextViewer content={message.content} tight />
+                    </View>
+                }
             </View>
         );
     }

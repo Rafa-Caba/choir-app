@@ -1,13 +1,15 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
+import { Platform } from 'react-native';
+
 import { getChatHistory, sendTextMessage, uploadChatMedia, toggleReaction } from '../services/chat';
 import type { ChatMessage } from '../types/chat';
 import { useAuthStore } from './useAuthStore';
 import choirApi from '../api/choirApi';
 import ENV from '../config/env';
-import { Platform } from 'react-native';
 
 const { LOCAL_IP, PORT, PROD_URL: PROD_URL_ENV } = ENV;
 
@@ -15,8 +17,9 @@ const LOCAL_URL = Platform.OS === 'android'
     ? `http://10.0.2.2:${PORT}`
     : `http://${LOCAL_IP}:${PORT}`;
 
-const PROD_URL = PROD_URL_ENV || "https://ero-cras-webapp-api-production.up.railway.app";
+const PROD_URL = PROD_URL_ENV || 'https://ero-cras-webapp-api-production.up.railway.app';
 
+// In prod APK, __DEV__ is false → SOCKET_URL will be PROD_URL
 const SOCKET_URL = __DEV__ ? LOCAL_URL : PROD_URL;
 
 interface ConnectedUser {
@@ -40,7 +43,10 @@ interface ChatState {
 
     connect: () => void;
     disconnect: () => void;
-    sendMessage: (textInput: string, attachment?: { uri: string, type: 'image' | 'video' | 'audio' | 'file' }) => Promise<void>;
+    sendMessage: (
+        textInput: string,
+        attachment?: { uri: string; type: 'image' | 'video' | 'audio' | 'file' }
+    ) => Promise<void>;
     sendTyping: (isTyping: boolean) => void;
     reactToMessage: (messageId: string, emoji: string) => Promise<void>;
 
@@ -69,7 +75,7 @@ export const useChatStore = create<ChatState>()(
                     const history = await getChatHistory();
                     set({ messages: history });
                 } catch (error) {
-                    console.log("Offline: Loading cached chat history");
+                    console.log('Offline: Loading cached chat history');
                 } finally {
                     set({ loading: false });
                 }
@@ -80,7 +86,7 @@ export const useChatStore = create<ChatState>()(
                     const { data } = await choirApi.get('/users/directory');
                     set({ allUsers: data });
                 } catch (e) {
-                    console.error("Directory fetch failed", e);
+                    console.error('Directory fetch failed', e);
                 }
             },
 
@@ -88,47 +94,72 @@ export const useChatStore = create<ChatState>()(
                 const { token, user } = useAuthStore.getState();
                 const state = get();
 
-                if (!token || (state.socket && state.socket.connected)) return;
+                if (!token) {
+                    console.log('🔌 Chat: No token, skipping socket connection');
+                    return;
+                }
 
-                console.log("🔌 Chat: Connecting to", SOCKET_URL);
+                if (state.socket && state.socket.connected) {
+                    console.log('🔌 Chat: Socket already connected, skipping');
+                    return;
+                }
+
+                console.log('🔌 Chat: Connecting to', SOCKET_URL, '(__DEV__ =', __DEV__, ')');
 
                 const socket = io(SOCKET_URL, {
+                    path: '/socket.io',
                     auth: { token, user },
-                    transports: ['websocket'],
+                    transports: ['polling', 'websocket'],
                     reconnection: true,
+                    reconnectionAttempts: Infinity,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
                     forceNew: true
                 });
 
                 socket.on('connect', () => {
-                    console.log("✅ Socket Connected ID:", socket.id);
+                    console.log('✅ Socket Connected ID:', socket.id);
                     set({ connected: true });
                 });
 
-                socket.on('disconnect', () => {
-                    console.log("❌ Socket Disconnected");
+                socket.on('connect_error', (err: any) => {
+                    console.log(
+                        '❌ Socket connect_error:',
+                        err?.message,
+                        err?.description ?? '',
+                        err?.data ?? ''
+                    );
+                    set({ connected: false });
+                });
+
+                socket.on('disconnect', (reason: string) => {
+                    console.log('❌ Socket Disconnected:', reason);
                     set({ connected: false, onlineUsers: [] });
                 });
 
                 socket.on('new-message', (newMessage: ChatMessage) => {
                     set((current) => {
                         if (current.messages.some(m => m.id === newMessage.id)) return current;
-
                         return { messages: [...current.messages, newMessage] };
                     });
                 });
 
                 socket.on('message-updated', (updatedMessage: ChatMessage) => {
                     set((current) => ({
-                        messages: current.messages.map(m => m.id === updatedMessage.id ? updatedMessage : m)
+                        messages: current.messages.map(m =>
+                            m.id === updatedMessage.id ? updatedMessage : m
+                        )
                     }));
                 });
 
                 socket.on('online-users', (users: ConnectedUser[]) => {
-                    const uniqueUsers = users.filter((v, i, a) => a.findIndex(v2 => v2.id === v.id) === i);
+                    const uniqueUsers = users.filter(
+                        (v, i, a) => a.findIndex(v2 => v2.id === v.id) === i
+                    );
                     set({ onlineUsers: uniqueUsers });
                 });
 
-                socket.on('user-typing', ({ username, isTyping }) => {
+                socket.on('user-typing', ({ username, isTyping }: { username: string; isTyping: boolean }) => {
                     set((state) => {
                         let newTyping = [...state.typingUsers];
                         if (isTyping) {
@@ -145,7 +176,10 @@ export const useChatStore = create<ChatState>()(
 
             disconnect: () => {
                 const { socket } = get();
-                if (socket) socket.disconnect();
+                if (socket) {
+                    console.log('🔌 Chat: Manual disconnect');
+                    socket.disconnect();
+                }
                 set({ connected: false, socket: null, onlineUsers: [] });
             },
 
@@ -176,12 +210,19 @@ export const useChatStore = create<ChatState>()(
                                 if (currentReactions[userReactionIndex].emoji === emoji) {
                                     newReactions.splice(userReactionIndex, 1);
                                 } else {
-                                    newReactions[userReactionIndex] = { ...newReactions[userReactionIndex], emoji };
+                                    newReactions[userReactionIndex] = {
+                                        ...newReactions[userReactionIndex],
+                                        emoji
+                                    };
                                 }
                             } else {
                                 newReactions.push({
                                     emoji,
-                                    user: { id: user.id, username: user.username, name: user.name } as any
+                                    user: {
+                                        id: user.id,
+                                        username: user.username,
+                                        name: user.name
+                                    } as any
                                 });
                             }
                             return { ...m, reactions: newReactions };
@@ -193,7 +234,7 @@ export const useChatStore = create<ChatState>()(
                 try {
                     await toggleReaction(messageId, emoji);
                 } catch (e) {
-                    console.error("Reaction failed", e);
+                    console.error('Reaction failed', e);
                     set({ messages: previousMessages });
                 }
             },
@@ -202,13 +243,14 @@ export const useChatStore = create<ChatState>()(
                 const { replyingTo, socket } = get();
 
                 if (!socket?.connected) {
-                    console.warn("Socket not connected. Attempting HTTP fallback...");
+                    console.warn('Socket not connected. Attempting HTTP fallback...');
                 }
 
                 try {
                     get().sendTyping(false);
+
                     let uploadedUrl = '';
-                    let messageType = 'TEXT';
+                    let messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' = 'TEXT';
 
                     if (attachment) {
                         uploadedUrl = await uploadChatMedia(attachment.uri, attachment.type);
@@ -233,7 +275,7 @@ export const useChatStore = create<ChatState>()(
 
                     set({ replyingTo: null });
                 } catch (err) {
-                    console.error("Send Error:", err);
+                    console.error('Send Error:', err);
                 }
             }
         }),

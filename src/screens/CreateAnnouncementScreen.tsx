@@ -58,7 +58,6 @@ export const CreateAnnouncementScreen = () => {
 
         setLoading(true);
 
-        // Convert to TipTap JSON
         const richContent = {
             type: 'doc',
             content: content.split('\n').map((line: string) => ({
