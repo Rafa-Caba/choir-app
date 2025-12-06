@@ -1,6 +1,4 @@
-// config/env.ts
 
-// Single source of truth for the API host
 const API_HOST = 'https://ero-cras-webapp-api-production.up.railway.app';
 
 const ENV = {

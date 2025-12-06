@@ -72,7 +72,7 @@ export const HomeScreen = () => {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top + 10, backgroundColor: colors.backgroundColor }]}>
+        <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
 
             {/* Header */}
             <View style={styles.header}>

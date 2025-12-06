@@ -69,6 +69,9 @@ export const ChatMessageItem = ({ message }: Props) => {
         );
     };
 
+    console.log({ text: message });
+
+
     return (
         <View style={[styles.container, isMe ? styles.containerRight : styles.containerLeft]}>
 
@@ -99,7 +102,7 @@ export const ChatMessageItem = ({ message }: Props) => {
                             <Text style={[styles.quoteAuthor, { color: isMe ? 'white' : colors.primaryColor }]}>
                                 {message.replyTo.username}
                             </Text>
-                            <Text numberOfLines={1} style={[styles.quoteText, { color: isMe ? 'rgba(255,255,255,0.8)' : colors.secondaryTextColor }]}>
+                            <Text numberOfLines={2} style={[styles.quoteText, { color: isMe ? '#fff' : 'white' }]}>
                                 {message.replyTo.textPreview}
                             </Text>
                         </View>

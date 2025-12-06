@@ -13,7 +13,6 @@ import type { SongType } from '../../types/song';
 export const SongTypesScreen = () => {
     const navigation = useNavigation<any>();
 
-    // Store now includes the hierarchy methods we added
     const { songTypes, fetchData, loading, addType, editType, removeType } = useSongsStore();
     const { user } = useAuthStore();
     const { currentTheme } = useTheme();
@@ -21,35 +20,30 @@ export const SongTypesScreen = () => {
 
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'EDITOR';
 
-    // --- Hierarchy State ---
     const [currentParentId, setCurrentParentId] = useState<string | null>(null);
 
-    // --- Modal State ---
     const [modalVisible, setModalVisible] = useState(false);
     const [editingType, setEditingType] = useState<SongType | null>(null);
     const [typeName, setTypeName] = useState('');
     const [typeOrder, setTypeOrder] = useState('');
-    const [isParent, setIsParent] = useState(false); // Toggle for "Folder" type
+    const [isParent, setIsParent] = useState(false);
 
     useEffect(() => {
         fetchData();
     }, []);
 
-    // Filter list based on current level (Root vs Child)
     const displayedTypes = useMemo(() => {
         return songTypes
             .filter(t => {
                 if (currentParentId) return t.parentId === currentParentId;
-                // If at root, show items with NO parentId
                 return !t.parentId;
             })
             .sort((a, b) => (a.order || 99) - (b.order || 99));
     }, [songTypes, currentParentId]);
 
-    // Get current parent name for header display
     const parentName = currentParentId
         ? songTypes.find(t => t.id === currentParentId)?.name
-        : 'Categories';
+        : 'Categorías';
 
     const openModal = (type?: SongType) => {
         if (type) {
@@ -61,7 +55,6 @@ export const SongTypesScreen = () => {
             setEditingType(null);
             setTypeName('');
             setTypeOrder('');
-            // If inside a folder, you can't create another folder (limit nesting to 1 level for simplicity)
             setIsParent(false);
         }
         setModalVisible(true);
@@ -69,7 +62,7 @@ export const SongTypesScreen = () => {
 
     const handleSave = async () => {
         if (!typeName.trim()) {
-            Alert.alert("Error", "Name is required");
+            Alert.alert("Error", "El nombre es requerido");
             return;
         }
         const order = parseInt(typeOrder) || 99;
@@ -78,9 +71,7 @@ export const SongTypesScreen = () => {
         if (editingType) {
             success = await editType(editingType.id, typeName, order, isParent);
         } else {
-            // If we are inside a folder, the new item gets that parentId
             const newParentId = currentParentId;
-            // If we are inside a folder, the new item cannot be a parent itself
             const newIsParent = currentParentId ? false : isParent;
 
             success = await addType(typeName, order, newParentId, newIsParent);
@@ -91,14 +82,14 @@ export const SongTypesScreen = () => {
 
     const handleDelete = (item: SongType) => {
         if (Platform.OS === 'web') {
-            if (window.confirm(`Delete category "${item.name}"?`)) removeType(item.id);
+            if (window.confirm(`Eliminar Categoría "${item.name}"?`)) removeType(item.id);
         } else {
             Alert.alert(
-                "Delete Category",
+                "Eliminar Categoría",
                 `Are you sure you want to delete "${item.name}"?`,
                 [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Delete", style: "destructive", onPress: () => removeType(item.id) }
+                    { text: "Cancelar", style: "cancel" },
+                    { text: "Eliminar", style: "destructive", onPress: () => removeType(item.id) }
                 ]
             );
         }
@@ -106,10 +97,8 @@ export const SongTypesScreen = () => {
 
     const handleItemPress = (item: SongType) => {
         if (item.isParent) {
-            // Drill down into folder (e.g. "Misa")
             setCurrentParentId(item.id);
         } else {
-            // Go to songs list (e.g. "Entrada")
             navigation.navigate('SongsListScreen', { typeId: item.id, typeName: item.name });
         }
     };
@@ -117,7 +106,6 @@ export const SongTypesScreen = () => {
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
 
-            {/* Header / Breadcrumb */}
             <View style={styles.headerRow}>
                 {currentParentId && (
                     <TouchableOpacity onPress={() => setCurrentParentId(null)} style={{ marginRight: 10 }}>
@@ -135,7 +123,7 @@ export const SongTypesScreen = () => {
                     onPress={() => openModal()}
                 >
                     <Text style={[styles.addButtonText, { color: colors.buttonTextColor }]}>
-                        + {currentParentId ? 'Add Sub-Category' : 'Add Category'}
+                        + {currentParentId ? 'Sub-Categoría' : 'Categoría'}
                     </Text>
                 </TouchableOpacity>
             )}
@@ -175,7 +163,7 @@ export const SongTypesScreen = () => {
                 )}
                 ListEmptyComponent={
                     <Text style={{ textAlign: 'center', marginTop: 20, color: colors.secondaryTextColor }}>
-                        No categories found.
+                        No Categoría encontradas.
                     </Text>
                 }
             />
@@ -185,10 +173,10 @@ export const SongTypesScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
                         <Text style={[styles.modalTitle, { color: colors.textColor }]}>
-                            {editingType ? 'Edit Category' : 'New Category'}
+                            {editingType ? 'Editar Categoría' : 'Nueva Categoría'}
                         </Text>
 
-                        <Text style={{ color: colors.secondaryTextColor, marginBottom: 5 }}>Name:</Text>
+                        <Text style={{ color: colors.secondaryTextColor, marginBottom: 5 }}>Nombre:</Text>
                         <TextInput
                             style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor, backgroundColor: colors.backgroundColor }]}
                             value={typeName} onChangeText={setTypeName}
@@ -202,10 +190,9 @@ export const SongTypesScreen = () => {
                             placeholder="99" placeholderTextColor={colors.secondaryTextColor}
                         />
 
-                        {/* Only show "Is Parent" toggle if we are at root level and creating new */}
                         {!currentParentId && !editingType && (
                             <View style={styles.switchRow}>
-                                <Text style={{ color: colors.textColor, flex: 1 }}>Is this a Folder (e.g. Mass)?</Text>
+                                <Text style={{ color: colors.textColor, flex: 1 }}>Es esta una Carpeta (e.g. Misa)?</Text>
                                 <Switch
                                     value={isParent}
                                     onValueChange={setIsParent}
@@ -217,10 +204,10 @@ export const SongTypesScreen = () => {
 
                         <View style={styles.modalButtons}>
                             <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}>
-                                <Text style={{ color: colors.secondaryTextColor }}>Cancel</Text>
+                                <Text style={{ color: colors.secondaryTextColor }}>Cancelar</Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.buttonColor }]}>
-                                <Text style={{ color: colors.buttonTextColor, fontWeight: 'bold' }}>Save</Text>
+                                <Text style={{ color: colors.buttonTextColor, fontWeight: 'bold' }}>Guardar</Text>
                             </TouchableOpacity>
                         </View>
                     </View>

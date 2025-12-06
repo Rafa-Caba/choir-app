@@ -162,7 +162,7 @@ export const SongDetailScreen = () => {
                 </View>
             )}
 
-            <View style={{ marginTop: 20 }}>
+            <View style={{ marginTop: 20, marginBottom: 30 }}>
                 <RichTextViewer content={song.content} tight />
             </View>
 

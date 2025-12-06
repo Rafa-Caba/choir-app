@@ -63,7 +63,7 @@ export const SongsListScreen = () => {
                     }
                 >
                     <Text style={[styles.addButtonText, { color: colors.buttonTextColor }]}>
-                        + Add Song
+                        + Agregar Canto
                     </Text>
                 </TouchableOpacity>
             )}

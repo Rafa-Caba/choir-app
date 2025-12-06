@@ -12,22 +12,15 @@ export interface ChatMessage {
     id: string;
     author: User;
 
-    // TipTap JSON
-    content: {
-        type: string;
-        content?: any[];
-    };
+    content: any;
 
     type: MessageType;
-
-    // Media fields
     fileUrl?: string;
     filename?: string;
     imageUrl?: string;
     audioUrl?: string;
     imagePublicId?: string;
 
-    // Reactions
     reactions: MessageReaction[];
 
     replyTo?: ReplyPreview;

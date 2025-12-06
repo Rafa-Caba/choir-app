@@ -30,7 +30,7 @@ export const SettingsScreen = ({ navigation }: any) => {
     );
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top + 10, backgroundColor: colors.backgroundColor }]}>
+        <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
             <Text style={[styles.title, { color: colors.textColor }]}>Ajustes</Text>
 
             <View style={styles.profileSection}>
@@ -61,14 +61,14 @@ export const SettingsScreen = ({ navigation }: any) => {
                 <Item icon="log-out-outline" text="Cerrar Sesión" action={logout} destructive />
 
                 {/* 🛠️ FIX: pointerEvents="none" allows clicks to pass through to buttons underneath */}
-                <View style={[styles.bgIconContainer, { marginTop: middleScreens ? 30 : -230 }]} pointerEvents="none">
+                <View style={[styles.bgIconContainer, { marginTop: middleScreens ? -250 : -230 }]} pointerEvents="none">
                     <Ionicons
                         name="musical-notes" size={150}
                         color={currentTheme.isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}
                     />
                 </View>
 
-                <View style={[styles.footer, { marginTop: middleScreens ? 70 : 30 }]}>
+                <View style={[styles.footer, { marginTop: middleScreens ? 40 : 30 }]}>
                     <Text style={{ fontWeight: 'bold', textAlign: 'center', color: colors.textColor }}>Acerca de:</Text>
                     <Text style={{ textAlign: 'center', color: colors.secondaryTextColor }}>Rafael Cabanillas - 2025</Text>
                 </View>

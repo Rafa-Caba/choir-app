@@ -49,7 +49,7 @@ export const CreateSongScreen = () => {
     const [submitting, setSubmitting] = useState(false);
 
     useLayoutEffect(() => {
-        navigation.setOptions({ title: isEdit ? 'Edit Song' : 'New Song' });
+        navigation.setOptions({ title: isEdit ? 'Editar Canto' : 'Nuevo Canto' });
     }, [navigation, isEdit]);
 
     // Sync selectedTypeName when types load or selection changes
@@ -58,7 +58,7 @@ export const CreateSongScreen = () => {
             const found = songTypes.find(t => t.id === selectedType);
             if (found) setSelectedTypeName(found.name);
         } else if (!selectedType) {
-            setSelectedTypeName('Select Category');
+            setSelectedTypeName('Selecciona una Categoría');
         }
     }, [selectedType, songTypes]);
 
@@ -116,14 +116,14 @@ export const CreateSongScreen = () => {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: colors.backgroundColor }}>
             <ScrollView contentContainerStyle={{ padding: 20 }}>
 
-                <Text style={[styles.label, { color: colors.textColor }]}>Title</Text>
+                <Text style={[styles.label, { color: colors.textColor }]}>Título</Text>
                 <TextInput style={inputStyle} value={title} onChangeText={setTitle} />
 
-                <Text style={[styles.label, { color: colors.textColor }]}>Composer</Text>
+                <Text style={[styles.label, { color: colors.textColor }]}>Compositor</Text>
                 <TextInput style={inputStyle} value={composer} onChangeText={setComposer} />
 
                 {/* 🆕 CUSTOM SELECTOR BUTTON */}
-                <Text style={[styles.label, { color: colors.textColor }]}>Category</Text>
+                <Text style={[styles.label, { color: colors.textColor }]}>Categoría</Text>
                 <TouchableOpacity
                     style={[inputStyle, styles.selectorBtn]}
                     onPress={() => setShowTypeModal(true)}
@@ -149,7 +149,7 @@ export const CreateSongScreen = () => {
                 <View style={styles.audioRow}>
                     <TouchableOpacity style={[styles.audioBtn, { backgroundColor: colors.cardColor, borderColor: colors.primaryColor }]} onPress={handlePickAudio}>
                         <Ionicons name="musical-note" size={20} color={colors.primaryColor} />
-                        <Text style={{ marginLeft: 10, color: colors.textColor }}>{audioName || "Select Audio File..."}</Text>
+                        <Text style={{ marginLeft: 10, color: colors.textColor }}>{audioName || "Selecciona un audio..."}</Text>
                     </TouchableOpacity>
                     {audioUri && (
                         <TouchableOpacity onPress={() => { setAudioUri(null); setAudioName(null); }}>
@@ -158,14 +158,14 @@ export const CreateSongScreen = () => {
                     )}
                 </View>
 
-                <Text style={[styles.label, { color: colors.textColor }]}>Lyrics</Text>
+                <Text style={[styles.label, { color: colors.textColor }]}>Letra</Text>
                 <TextInput
                     style={[inputStyle, styles.textArea]}
                     value={content}
                     onChangeText={setContent}
                     multiline
                     textAlignVertical="top"
-                    placeholder="Write lyrics here..."
+                    placeholder="Escribe la letra aquí..."
                     placeholderTextColor={colors.secondaryTextColor}
                 />
 

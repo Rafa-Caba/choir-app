@@ -3,12 +3,15 @@ import { Platform } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import ENV from '../config/env';
 
+// const API_BASE_URL = "http://10.0.2.2:10000/api";
+const API_BASE_URL = ENV.API_BASE_URL;
+
 const choirApi = axios.create({
-    baseURL: ENV.API_BASE_URL,
+    baseURL: API_BASE_URL,
     withCredentials: false,
 });
 
-console.log('🎯 choirApi baseURL:', ENV.API_BASE_URL);
+console.log('🎯 choirApi baseURL:', API_BASE_URL);
 
 // --- REQUEST INTERCEPTOR ---
 choirApi.interceptors.request.use(
@@ -21,6 +24,7 @@ choirApi.interceptors.request.use(
     },
     (error) => Promise.reject(error)
 );
+
 
 // --- RESPONSE INTERCEPTOR (Refresh Token Logic) ---
 choirApi.interceptors.response.use(
@@ -39,7 +43,7 @@ choirApi.interceptors.response.use(
                 if (!refreshToken) throw new Error("No refresh token");
 
                 // 1. Request new token
-                const response = await axios.post(`${ENV.API_BASE_URL}/auth/refresh`, {
+                const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
                     token: refreshToken
                 });
 

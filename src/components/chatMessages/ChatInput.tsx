@@ -125,6 +125,14 @@ export const ChatInput = ({ onSend, onTyping }: Props) => {
         }
     };
 
+    const getReplyingPreview = () => {
+        if (!replyingTo) return '';
+        if (typeof replyingTo.content === 'string') {
+            return replyingTo.content;
+        }
+        return getPreviewFromRichText(replyingTo.content);
+    };
+
     const renderAttachmentModal = () => (
         <Modal visible={showAttachmentModal} transparent animationType="fade" onRequestClose={() => setShowAttachmentModal(false)}>
             <View style={styles.modalOverlay}>
@@ -160,8 +168,8 @@ export const ChatInput = ({ onSend, onTyping }: Props) => {
                         <Text style={[styles.replyBarName, { color: colors.primaryColor }]}>
                             Respondiendo a {replyingTo.author?.name?.split(' ')[0] || 'Usuario'}
                         </Text>
-                        <Text numberOfLines={1} style={[styles.replyBarText, { color: colors.secondaryTextColor }]}>
-                            {getPreviewFromRichText(replyingTo.content)}
+                        <Text numberOfLines={2} style={[styles.replyBarText, { color: colors.secondaryTextColor }]}>
+                            {getReplyingPreview()}
                         </Text>
                     </View>
                     <TouchableOpacity onPress={() => setReplyingTo(null)}>

@@ -2,15 +2,21 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io, type Socket } from 'socket.io-client';
-import { Platform } from 'react-native';
 
-import { getChatHistory, sendTextMessage, uploadChatMedia, toggleReaction } from '../services/chat';
+import {
+    getChatHistory,
+    sendTextMessage,
+    uploadChatMedia,
+    toggleReaction,
+    normalizeChatMessage,
+} from '../services/chat';
 import type { ChatMessage } from '../types/chat';
 import { useAuthStore } from './useAuthStore';
 import choirApi from '../api/choirApi';
 import ENV from '../config/env';
 
 const SOCKET_URL = ENV.SOCKET_URL;
+// const SOCKET_URL = "http://10.0.2.2:10000";
 
 console.log('🔌 Socket URL:', SOCKET_URL);
 
@@ -107,14 +113,18 @@ export const useChatStore = create<ChatState>()(
                     set({ connected: false, onlineUsers: [] });
                 });
 
-                socket.on('new-message', (newMessage: ChatMessage) => {
+                socket.on('new-message', (rawMessage: any) => {
+                    const newMessage = normalizeChatMessage(rawMessage);
+
                     set((current) => {
                         if (current.messages.some((m) => m.id === newMessage.id)) return current;
                         return { messages: [...current.messages, newMessage] };
                     });
                 });
 
-                socket.on('message-updated', (updatedMessage: ChatMessage) => {
+                socket.on('message-updated', (rawUpdated: any) => {
+                    const updatedMessage = normalizeChatMessage(rawUpdated);
+
                     set((current) => ({
                         messages: current.messages.map((m) =>
                             m.id === updatedMessage.id ? updatedMessage : m
@@ -218,7 +228,7 @@ export const useChatStore = create<ChatState>()(
                 try {
                     get().sendTyping(false);
                     let uploadedUrl = '';
-                    let messageType = 'TEXT';
+                    let messageType: any = 'TEXT';
 
                     if (attachment) {
                         uploadedUrl = await uploadChatMedia(attachment.uri, attachment.type);
@@ -245,8 +255,10 @@ export const useChatStore = create<ChatState>()(
                         replyToId: replyingTo?.id,
                     };
 
+                    console.log('📤 Sending payload:', { payload });
+
                     if (attachment || textInput.trim().length > 0) {
-                        await sendTextMessage(payload.content);
+                        await sendTextMessage(payload);
                     }
 
                     set({ replyingTo: null });

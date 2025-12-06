@@ -119,7 +119,7 @@ export const GalleryScreen = () => {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.backgroundColor }]}>
+        <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
 
             <View style={styles.header}>
                 <Text style={[styles.title, { color: colors.textColor }]}>Gallery</Text>

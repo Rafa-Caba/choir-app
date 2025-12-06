@@ -67,7 +67,7 @@ export const ChatScreen = () => {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.backgroundColor }]}>
+        <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
 
             {/* --- HEADER (Clickable for Online List) --- */}
             <TouchableOpacity
