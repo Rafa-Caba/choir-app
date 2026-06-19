@@ -1,3 +1,5 @@
+// /app.config.ts
+
 import 'dotenv/config';
 
 export default {
@@ -9,6 +11,12 @@ export default {
         icon: "./assets/icon.png",
         userInterfaceStyle: "light",
         newArchEnabled: true,
+        runtimeVersion: {
+            policy: "appVersion"
+        },
+        updates: {
+            url: "https://u.expo.dev/453ab38a-8f9e-4c53-8ac8-9ed975e6415a"
+        },
         splash: {
             image: "./assets/splash-icon.png",
             resizeMode: "contain",
@@ -46,21 +54,21 @@ export default {
             },
             localIp: process.env.LOCAL_IP,
             port: process.env.PORT,
-            prodUrl: process.env.PROD_URL,
+            prodUrl: process.env.PROD_URL
         },
         plugins: [
             "expo-font",
             [
                 "expo-image-picker",
                 {
-                    "photosPermission": "Permitir a choir-app acceder a tus fotos para compartirlas en el chat y la galería.",
-                    "cameraPermission": "Permitir a choir-app acceder a tu cámara."
+                    photosPermission: "Permitir a choir-app acceder a tus fotos para compartirlas en el chat y la galería.",
+                    cameraPermission: "Permitir a choir-app acceder a tu cámara."
                 }
             ],
             [
                 "expo-av",
                 {
-                    "microphonePermission": "Permitir a choir-app acceder al micrófono para grabar notas de voz."
+                    microphonePermission: "Permitir a choir-app acceder al micrófono para grabar notas de voz."
                 }
             ],
             "expo-document-picker"
