@@ -1,20 +1,30 @@
-import type { User } from './auth';
+export interface ChatUserSummary {
+    id: string;
+    name: string;
+    username: string;
+    imageUrl: string;
+}
 
 export type MessageType = 'TEXT' | 'IMAGE' | 'FILE' | 'MEDIA' | 'REACTION' | 'AUDIO' | 'VIDEO';
 
 export interface MessageReaction {
     emoji: string;
-    user: User | string;
+    user: ChatUserSummary | string;
     username?: string;
+}
+
+export interface ReplyPreview {
+    id: string;
+    username: string;
+    textPreview: string;
 }
 
 export interface ChatMessage {
     id: string;
-    author: User;
-
+    author: ChatUserSummary;
     content: any;
-
     type: MessageType;
+
     fileUrl?: string;
     filename?: string;
     imageUrl?: string;
@@ -23,7 +33,7 @@ export interface ChatMessage {
 
     reactions: MessageReaction[];
 
-    replyTo?: ReplyPreview;
+    replyTo?: ReplyPreview | null;
 
     createdAt: string;
     updatedAt?: string;
@@ -33,17 +43,9 @@ export interface NewMessagePayload {
     username: string;
     content: any;
     type: MessageType;
-
     fileUrl?: string;
     filename?: string;
     imageUrl?: string;
     audioUrl?: string;
-
     replyToId?: string;
-}
-
-export interface ReplyPreview {
-    id: string;
-    username: string;
-    textPreview: string;
 }

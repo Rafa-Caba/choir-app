@@ -1,10 +1,8 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
-import { useAuthStore } from '../store/useAuthStore';
-import ENV from '../config/env';
+import { authBridge } from './authTokenBridge';
 
-// const API_BASE_URL = "http://10.0.2.2:10000/api";
-const API_BASE_URL = ENV.API_BASE_URL;
+// const API_BASE_URL = 'http://localhost:10000/api';
+const API_BASE_URL = 'http://10.0.2.2:10000/api';
 
 const choirApi = axios.create({
     baseURL: API_BASE_URL,
@@ -16,55 +14,61 @@ console.log('🎯 choirApi baseURL:', API_BASE_URL);
 // --- REQUEST INTERCEPTOR ---
 choirApi.interceptors.request.use(
     async (config) => {
-        const token = useAuthStore.getState().token;
+        const token = authBridge.getAccessToken();
+
         if (token) {
-            config.headers['Authorization'] = `Bearer ${token}`;
+            config.headers = config.headers ?? {};
+            config.headers.Authorization = `Bearer ${token}`;
         }
+
         return config;
     },
     (error) => Promise.reject(error)
 );
 
-
 // --- RESPONSE INTERCEPTOR (Refresh Token Logic) ---
 choirApi.interceptors.response.use(
     (response) => response,
     async (error) => {
-        const originalRequest = error.config;
+        const originalRequest = error?.config;
 
-        // Check if error is 401 (Unauthorized) and we haven't retried yet
+        if (!originalRequest) return Promise.reject(error);
+
+        // If backend says 401, try refresh once
         if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
 
             try {
-                console.log("🔄 Token expired. Attempting refresh...");
+                console.log('🔄 Token expired. Attempting refresh...');
 
-                const refreshToken = useAuthStore.getState().refreshToken;
-                if (!refreshToken) throw new Error("No refresh token");
+                const refreshToken = authBridge.getRefreshToken();
+                if (!refreshToken) throw new Error('No refresh token');
 
-                // 1. Request new token
-                const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-                    token: refreshToken
+                // Backend accepts: req.body.token OR req.body.refreshToken
+                const refreshRes = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+                    refreshToken,
                 });
 
-                const { accessToken } = response.data;
+                const { accessToken } = refreshRes.data || {};
+                if (!accessToken) throw new Error('No accessToken in refresh response');
 
-                // 2. Update Store
-                useAuthStore.getState().setAccessToken(accessToken);
+                // Update auth store via bridge (no imports here)
+                authBridge.setAccessToken(accessToken);
 
-                // 3. Retry original request with new token
-                originalRequest.headers['Authorization'] = `Bearer ${accessToken}`;
+                originalRequest.headers = originalRequest.headers ?? {};
+                originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+
                 return choirApi(originalRequest);
-
             } catch (refreshError) {
-                console.log("🔒 Session expired completely. Logging out.");
-                // The store's logout action handles clearing AsyncStorage('auth-storage')
-                useAuthStore.getState().logout();
+                console.log('🔒 Session expired completely. Logging out.');
+                await authBridge.logout();
                 return Promise.reject(refreshError);
             }
         }
+
         return Promise.reject(error);
     }
 );
 
 export default choirApi;
+export { API_BASE_URL };

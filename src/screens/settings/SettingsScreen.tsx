@@ -10,7 +10,7 @@ export const SettingsScreen = ({ navigation }: any) => {
     const insets = useSafeAreaInsets();
     const { currentTheme } = useTheme();
     const { width } = useWindowDimensions();
-    const middleScreens = width > 400;
+    const middleScreens = width > 450;
     const colors = currentTheme;
 
     const Item = ({ icon, text, target, action, destructive }: any) => (
@@ -60,8 +60,7 @@ export const SettingsScreen = ({ navigation }: any) => {
 
                 <Item icon="log-out-outline" text="Cerrar Sesión" action={logout} destructive />
 
-                {/* 🛠️ FIX: pointerEvents="none" allows clicks to pass through to buttons underneath */}
-                <View style={[styles.bgIconContainer, { marginTop: middleScreens ? -250 : -230 }]} pointerEvents="none">
+                <View style={[styles.bgIconContainer, { marginTop: middleScreens ? -250 : -255 }]} pointerEvents="none">
                     <Ionicons
                         name="musical-notes" size={150}
                         color={currentTheme.isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}

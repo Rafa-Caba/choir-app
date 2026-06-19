@@ -1,5 +1,8 @@
+// /src/config/env.ts
 
-const API_HOST = 'https://ero-cras-webapp-api-production.up.railway.app';
+const API_HOST =
+    process.env.EXPO_PUBLIC_API_URL ??
+    'https://ero-cras-webapp-api-production.up.railway.app';
 
 const ENV = {
     API_HOST,

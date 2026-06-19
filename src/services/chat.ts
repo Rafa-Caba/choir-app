@@ -1,74 +1,7 @@
 import choirApi from '../api/choirApi';
 import { Platform } from 'react-native';
 import type { ChatMessage, ReplyPreview, MessageType } from '../types/chat';
-
-
-export const normalizeChatMessage = (raw: any): ChatMessage => {
-    const rawAuthor: any = raw.author || {};
-    const author: any = {
-        id: (rawAuthor.id || rawAuthor._id || '').toString(),
-        name: rawAuthor.name || 'Usuario',
-        username: rawAuthor.username || 'usuario',
-        imageUrl: rawAuthor.imageUrl || '',
-    };
-
-    let replyTo: ReplyPreview | undefined;
-    const rawReply: any = raw.replyTo;
-
-    if (rawReply && typeof rawReply === 'object') {
-        if ('textPreview' in rawReply || 'username' in rawReply) {
-            replyTo = {
-                id: (rawReply.id || rawReply._id || '').toString(),
-                username: rawReply.username || 'Usuario',
-                textPreview: rawReply.textPreview || '',
-            };
-        } else {
-            const rawReplyAuthor: any = rawReply.author || {};
-
-            const replyId = (rawReply.id || rawReply._id || '').toString();
-            const replyUsername =
-                rawReplyAuthor.username ||
-                rawReplyAuthor.name ||
-                'Usuario';
-
-            let textPreview = '';
-
-            if (typeof rawReply.content === 'string') {
-                textPreview = rawReply.content;
-            } else if (rawReply.content && typeof rawReply.content === 'object') {
-                textPreview =
-                    rawReply.content.text ||
-                    (Array.isArray(rawReply.content.content) && rawReply.content.content[0]?.text) ||
-                    '[mensaje]';
-            } else {
-                textPreview = '[mensaje]';
-            }
-
-            replyTo = {
-                id: replyId,
-                username: replyUsername,
-                textPreview,
-            };
-        }
-    }
-
-    const message: ChatMessage = {
-        id: (raw.id || raw._id || '').toString(),
-        author,
-        content: raw.content,
-        type: raw.type as MessageType,
-        fileUrl: raw.fileUrl || '',
-        filename: raw.filename || '',
-        imageUrl: raw.imageUrl,
-        audioUrl: raw.audioUrl,
-        reactions: raw.reactions || [],
-        replyTo,
-        createdAt: raw.createdAt,
-        updatedAt: raw.updatedAt,
-    };
-
-    return message;
-};
+import { normalizeChatMessage } from '../utils/normalizeChatMessage';
 
 // Helper: Async FormData
 const createChatFormData = async (fileUri: string, type: 'image' | 'video' | 'audio' | 'file') => {

@@ -1,33 +1,44 @@
 import choirApi from '../api/choirApi';
-import type { Theme, CreateThemePayload } from '../types/theme';
+import type { Theme } from '../types/theme';
+import { useAuthStore } from '../store/useAuthStore';
 
-// GET Public (Active themes for selection)
+type ThemeApiResponse = Theme[] | { themes?: Theme[] } | any;
+
+const getToken = () => useAuthStore.getState().token;
+
+const normalizeThemes = (data: ThemeApiResponse): Theme[] => {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.themes)) return data.themes;
+    return [];
+};
+
+// PUBLIC
 export const getPublicThemes = async (): Promise<Theme[]> => {
-    const { data } = await choirApi.get<{ themes: Theme[] }>('/themes/public');
-    return data.themes || [];
+    const { data } = await choirApi.get<ThemeApiResponse>('/themes/public');
+    return normalizeThemes(data);
 };
 
-// GET Admin (List all)
+// PROTECTED
+export const getProtectedThemes = async (): Promise<Theme[]> => {
+    const { data } = await choirApi.get<ThemeApiResponse>('/themes');
+    return normalizeThemes(data);
+};
+
+// SMART (token -> protected, else public; fallback on 401/403)
 export const getAllThemes = async (): Promise<Theme[]> => {
-    // Backend returns paginated object { themes: [], total... }
-    // We can grab just the array for the store list
-    const { data } = await choirApi.get<any>('/themes?all=true');
-    return data.themes || [];
-};
+    const token = getToken();
 
-// CREATE
-export const createTheme = async (payload: CreateThemePayload): Promise<Theme> => {
-    const { data } = await choirApi.post<{ theme: Theme, message: string }>('/themes', payload);
-    return data.theme;
-};
+    if (!token) {
+        return await getPublicThemes();
+    }
 
-// UPDATE
-export const updateTheme = async (id: string, payload: Partial<CreateThemePayload>): Promise<Theme> => {
-    const { data } = await choirApi.put<{ theme: Theme, message: string }>(`/themes/${id}`, payload);
-    return data.theme;
-};
-
-// DELETE
-export const deleteTheme = async (id: string): Promise<void> => {
-    await choirApi.delete(`/themes/${id}`);
+    try {
+        return await getProtectedThemes();
+    } catch (err: any) {
+        const status = err?.response?.status;
+        if (status === 401 || status === 403) {
+            return await getPublicThemes();
+        }
+        throw err;
+    }
 };

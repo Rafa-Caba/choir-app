@@ -1,19 +1,23 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import {
     loginUser,
     registerUser,
     getUserProfile,
     updateProfile,
-    logoutUser
+    logoutUser,
 } from '../services/auth';
+
 import type { User, LoginPayload, RegisterPayload } from '../types/auth';
+import { registerAuthBridge } from '../api/authTokenBridge';
 
 interface AuthState {
     token: string | null;
     refreshToken: string | null;
     user: User | null;
+
     status: 'checking' | 'authenticated' | 'unauthenticated';
     loading: boolean;
     errorMessage: string | null;
@@ -25,7 +29,8 @@ interface AuthState {
     clearError: () => void;
 
     updateUserProfile: (data: any, imageUri?: string) => Promise<boolean>;
-    setAccessToken: (token: string) => void;
+    setAccessToken: (token: string | null) => void;
+    setRefreshToken: (token: string | null) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -34,27 +39,31 @@ export const useAuthStore = create<AuthState>()(
             token: null,
             refreshToken: null,
             user: null,
+
             status: 'checking',
             loading: false,
             errorMessage: null,
 
             login: async (payload) => {
                 set({ loading: true, errorMessage: null });
+
                 try {
                     const response = await loginUser(payload);
+
                     set({
                         token: response.accessToken,
                         refreshToken: response.refreshToken,
                         user: response.user,
                         status: 'authenticated',
-                        loading: false
+                        loading: false,
                     });
+
                     return true;
                 } catch (error: any) {
                     set({
                         loading: false,
                         status: 'unauthenticated',
-                        errorMessage: error.response?.data?.message || 'Login failed'
+                        errorMessage: error.response?.data?.message || 'Login failed',
                     });
                     return false;
                 }
@@ -62,20 +71,24 @@ export const useAuthStore = create<AuthState>()(
 
             register: async (payload) => {
                 set({ loading: true, errorMessage: null });
+
                 try {
                     const response = await registerUser(payload);
+
                     set({
                         token: response.accessToken,
                         refreshToken: response.refreshToken,
                         user: response.user,
                         status: 'authenticated',
-                        loading: false
+                        loading: false,
                     });
+
                     return true;
                 } catch (error: any) {
                     set({
                         loading: false,
-                        errorMessage: error.response?.data?.message || 'Registration failed'
+                        status: 'unauthenticated',
+                        errorMessage: error.response?.data?.message || 'Registration failed',
                     });
                     return false;
                 }
@@ -83,25 +96,46 @@ export const useAuthStore = create<AuthState>()(
 
             logout: async () => {
                 const { refreshToken } = get();
+
                 if (refreshToken) {
-                    try { await logoutUser(refreshToken); } catch (e) { console.log("Logout API failed", e); }
+                    try {
+                        await logoutUser(refreshToken);
+                    } catch (e) {
+                        console.log('Logout API failed', e);
+                    }
                 }
-                set({ token: null, refreshToken: null, user: null, status: 'unauthenticated' });
+
+                set({
+                    token: null,
+                    refreshToken: null,
+                    user: null,
+                    status: 'unauthenticated',
+                    errorMessage: null,
+                    loading: false,
+                });
+
                 await AsyncStorage.removeItem('auth-storage');
             },
 
             checkAuth: async () => {
                 const { token } = get();
+
                 if (!token) {
                     set({ status: 'unauthenticated' });
                     return;
                 }
+
                 try {
                     const user = await getUserProfile();
                     set({ user, status: 'authenticated' });
                 } catch (error) {
-                    console.log("CheckAuth: Token invalid or expired");
-                    set({ status: 'unauthenticated', token: null, refreshToken: null, user: null });
+                    console.log('CheckAuth: Token invalid or expired');
+                    set({
+                        status: 'unauthenticated',
+                        token: null,
+                        refreshToken: null,
+                        user: null,
+                    });
                 }
             },
 
@@ -109,6 +143,7 @@ export const useAuthStore = create<AuthState>()(
 
             updateUserProfile: async (data, imageUri) => {
                 set({ loading: true });
+
                 try {
                     const updatedUser = await updateProfile(data, imageUri);
                     set({ user: updatedUser, loading: false });
@@ -120,13 +155,29 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            setAccessToken: (newToken: string) => {
+            setAccessToken: (newToken) => {
                 set({ token: newToken });
-            }
+            },
+
+            setRefreshToken: (newRefreshToken) => {
+                set({ refreshToken: newRefreshToken });
+            },
         }),
         {
             name: 'auth-storage',
             storage: createJSONStorage(() => AsyncStorage),
+            onRehydrateStorage: () => (state) => {
+                // no-op; you can log if needed
+            },
         }
     )
 );
+
+registerAuthBridge({
+    getAccessToken: () => useAuthStore.getState().token,
+    getRefreshToken: () => useAuthStore.getState().refreshToken,
+    setAccessToken: (token) => useAuthStore.getState().setAccessToken(token),
+    logout: async () => {
+        await useAuthStore.getState().logout();
+    },
+});

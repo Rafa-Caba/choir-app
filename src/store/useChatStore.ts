@@ -8,15 +8,15 @@ import {
     sendTextMessage,
     uploadChatMedia,
     toggleReaction,
-    normalizeChatMessage,
 } from '../services/chat';
 import type { ChatMessage } from '../types/chat';
 import { useAuthStore } from './useAuthStore';
 import choirApi from '../api/choirApi';
 import ENV from '../config/env';
+import { normalizeChatMessage } from '../utils/normalizeChatMessage';
 
-const SOCKET_URL = ENV.SOCKET_URL;
-// const SOCKET_URL = "http://10.0.2.2:10000";
+// const SOCKET_URL = ENV.SOCKET_URL;
+const SOCKET_URL = "http://10.0.2.2:10000";
 
 console.log('🔌 Socket URL:', SOCKET_URL);
 

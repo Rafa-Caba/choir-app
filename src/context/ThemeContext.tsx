@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+// src/context/ThemeContext.tsx
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { getAllThemes } from '../services/theme';
-import { updateTheme as persistUserTheme } from '../services/auth'; // Persist to user profile
+import { updateTheme as persistUserTheme } from '../services/auth';
 import { useAuthStore } from '../store/useAuthStore';
 import type { Theme } from '../types/theme';
 
-// Default Fallback Theme
 const DEFAULT_THEME: Theme = {
     id: 'default',
     name: 'Default Light',
@@ -18,99 +18,108 @@ const DEFAULT_THEME: Theme = {
     navColor: '#ffffff',
     buttonTextColor: '#ffffff',
     secondaryTextColor: '#666666',
-    borderColor: '#e0e0e0'
+    borderColor: '#e0e0e0',
 };
 
 interface ThemeContextType {
     currentTheme: Theme;
     availableThemes: Theme[];
-    setTheme: (theme: Theme) => void; // Direct setter
-    setThemeById: (id: string) => void; // ID-based setter
+    setTheme: (theme: Theme) => void;
+    setThemeById: (id: string) => Promise<void>;
     loading: boolean;
-    colors: Theme; // Alias
+    colors: Theme;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
     currentTheme: DEFAULT_THEME,
     availableThemes: [],
     setTheme: () => { },
-    setThemeById: () => { },
+    setThemeById: async () => { },
     loading: false,
-    colors: DEFAULT_THEME
+    colors: DEFAULT_THEME,
 });
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     const [availableThemes, setAvailableThemes] = useState<Theme[]>([]);
     const [currentTheme, setCurrentTheme] = useState<Theme>(DEFAULT_THEME);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState<boolean>(true);
 
-    const { user } = useAuthStore();
+    const user = useAuthStore((s) => s.user);
+
+    const isInitializingRef = useRef(false);
+
+    const userThemeId = useMemo(() => {
+        if (!user?.themeId) return null;
+        return typeof user.themeId === 'object' ? user.themeId.id : user.themeId;
+    }, [user?.themeId]);
 
     const initThemes = async () => {
+        if (isInitializingRef.current) return;
+        isInitializingRef.current = true;
+
         try {
             setLoading(true);
-            // Fetch all themes from backend
+
             const themes = await getAllThemes();
-            setAvailableThemes(themes);
+            const safeThemes = Array.isArray(themes) ? themes : [];
 
-            // Determine active theme
-            if (themes.length > 0) {
-                let active = themes[0]; // Default to first
+            setAvailableThemes(safeThemes);
 
-                // 1. User Preference (if logged in)
-                if (user?.themeId) {
-                    // themeId might be a string ID or a populated Object
-                    const userThemeId = typeof user.themeId === 'object' ? user.themeId.id : user.themeId;
-                    const found = themes.find(t => t.id === userThemeId);
-                    if (found) active = found;
-                }
+            let active: Theme = safeThemes[0] ?? DEFAULT_THEME;
 
-                setCurrentTheme(active);
+            if (userThemeId) {
+                const found = safeThemes.find((t) => t?.id === userThemeId);
+                if (found) active = found;
             }
+
+            setCurrentTheme(active);
         } catch (error) {
             console.error('Error initializing themes:', error);
+            if (!currentTheme?.id) setCurrentTheme(DEFAULT_THEME);
+            setAvailableThemes([]);
         } finally {
             setLoading(false);
+            isInitializingRef.current = false;
         }
     };
 
-    // Reload when user logs in/out to apply their preference
+    // Re-init when auth user changes OR their theme preference changes
     useEffect(() => {
         initThemes();
-    }, [user]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id, userThemeId]);
 
-    // Manual Setter (Optimistic)
     const setTheme = (theme: Theme) => {
+        if (!theme?.id) return;
         setCurrentTheme(theme);
     };
 
-    // ID-based Setter (Persists to Backend)
     const setThemeById = async (id: string) => {
-        const theme = availableThemes.find(t => t.id === id);
-        if (theme) {
-            // 1. Update UI immediately
-            setCurrentTheme(theme);
+        const theme = availableThemes.find((t) => t.id === id);
+        if (!theme) return;
 
-            // 2. Persist to User Profile (if logged in)
-            if (user) {
-                try {
-                    await persistUserTheme(id);
-                } catch (error) {
-                    console.error("Failed to save theme preference", error);
-                }
+        setCurrentTheme(theme);
+
+        if (user?.id) {
+            try {
+                await persistUserTheme(id);
+            } catch (error) {
+                console.error('Failed to save theme preference', error);
             }
         }
     };
 
     return (
-        <ThemeContext.Provider value={{
-            currentTheme,
-            availableThemes,
-            setTheme,
-            setThemeById,
-            loading,
-            colors: currentTheme // Alias for convenience
-        }}>
+        <ThemeContext.Provider
+            value={{
+                currentTheme,
+                availableThemes,
+                setTheme,
+                setThemeById,
+                loading,
+                colors: currentTheme,
+            }}
+        >
             {children}
         </ThemeContext.Provider>
     );

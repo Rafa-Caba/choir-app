@@ -10,6 +10,20 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import type { SongType } from '../../types/song';
 
+const sortSongTypes = (a: SongType, b: SongType) => {
+    const orderA = typeof a.order === 'number' ? a.order : 99;
+    const orderB = typeof b.order === 'number' ? b.order : 99;
+
+    if (orderA !== orderB) return orderA - orderB;
+
+    const nameA = (a.name || '').toLowerCase();
+    const nameB = (b.name || '').toLowerCase();
+
+    if (nameA < nameB) return -1;
+    if (nameA > nameB) return 1;
+    return 0;
+};
+
 export const SongTypesScreen = () => {
     const navigation = useNavigation<any>();
 
@@ -33,12 +47,12 @@ export const SongTypesScreen = () => {
     }, []);
 
     const displayedTypes = useMemo(() => {
-        return songTypes
-            .filter(t => {
-                if (currentParentId) return t.parentId === currentParentId;
-                return !t.parentId;
-            })
-            .sort((a, b) => (a.order || 99) - (b.order || 99));
+        const filtered = songTypes.filter(t => {
+            if (currentParentId) return t.parentId === currentParentId;
+            return !t.parentId;
+        });
+
+        return [...filtered].sort(sortSongTypes);
     }, [songTypes, currentParentId]);
 
     const parentName = currentParentId
@@ -140,11 +154,12 @@ export const SongTypesScreen = () => {
                             onPress={() => handleItemPress(item)}
                         >
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                {/* Show Folder Icon if it's a parent container */}
                                 {item.isParent && (
                                     <Ionicons name="folder-open" size={20} color={colors.primaryColor} style={{ marginRight: 10 }} />
                                 )}
-                                <Text style={[styles.orderBadge, { color: colors.secondaryTextColor }]}>{item.order}</Text>
+                                <Text style={[styles.orderBadge, { color: colors.secondaryTextColor }]}>
+                                    {item.order}
+                                </Text>
                                 <Text style={[styles.cardTitle, { color: colors.textColor }]}>{item.name}</Text>
                             </View>
                         </TouchableOpacity>
@@ -180,7 +195,7 @@ export const SongTypesScreen = () => {
                         <TextInput
                             style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor, backgroundColor: colors.backgroundColor }]}
                             value={typeName} onChangeText={setTypeName}
-                            placeholder="e.g. Mass" placeholderTextColor={colors.secondaryTextColor}
+                            placeholder="e.g. Misa" placeholderTextColor={colors.secondaryTextColor}
                         />
 
                         <Text style={{ color: colors.secondaryTextColor, marginBottom: 5 }}>Order (1-99):</Text>
@@ -218,9 +233,9 @@ export const SongTypesScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20 },
+    container: { flex: 1, paddingHorizontal: 20, marginTop: 10 },
     headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, marginTop: 10 },
-    headerTitle: { fontSize: 24, fontWeight: 'bold' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold' },
     addButton: { padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 20 },
     addButtonText: { fontWeight: 'bold', fontSize: 16 },
     card: {
