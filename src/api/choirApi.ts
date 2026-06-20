@@ -1,8 +1,18 @@
-import axios from 'axios';
+// /src/api/choirApi.ts
+
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import ENV from '../config/env';
 import { authBridge } from './authTokenBridge';
 
-// const API_BASE_URL = 'http://localhost:10000/api';
-const API_BASE_URL = 'http://10.0.2.2:10000/api';
+const API_BASE_URL = ENV.API_BASE_URL;
+
+interface FailedRequestConfig extends InternalAxiosRequestConfig {
+    _retry?: boolean;
+}
+
+interface RefreshResponse {
+    accessToken?: string;
+}
 
 const choirApi = axios.create({
     baseURL: API_BASE_URL,
@@ -23,16 +33,18 @@ choirApi.interceptors.request.use(
 
         return config;
     },
-    (error) => Promise.reject(error)
+    (error: AxiosError) => Promise.reject(error)
 );
 
 // --- RESPONSE INTERCEPTOR (Refresh Token Logic) ---
 choirApi.interceptors.response.use(
     (response) => response,
-    async (error) => {
-        const originalRequest = error?.config;
+    async (error: AxiosError) => {
+        const originalRequest = error.config as FailedRequestConfig | undefined;
 
-        if (!originalRequest) return Promise.reject(error);
+        if (!originalRequest) {
+            return Promise.reject(error);
+        }
 
         // If backend says 401, try refresh once
         if (error.response?.status === 401 && !originalRequest._retry) {
@@ -42,17 +54,23 @@ choirApi.interceptors.response.use(
                 console.log('🔄 Token expired. Attempting refresh...');
 
                 const refreshToken = authBridge.getRefreshToken();
-                if (!refreshToken) throw new Error('No refresh token');
+
+                if (!refreshToken) {
+                    throw new Error('No refresh token');
+                }
 
                 // Backend accepts: req.body.token OR req.body.refreshToken
-                const refreshRes = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+                const refreshRes = await axios.post<RefreshResponse>(`${API_BASE_URL}/auth/refresh`, {
                     refreshToken,
                 });
 
-                const { accessToken } = refreshRes.data || {};
-                if (!accessToken) throw new Error('No accessToken in refresh response');
+                const { accessToken } = refreshRes.data;
 
-                // Update auth store via bridge (no imports here)
+                if (!accessToken) {
+                    throw new Error('No accessToken in refresh response');
+                }
+
+                // Update auth store via bridge
                 authBridge.setAccessToken(accessToken);
 
                 originalRequest.headers = originalRequest.headers ?? {};
@@ -62,6 +80,7 @@ choirApi.interceptors.response.use(
             } catch (refreshError) {
                 console.log('🔒 Session expired completely. Logging out.');
                 await authBridge.logout();
+
                 return Promise.reject(refreshError);
             }
         }
