@@ -13,11 +13,12 @@ interface PushNotificationState {
 export const usePushNotifications = (): PushNotificationState => {
 	const status = useAuthStore((state) => state.status);
 	const requiresPasswordChange = useAuthStore((state) => state.requiresPasswordChange);
+	const userRole = useAuthStore((state) => state.user?.role);
 	const [registered, setRegistered] = useState(false);
 	const [notification, setNotification] = useState<Notifications.Notification | null>(null);
 
 	useEffect(() => {
-		if (status !== 'authenticated' || requiresPasswordChange) {
+		if (status !== 'authenticated' || requiresPasswordChange || userRole === 'SUPER_ADMIN') {
 			setRegistered(false);
 			return undefined;
 		}
@@ -53,7 +54,7 @@ export const usePushNotifications = (): PushNotificationState => {
 			receivedSubscription.remove();
 			tokenSubscription.remove();
 		};
-	}, [requiresPasswordChange, status]);
+	}, [requiresPasswordChange, status, userRole]);
 
 	return { registered, notification };
 };

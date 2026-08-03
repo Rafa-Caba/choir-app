@@ -1,9 +1,14 @@
+// src/navigation/BlogNavigator.tsx
+
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { BlogListScreen } from '../screens/blog/BlogListScreen';
 import { BlogDetailScreen } from '../screens/blog/BlogDetailScreen';
 import { CreateBlogScreen } from '../screens/blog/CreateBlogScreen';
 import { useTheme } from '../context/ThemeContext';
+import { canManageContent } from '../auth/permissions';
+import { AccessDeniedScreen } from '../components/auth/AccessDeniedScreen';
+import { useAuthStore } from '../store/useAuthStore';
 
 export type BlogStackParamList = {
     BlogList: undefined;
@@ -12,6 +17,11 @@ export type BlogStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<BlogStackParamList>();
+
+const CreateBlogGuard = () => {
+    const role = useAuthStore((state) => state.user?.role);
+    return canManageContent(role) ? <CreateBlogScreen /> : <AccessDeniedScreen />;
+};
 
 export const BlogNavigator = () => {
     const { currentTheme } = useTheme();
@@ -46,7 +56,7 @@ export const BlogNavigator = () => {
             />
             <Stack.Screen
                 name="CreateBlog"
-                component={CreateBlogScreen}
+                component={CreateBlogGuard}
                 options={{ title: 'Nuevo Post' }}
             />
         </Stack.Navigator>

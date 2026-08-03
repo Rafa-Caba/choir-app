@@ -1,364 +1,253 @@
+// src/screens/choir/ChoirsListScreen.tsx
+
 import React, { useCallback } from 'react';
 import {
-    View,
-    Text,
+    ActivityIndicator,
+    Alert,
     FlatList,
     Image,
-    TouchableOpacity,
     StyleSheet,
-    Alert,
-    Platform,
-    ActivityIndicator,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-
-import { useAdminChoirsStore } from '../../store/useAdminChoirsStore';
+import {
+    useFocusEffect,
+    useNavigation,
+    type NavigationProp
+} from '@react-navigation/native';
+import { canManageChoirs } from '../../auth/permissions';
+import { AccessDeniedScreen } from '../../components/auth/AccessDeniedScreen';
 import { useTheme } from '../../context/ThemeContext';
+import type { PlatformStackParamList } from '../../navigation/PlatformNavigator';
+import { useAdminChoirsStore } from '../../store/useAdminChoirsStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useTargetChoirStore } from '../../store/useTargetChoirStore';
 import type { Choir } from '../../types/choir';
 
-type Nav = any;
-
 export const ChoirsListScreen = () => {
-    const navigation = useNavigation<Nav>();
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
+    const navigation = useNavigation<NavigationProp<PlatformStackParamList>>();
+    const colors = useTheme().currentTheme;
+    const role = useAuthStore((state) => state.user?.role);
+    const hasAccess = canManageChoirs(role);
+    const selectChoir = useTargetChoirStore((state) => state.selectChoir);
+    const clearSelection = useTargetChoirStore((state) => state.clearSelection);
+    const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
     const {
         choirs,
         fetchChoirs,
         removeChoirAction,
         toggleChoirActiveAction,
         loading,
-        refreshing,
+        refreshing
     } = useAdminChoirsStore();
 
-    // Refresh when screen gains focus
     useFocusEffect(
         useCallback(() => {
-            fetchChoirs(true);
-        }, [])
+            if (hasAccess) {
+                fetchChoirs(true).catch(() => undefined);
+            }
+        }, [fetchChoirs, hasAccess])
     );
 
-    const handleEdit = (choir: Choir) => {
-        navigation.navigate('ManageChoirScreen', { choirId: choir.id });
-    };
+    if (!hasAccess) {
+        return <AccessDeniedScreen showBackButton={false} />;
+    }
 
-    const handleDelete = (choir: Choir) => {
-        const message = `¿Estás seguro de eliminar el coro "${choir.name}"? Esta acción no se puede deshacer.`;
-
-        if (Platform.OS === 'web') {
-            // @ts-ignore
-            const confirm = window.confirm(message);
-            if (confirm) removeChoirAction(choir.id);
+    const openChoirUsers = (choir: Choir): void => {
+        if (!choir.isActive) {
+            Alert.alert('Coro inactivo', 'Activa el coro antes de administrar sus usuarios.');
             return;
         }
 
-        Alert.alert('Eliminar Coro', message, [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Eliminar',
-                style: 'destructive',
-                onPress: () => removeChoirAction(choir.id),
-            },
-        ]);
+        selectChoir(choir);
+        navigation.navigate('UsersListScreen');
     };
 
-    const handleToggleActive = (choir: Choir) => {
-        const nextState = !choir.isActive;
-        const actionText = nextState ? 'activar' : 'desactivar';
-        const title = nextState ? 'Activar Coro' : 'Desactivar Coro';
-        const message = `¿Estás seguro de ${actionText} el coro "${choir.name}"?`;
-
-        if (Platform.OS === 'web') {
-            // @ts-ignore
-            const confirm = window.confirm(message);
-            if (confirm) toggleChoirActiveAction(choir.id, nextState);
+    const openChoirAudit = (choir: Choir): void => {
+        if (!choir.isActive) {
+            Alert.alert('Coro inactivo', 'Activa el coro antes de consultar su auditoría.');
             return;
         }
 
-        Alert.alert(title, message, [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: nextState ? 'Activar' : 'Desactivar',
-                style: nextState ? 'default' : 'destructive',
-                onPress: () => toggleChoirActiveAction(choir.id, nextState),
-            },
-        ]);
+        selectChoir(choir);
+        navigation.navigate('AuditLogsScreen', { scope: 'tenant' });
     };
 
-    const renderItem = ({ item }: { item: Choir }) => (
-        <View
-            style={[
-                styles.card,
+    const confirmDeactivate = (choir: Choir): void => {
+        Alert.alert(
+            'Desactivar coro',
+            `¿Deseas desactivar el coro "${choir.name}"? Sus usuarios perderán el acceso hasta que vuelva a activarse.`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
                 {
-                    backgroundColor: colors.cardColor,
-                    opacity: item.isActive ? 1 : 0.6,
-                },
-            ]}
-        >
-            <TouchableOpacity style={styles.cardContent} onPress={() => handleEdit(item)}>
-                <View style={styles.logoWrap}>
+                    text: 'Desactivar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await removeChoirAction(choir.id);
+                        if (selectedChoir?.id === choir.id) {
+                            clearSelection();
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const activateChoir = (choir: Choir): void => {
+        Alert.alert(
+            'Activar coro',
+            `¿Deseas activar el coro "${choir.name}"?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Activar',
+                    onPress: async () => {
+                        await toggleChoirActiveAction(choir.id, true);
+                    }
+                }
+            ]
+        );
+    };
+
+    const renderChoir = ({ item }: { readonly item: Choir }) => {
+        const isSelected = selectedChoir?.id === item.id;
+
+        return (
+            <View
+                style={[
+                    styles.card,
+                    {
+                        backgroundColor: colors.cardColor,
+                        borderColor: isSelected ? colors.primaryColor : colors.borderColor,
+                        opacity: item.isActive ? 1 : 0.68
+                    }
+                ]}
+            >
+                <View style={styles.mainRow}>
                     <Image
                         source={{ uri: item.logoUrl || 'https://via.placeholder.com/80?text=C' }}
                         style={styles.logo}
                     />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                    <Text style={[styles.name, { color: colors.textColor }]} numberOfLines={1}>
-                        {item.name}
-                    </Text>
-
-                    <View style={styles.metaRow}>
-                        <View
-                            style={[
-                                styles.pill,
-                                { backgroundColor: colors.cardColor || '#EFEFEF' },
-                            ]}
-                        >
-                            <Ionicons
-                                name="key-outline"
-                                size={14}
-                                color={colors.secondaryTextColor}
-                            />
-                            <Text
-                                style={[
-                                    styles.pillText,
-                                    { color: colors.secondaryTextColor },
-                                ]}
-                            >
-                                {item.code}
-                            </Text>
-                        </View>
-
-                        <View
-                            style={[
-                                styles.statusPill,
-                                {
-                                    backgroundColor: item.isActive ? '#2E7D32' : '#6B7280',
-                                },
-                            ]}
-                        >
-                            <Text style={styles.statusText}>
-                                {item.isActive ? 'Activo' : 'Inactivo'}
-                            </Text>
+                    <View style={styles.details}>
+                        <Text style={[styles.name, { color: colors.textColor }]} numberOfLines={1}>
+                            {item.name}
+                        </Text>
+                        <Text style={[styles.code, { color: colors.secondaryTextColor }]}>
+                            Código: {item.code}
+                        </Text>
+                        <View style={styles.statusRow}>
+                            <View style={[styles.statusPill, { backgroundColor: item.isActive ? '#2E7D32' : '#6B7280' }]}>
+                                <Text style={styles.statusText}>{item.isActive ? 'Activo' : 'Inactivo'}</Text>
+                            </View>
+                            {isSelected && (
+                                <Text style={[styles.selectedText, { color: colors.primaryColor }]}>Coro seleccionado</Text>
+                            )}
                         </View>
                     </View>
+                </View>
 
-                    {!!item.description && (
-                        <Text
-                            style={[
-                                styles.description,
-                                { color: colors.secondaryTextColor },
-                            ]}
-                            numberOfLines={2}
-                        >
-                            {item.description}
-                        </Text>
+                <View style={styles.actionsRow}>
+                    <TouchableOpacity
+                        style={[styles.primaryAction, { backgroundColor: colors.buttonColor }]}
+                        onPress={() => openChoirUsers(item)}
+                    >
+                        <Ionicons name="people-outline" size={17} color={colors.buttonTextColor} />
+                        <Text style={[styles.primaryActionText, { color: colors.buttonTextColor }]}>Usuarios</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.iconAction} onPress={() => openChoirAudit(item)}>
+                        <Ionicons name="shield-checkmark-outline" size={21} color={colors.primaryColor} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.iconAction}
+                        onPress={() => navigation.navigate('ManageChoirScreen', { choirId: item.id })}
+                    >
+                        <Ionicons name="pencil-outline" size={21} color={colors.primaryColor} />
+                    </TouchableOpacity>
+                    {item.isActive ? (
+                        <TouchableOpacity style={styles.iconAction} onPress={() => confirmDeactivate(item)}>
+                            <Ionicons name="power-outline" size={21} color="#C62828" />
+                        </TouchableOpacity>
+                    ) : (
+                        <TouchableOpacity style={styles.iconAction} onPress={() => activateChoir(item)}>
+                            <Ionicons name="play-circle-outline" size={22} color="#2E7D32" />
+                        </TouchableOpacity>
                     )}
                 </View>
-            </TouchableOpacity>
-
-            <View style={styles.actions}>
-                {/* Activate / Deactivate */}
-                <TouchableOpacity
-                    onPress={() => handleToggleActive(item)}
-                    style={styles.actionBtn}
-                >
-                    <Ionicons
-                        name={
-                            item.isActive
-                                ? 'pause-circle-outline'
-                                : 'play-circle-outline'
-                        }
-                        size={22}
-                        color={item.isActive ? '#F57C00' : '#2E7D32'}
-                    />
-                </TouchableOpacity>
-
-                {/* Edit */}
-                <TouchableOpacity
-                    onPress={() => handleEdit(item)}
-                    style={styles.actionBtn}
-                >
-                    <Ionicons
-                        name="pencil"
-                        size={20}
-                        color={colors.primaryColor}
-                    />
-                </TouchableOpacity>
-
-                {/* Delete */}
-                <TouchableOpacity
-                    onPress={() => handleDelete(item)}
-                    style={styles.actionBtn}
-                >
-                    <Ionicons
-                        name="trash-outline"
-                        size={20}
-                        color="#E91E63"
-                    />
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-
-    const renderFooter = () => {
-        if (!loading || refreshing) return null;
-        return (
-            <View style={{ paddingVertical: 16 }}>
-                <ActivityIndicator
-                    size="small"
-                    color={colors.primaryColor}
-                />
             </View>
         );
     };
 
-    if (loading && choirs.length === 0) {
-        return (
-            <View
-                style={[
-                    styles.container,
-                    {
-                        backgroundColor: colors.backgroundColor,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                    },
-                ]}
-            >
-                <ActivityIndicator
-                    size="large"
-                    color={colors.primaryColor}
-                />
-            </View>
-        );
-    }
-
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
             <View style={styles.header}>
-                <Text style={[styles.title, { color: colors.textColor }]}>
-                    Coros
-                </Text>
-
+                <View>
+                    <Text style={[styles.title, { color: colors.textColor }]}>Consola de plataforma</Text>
+                    <Text style={[styles.subtitle, { color: colors.secondaryTextColor }]}>Selecciona un coro para administrar usuarios y auditoría.</Text>
+                </View>
                 <TouchableOpacity
-                    style={[styles.addBtn, { backgroundColor: colors.buttonColor }]}
+                    style={[styles.addButton, { backgroundColor: colors.buttonColor }]}
                     onPress={() => navigation.navigate('ManageChoirScreen')}
                 >
-                    <Ionicons
-                        name="add"
-                        size={24}
-                        color={colors.buttonTextColor}
-                    />
+                    <Ionicons name="add" size={24} color={colors.buttonTextColor} />
                 </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+                style={[styles.globalAuditButton, { borderColor: colors.primaryColor }]}
+                onPress={() => navigation.navigate('AuditLogsScreen', { scope: 'global' })}
+            >
+                <Ionicons name="earth-outline" size={20} color={colors.primaryColor} />
+                <Text style={[styles.globalAuditText, { color: colors.primaryColor }]}>Ver auditoría global</Text>
+            </TouchableOpacity>
 
             <FlatList
                 data={choirs}
                 keyExtractor={(item) => item.id}
-                renderItem={renderItem}
+                renderItem={renderChoir}
                 refreshing={refreshing}
                 onRefresh={() => fetchChoirs(true)}
                 onEndReached={() => fetchChoirs(false)}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={renderFooter}
-                contentContainerStyle={{ paddingBottom: 20 }}
-                ListEmptyComponent={
-                    <Text
-                        style={[
-                            styles.emptyText,
-                            { color: colors.secondaryTextColor },
-                        ]}
-                    >
-                        No se encontraron coros.
-                    </Text>
-                }
+                onEndReachedThreshold={0.4}
+                contentContainerStyle={choirs.length === 0 ? styles.emptyContainer : styles.list}
+                ListEmptyComponent={loading ? (
+                    <ActivityIndicator size="large" color={colors.primaryColor} />
+                ) : (
+                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>No se encontraron coros.</Text>
+                )}
+                ListFooterComponent={loading && choirs.length > 0 ? (
+                    <ActivityIndicator style={styles.footerLoader} color={colors.primaryColor} />
+                ) : null}
             />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20, paddingTop: 10 },
-
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 18,
-        marginTop: 10,
-    },
-
-    title: { fontSize: 28, fontWeight: 'bold' },
-    addBtn: { padding: 12, borderRadius: 25, elevation: 3 },
-
-    card: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderRadius: 14,
-        marginBottom: 12,
-        elevation: 2,
-        overflow: 'hidden',
-    },
-
-    cardContent: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 14,
-    },
-
-    logoWrap: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        overflow: 'hidden',
-        marginRight: 14,
-        backgroundColor: '#DDD',
-    },
-
-    logo: { width: '100%', height: '100%' },
-
-    name: { fontSize: 16, fontWeight: 'bold' },
-
-    metaRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginTop: 6,
-    },
-
-    pill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 999,
-        gap: 6,
-        alignSelf: 'flex-start',
-    },
-
-    pillText: { fontSize: 12, fontWeight: '700' },
-
-    statusPill: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 999,
-        alignSelf: 'flex-start',
-    },
-
-    statusText: { color: 'white', fontSize: 12, fontWeight: '800' },
-
-    description: { marginTop: 8, fontSize: 12 },
-
-    actions: { flexDirection: 'row', paddingRight: 10 },
-    actionBtn: { padding: 8 },
-
-    emptyText: {
-        textAlign: 'center',
-        marginTop: 50,
-        fontSize: 16,
-    },
+    container: { flex: 1 },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 18 },
+    title: { fontSize: 27, fontWeight: '900' },
+    subtitle: { marginTop: 4, maxWidth: 300, fontSize: 13, lineHeight: 18 },
+    addButton: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+    globalAuditButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginHorizontal: 20, marginTop: 16, marginBottom: 12, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
+    globalAuditText: { marginLeft: 8, fontWeight: '800' },
+    list: { paddingHorizontal: 16, paddingBottom: 28 },
+    card: { borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 12 },
+    mainRow: { flexDirection: 'row', alignItems: 'center' },
+    logo: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#D1D5DB' },
+    details: { flex: 1, marginLeft: 13 },
+    name: { fontSize: 18, fontWeight: '800' },
+    code: { marginTop: 3, fontSize: 13 },
+    statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+    statusPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+    statusText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+    selectedText: { marginLeft: 8, fontSize: 11, fontWeight: '800' },
+    actionsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
+    primaryAction: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginRight: 6 },
+    primaryActionText: { marginLeft: 6, fontSize: 13, fontWeight: '800' },
+    iconAction: { padding: 9 },
+    emptyContainer: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
+    emptyText: { fontSize: 16, textAlign: 'center' },
+    footerLoader: { paddingVertical: 18 }
 });

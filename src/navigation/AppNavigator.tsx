@@ -24,6 +24,7 @@ import { ChangePasswordScreen } from '../screens/auth/ChangePasswordScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { LoadingScreen } from '../screens/LoadingScreen';
 import { TabsNavigator } from './TabsNavigator';
+import { PlatformNavigator } from './PlatformNavigator';
 
 type RootStackParamList = {
     Login: undefined;
@@ -56,6 +57,7 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
     const user = useAuthStore((state) => state.user);
     const logout = useAuthStore((state) => state.logout);
     const connectionMode = useAuthStore((state) => state.connectionMode);
+    const rootLabel = user?.role === 'SUPER_ADMIN' ? 'Consola' : 'Inicio';
     const connected = useChatStore((state) => state.connected);
     const colors = useTheme().currentTheme;
     const online = connectionMode === 'online' && connected;
@@ -88,7 +90,7 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
             <View style={styles.menuContainer}>
                 <MenuItem
                     icon="home-outline"
-                    text="Inicio"
+                    text={rootLabel}
                     color={colors.textColor}
                     onPress={() => navigation.navigate('Root')}
                 />
@@ -119,9 +121,17 @@ const HeaderWithLogo = ({ title, tintColor }: { readonly title: string; readonly
     );
 };
 
+
+const AuthenticatedRoot = () => {
+    const role = useAuthStore((state) => state.user?.role);
+    return role === 'SUPER_ADMIN' ? <PlatformNavigator /> : <TabsNavigator />;
+};
+
 const AuthenticatedDrawer = () => {
     const width = useWindowDimensions().width;
     const colors = useTheme().currentTheme;
+    const role = useAuthStore((state) => state.user?.role);
+    const rootTitle = role === 'SUPER_ADMIN' ? 'Consola' : 'Inicio';
 
     return (
         <Drawer.Navigator
@@ -136,10 +146,10 @@ const AuthenticatedDrawer = () => {
         >
             <Drawer.Screen
                 name="Root"
-                component={TabsNavigator}
+                component={AuthenticatedRoot}
                 options={{
-                    title: 'Inicio',
-                    headerTitle: (props) => <HeaderWithLogo title="Inicio" tintColor={props.tintColor} />
+                    title: rootTitle,
+                    headerTitle: (props) => <HeaderWithLogo title={rootTitle} tintColor={props.tintColor} />
                 }}
             />
         </Drawer.Navigator>

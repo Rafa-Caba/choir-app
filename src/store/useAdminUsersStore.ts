@@ -4,33 +4,45 @@ import { create } from 'zustand';
 import {
     deleteUser,
     getAllUsers,
+    resetUserPassword,
     saveUser,
-    type AdminUserInput
+    setUserActiveStatus,
+    type AdminUserInput,
+    type SaveUserResult
 } from '../services/admin/users';
 import type { User } from '../types/auth';
 
 interface AdminUsersState {
-    users: User[];
-    loading: boolean;
-    refreshing: boolean;
-    page: number;
-    hasMore: boolean;
+    readonly users: readonly User[];
+    readonly loading: boolean;
+    readonly refreshing: boolean;
+    readonly page: number;
+    readonly hasMore: boolean;
     fetchUsers: (refresh?: boolean) => Promise<void>;
-    saveUserAction: (data: AdminUserInput, imageUri?: string, id?: string) => Promise<boolean>;
+    saveUserAction: (data: AdminUserInput, imageUri?: string, id?: string) => Promise<SaveUserResult | null>;
+    setUserActiveAction: (id: string, isActive: boolean) => Promise<boolean>;
+    resetPasswordAction: (id: string) => Promise<string | null>;
     removeUserAction: (id: string) => Promise<boolean>;
     reset: () => void;
 }
 
-export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
-    users: [],
+const initialState = {
+    users: [] as readonly User[],
     loading: false,
     refreshing: false,
     page: 0,
-    hasMore: true,
+    hasMore: true
+};
+
+export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
+    ...initialState,
 
     fetchUsers: async (refresh = false) => {
         const state = get();
-        if (state.loading || (!refresh && !state.hasMore)) return;
+
+        if (state.loading || state.refreshing || (!refresh && !state.hasMore)) {
+            return;
+        }
 
         const nextPage = refresh ? 1 : state.page + 1;
         set({ loading: !refresh, refreshing: refresh });
@@ -39,10 +51,13 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
             const response = await getAllUsers(nextPage, 10);
             set((current) => ({
                 users: refresh
-                    ? [...response.users]
-                    : [...current.users, ...response.users.filter(
-                        (incoming) => !current.users.some((existing) => existing.id === incoming.id)
-                    )],
+                    ? response.users
+                    : [
+                        ...current.users,
+                        ...response.users.filter(
+                            (incoming) => !current.users.some((existing) => existing.id === incoming.id)
+                        )
+                    ],
                 page: response.currentPage,
                 hasMore: response.currentPage < response.totalPages
             }));
@@ -53,14 +68,43 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
 
     saveUserAction: async (data, imageUri, id) => {
         set({ loading: true });
+
         try {
-            await saveUser(data, imageUri, id);
-            await get().fetchUsers(true);
+            const result = await saveUser(data, imageUri, id);
+            const saved = result.user;
+            set((state) => {
+                const exists = state.users.some((user) => user.id === saved.id);
+                return {
+                    users: exists
+                        ? state.users.map((user) => user.id === saved.id ? saved : user)
+                        : [saved, ...state.users]
+                };
+            });
+            return result;
+        } catch {
+            return null;
+        } finally {
+            set({ loading: false });
+        }
+    },
+
+    setUserActiveAction: async (id, isActive) => {
+        try {
+            const updated = await setUserActiveStatus(id, isActive);
+            set((state) => ({
+                users: state.users.map((user) => user.id === id ? updated : user)
+            }));
             return true;
         } catch {
             return false;
-        } finally {
-            set({ loading: false });
+        }
+    },
+
+    resetPasswordAction: async (id) => {
+        try {
+            return (await resetUserPassword(id)).temporaryPassword;
+        } catch {
+            return null;
         }
     },
 
@@ -74,11 +118,5 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
         }
     },
 
-    reset: () => set({
-        users: [],
-        loading: false,
-        refreshing: false,
-        page: 0,
-        hasMore: true
-    })
+    reset: () => set(initialState)
 }));

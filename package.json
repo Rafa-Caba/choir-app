@@ -8,7 +8,11 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "verify:phase-11-13": "npm run typecheck"
+    "verify:phase-11-13": "npm run typecheck",
+    "lint": "node scripts/lint-phase-14-16.mjs",
+    "test": "node scripts/phase-14-16.test.mjs",
+    "verify:phase-14-16": "npm run typecheck && npm run lint && npm test",
+    "verify:qa": "npm run verify:phase-14-16"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",

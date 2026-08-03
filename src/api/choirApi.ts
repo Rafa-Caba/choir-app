@@ -7,6 +7,8 @@ import axios, {
 import ENV from '../config/env';
 import type { AuthSessionResponse } from '../types/auth';
 import { authBridge } from './authTokenBridge';
+import { tenantContextBridge } from './tenantContextBridge';
+import { getOrCreateDeviceId } from '../services/deviceIdentity';
 
 const API_BASE_URL = ENV.API_BASE_URL;
 
@@ -50,11 +52,17 @@ const refreshSession = async (): Promise<AuthSessionResponse> => {
 };
 
 choirApi.interceptors.request.use(
-    (config) => {
+    async (config) => {
         const accessToken = authBridge.getAccessToken();
+        const targetChoirId = tenantContextBridge.getTargetChoirId();
 
         if (accessToken) {
             config.headers.Authorization = `Bearer ${accessToken}`;
+            config.headers['x-device-id'] = await getOrCreateDeviceId();
+        }
+
+        if (targetChoirId) {
+            config.headers['x-target-choir-id'] = targetChoirId;
         }
 
         return config;

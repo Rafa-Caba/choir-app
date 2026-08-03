@@ -1,92 +1,98 @@
+// src/screens/choir/ManageChoirScreen.tsx
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
-    StyleSheet,
-    Switch,
-    Image,
-    ActivityIndicator,
-    Alert,
-    Platform,
-    ScrollView,
+    View
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-
-import { useAdminChoirsStore } from '../../store/useAdminChoirsStore';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { canManageChoirs } from '../../auth/permissions';
+import { AccessDeniedScreen } from '../../components/auth/AccessDeniedScreen';
 import { useTheme } from '../../context/ThemeContext';
+import type { PlatformStackParamList } from '../../navigation/PlatformNavigator';
+import { useAdminChoirsStore } from '../../store/useAdminChoirsStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useTargetChoirStore } from '../../store/useTargetChoirStore';
 import type { CreateChoirPayload } from '../../types/choir';
 
-type RouteParams = { choirId?: string };
+type Props = NativeStackScreenProps<PlatformStackParamList, 'ManageChoirScreen'>;
 
-export const ManageChoirScreen = () => {
-    const navigation = useNavigation<any>();
-    const route = useRoute<any>();
-    const params = (route.params || {}) as RouteParams;
-
-    const isEdit = !!params.choirId;
-
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
-    const { getChoirFromState, fetchChoirById, saveChoirAction } = useAdminChoirsStore();
-
+export const ManageChoirScreen = ({ navigation, route }: Props) => {
+    const colors = useTheme().currentTheme;
+    const role = useAuthStore((state) => state.user?.role);
+    const hasAccess = canManageChoirs(role);
+    const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
+    const selectChoir = useTargetChoirStore((state) => state.selectChoir);
+    const clearSelection = useTargetChoirStore((state) => state.clearSelection);
+    const {
+        getChoirFromState,
+        fetchChoirById,
+        saveChoirAction
+    } = useAdminChoirsStore();
+    const choirId = route.params?.choirId;
+    const isEdit = Boolean(choirId);
+    const headerTitle = useMemo(() => isEdit ? 'Editar coro' : 'Nuevo coro', [isEdit]);
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
     const [description, setDescription] = useState('');
     const [isActive, setIsActive] = useState(true);
-
-    const [imageUri, setImageUri] = useState<string>('');
+    const [imageUri, setImageUri] = useState('');
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    const choirId = params.choirId;
-
-    const headerTitle = useMemo(
-        () => (isEdit ? 'Editar Coro' : 'Nuevo Coro'),
-        [isEdit]
-    );
+    useEffect(() => {
+        navigation.setOptions({ title: headerTitle });
+    }, [headerTitle, navigation]);
 
     useEffect(() => {
-        navigation.setOptions?.({ title: headerTitle });
-    }, [headerTitle]);
-
-    useEffect(() => {
-        const load = async () => {
-            if (!isEdit || !choirId) return;
-
-            const local = getChoirFromState(choirId);
-            if (local) {
-                setName(local.name);
-                setCode(local.code);
-                setDescription(local.description || '');
-                setIsActive(local.isActive);
-                setImageUri(local.logoUrl || '');
+        const loadChoir = async (): Promise<void> => {
+            if (!hasAccess || !choirId) {
                 return;
             }
 
-            setLoading(true);
-            const fetched = await fetchChoirById(choirId);
-            if (fetched) {
-                setName(fetched.name);
-                setCode(fetched.code);
-                setDescription(fetched.description || '');
-                setIsActive(fetched.isActive);
-                setImageUri(fetched.logoUrl || '');
+            const local = getChoirFromState(choirId);
+            const choir = local ?? await fetchChoirById(choirId);
+
+            if (!choir) {
+                Alert.alert('Coro no encontrado', 'No fue posible cargar el coro solicitado.');
+                navigation.goBack();
+                return;
             }
-            setLoading(false);
+
+            setName(choir.name);
+            setCode(choir.code);
+            setDescription(choir.description ?? '');
+            setIsActive(choir.isActive);
+            setImageUri(choir.logoUrl ?? '');
         };
 
-        load();
-    }, [isEdit, choirId]);
+        setLoading(Boolean(choirId));
+        loadChoir()
+            .catch(() => {
+                Alert.alert('Error', 'No fue posible cargar el coro.');
+            })
+            .finally(() => setLoading(false));
+    }, [choirId, fetchChoirById, getChoirFromState, hasAccess, navigation]);
 
-    const pickImage = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permiso requerido', 'Necesitamos permiso para acceder a tus fotos.');
+    if (!hasAccess) {
+        return <AccessDeniedScreen />;
+    }
+
+    const pickImage = async (): Promise<void> => {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (permission.status !== 'granted') {
+            Alert.alert('Permiso requerido', 'Necesitamos acceso a tus fotos para seleccionar un logo.');
             return;
         }
 
@@ -94,62 +100,50 @@ export const ManageChoirScreen = () => {
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             quality: 0.9,
             allowsEditing: true,
-            aspect: [1, 1],
+            aspect: [1, 1]
         });
 
         if (!result.canceled) {
-            const uri = result.assets[0].uri;
-            setImageUri(uri);
+            setImageUri(result.assets[0].uri);
         }
     };
 
-    const validate = () => {
-        if (!name.trim()) return 'El nombre es obligatorio';
-        if (!code.trim()) return 'El código es obligatorio';
-        return null;
-    };
+    const save = async (): Promise<void> => {
+        const normalizedName = name.trim();
+        const normalizedCode = code.trim().toLowerCase();
 
-    const onSave = async () => {
-        const error = validate();
-        if (error) {
-            if (Platform.OS === 'web') {
-                // @ts-ignore
-                window.alert(error);
-            } else {
-                Alert.alert('Error', error);
-            }
+        if (!normalizedName || !normalizedCode) {
+            Alert.alert('Datos incompletos', 'El nombre y el código del coro son obligatorios.');
             return;
         }
 
         const payload: CreateChoirPayload = {
-            name: name.trim(),
-            code: code.trim(),
-            description: description.trim() ? description.trim() : undefined,
-            isActive,
+            name: normalizedName,
+            code: normalizedCode,
+            description: description.trim(),
+            isActive
         };
 
         setSaving(true);
+
         try {
-            await saveChoirAction(payload, imageUri, choirId);
+            const savedChoir = await saveChoirAction(payload, imageUri || undefined, choirId);
 
-            const msg = `Coro ${isEdit ? 'actualizado' : 'creado'} correctamente`;
-            if (Platform.OS === 'web') {
-                // @ts-ignore
-                window.alert(msg);
-            } else {
-                Alert.alert('Éxito', msg);
+            if (selectedChoir?.id === savedChoir.id) {
+                if (savedChoir.isActive) {
+                    selectChoir(savedChoir);
+                } else {
+                    clearSelection();
+                }
             }
 
+            Alert.alert('Éxito', `Coro ${isEdit ? 'actualizado' : 'creado'} correctamente.`);
             navigation.goBack();
-        } catch (e) {
-            console.error(e);
-            const msg = 'No se pudo guardar el coro';
-            if (Platform.OS === 'web') {
-                // @ts-ignore
-                window.alert(msg);
-            } else {
-                Alert.alert('Error', msg);
-            }
+        } catch (error) {
+            Alert.alert(
+                'No fue posible guardar el coro',
+                error instanceof Error ? error.message : 'Revisa los datos e intenta nuevamente.'
+            );
         } finally {
             setSaving(false);
         }
@@ -157,93 +151,82 @@ export const ManageChoirScreen = () => {
 
     if (loading) {
         return (
-            <View
-                style={[
-                    styles.container,
-                    { backgroundColor: colors.backgroundColor, justifyContent: 'center', alignItems: 'center' },
-                ]}
-            >
+            <View style={[styles.loading, { backgroundColor: colors.backgroundColor }]}>
                 <ActivityIndicator size="large" color={colors.primaryColor} />
             </View>
         );
     }
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-            <View style={[styles.card, { backgroundColor: colors.cardColor }]}>
+        <ScrollView
+            style={[styles.container, { backgroundColor: colors.backgroundColor }]}
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+        >
+            <View style={[styles.card, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
                 <Text style={[styles.title, { color: colors.textColor }]}>{headerTitle}</Text>
 
-                <View style={styles.logoRow}>
-                    <View style={styles.logoWrap}>
-                        <Image
-                            source={{ uri: imageUri || 'https://via.placeholder.com/150?text=Coro' }}
-                            style={styles.logo}
-                        />
-                    </View>
+                <Image
+                    source={{ uri: imageUri || 'https://via.placeholder.com/150?text=Coro' }}
+                    style={[styles.logo, { borderColor: colors.primaryColor }]}
+                />
+                <TouchableOpacity
+                    onPress={pickImage}
+                    style={[styles.imageButton, { backgroundColor: colors.buttonColor }]}
+                >
+                    <Ionicons name="image-outline" size={18} color={colors.buttonTextColor} />
+                    <Text style={[styles.imageButtonText, { color: colors.buttonTextColor }]}>Seleccionar logo</Text>
+                </TouchableOpacity>
 
-                    <TouchableOpacity
-                        onPress={pickImage}
-                        style={[styles.pickBtn, { backgroundColor: colors.buttonColor }]}
-                    >
-                        <Ionicons name="image-outline" size={18} color={colors.buttonTextColor} />
-                        <Text style={[styles.pickBtnText, { color: colors.buttonTextColor }]}>Cambiar logo</Text>
-                    </TouchableOpacity>
-                </View>
-
-                <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Nombre *</Text>
+                <Text style={[styles.label, { color: colors.textColor }]}>Nombre</Text>
                 <TextInput
                     value={name}
                     onChangeText={setName}
                     placeholder="Nombre del coro"
-                    placeholderTextColor={colors.cardColor}
-                    style={[
-                        styles.input,
-                        { backgroundColor: colors.secondaryTextColor || '#EFEFEF', color: colors.textColor },
-                    ]}
+                    placeholderTextColor={colors.secondaryTextColor}
+                    style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor }]}
                 />
 
-                <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Código *</Text>
+                <Text style={[styles.label, { color: colors.textColor }]}>Código de acceso</Text>
                 <TextInput
                     value={code}
                     onChangeText={setCode}
-                    placeholder="ej. eroc1"
+                    placeholder="ej. coro-centro"
                     placeholderTextColor={colors.secondaryTextColor}
                     autoCapitalize="none"
-                    style={[
-                        styles.input,
-                        { backgroundColor: colors.cardColor || '#EFEFEF', color: colors.textColor },
-                    ]}
+                    autoCorrect={false}
+                    style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor }]}
                 />
 
-                <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Descripción</Text>
+                <Text style={[styles.label, { color: colors.textColor }]}>Descripción</Text>
                 <TextInput
                     value={description}
                     onChangeText={setDescription}
                     placeholder="Breve descripción del coro"
                     placeholderTextColor={colors.secondaryTextColor}
                     multiline
-                    style={[
-                        styles.textarea,
-                        { backgroundColor: colors.cardColor || '#EFEFEF', color: colors.textColor },
-                    ]}
+                    style={[styles.input, styles.textArea, { color: colors.textColor, borderColor: colors.borderColor }]}
                 />
 
-                <View style={styles.switchRow}>
-                    <Text style={[styles.label, { color: colors.secondaryTextColor }]}>¿Coro activo?</Text>
+                <View style={[styles.switchRow, { borderColor: colors.borderColor }]}>
+                    <View style={styles.switchText}>
+                        <Text style={[styles.switchTitle, { color: colors.textColor }]}>Coro activo</Text>
+                        <Text style={[styles.switchDescription, { color: colors.secondaryTextColor }]}>Los usuarios solo pueden iniciar sesión cuando el coro está activo.</Text>
+                    </View>
                     <Switch value={isActive} onValueChange={setIsActive} />
                 </View>
 
                 <TouchableOpacity
-                    onPress={onSave}
+                    onPress={save}
                     disabled={saving}
-                    style={[styles.saveBtn, { backgroundColor: colors.primaryColor, opacity: saving ? 0.8 : 1 }]}
+                    style={[styles.saveButton, { backgroundColor: colors.buttonColor, opacity: saving ? 0.7 : 1 }]}
                 >
                     {saving ? (
-                        <ActivityIndicator color="white" />
+                        <ActivityIndicator color={colors.buttonTextColor} />
                     ) : (
                         <>
-                            <Ionicons name="save-outline" size={18} color="white" />
-                            <Text style={styles.saveBtnText}>Guardar</Text>
+                            <Ionicons name="save-outline" size={19} color={colors.buttonTextColor} />
+                            <Text style={[styles.saveText, { color: colors.buttonTextColor }]}>Guardar coro</Text>
                         </>
                     )}
                 </TouchableOpacity>
@@ -253,52 +236,21 @@ export const ManageChoirScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20, paddingTop: 10 },
-    card: { borderRadius: 14, padding: 16, elevation: 2 },
-
-    title: { fontSize: 22, fontWeight: 'bold', marginBottom: 14 },
-
-    logoRow: { alignItems: 'center', marginBottom: 16, gap: 10 },
-    logoWrap: {
-        width: 150,
-        height: 150,
-        borderRadius: 75,
-        overflow: 'hidden',
-        borderWidth: 3,
-        borderColor: '#DDD',
-        backgroundColor: '#EEE',
-    },
-    logo: { width: '100%', height: '100%' },
-
-    pickBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderRadius: 999,
-    },
-    pickBtnText: { fontWeight: '800' },
-
-    label: { fontSize: 13, fontWeight: '700', marginTop: 10, marginBottom: 6 },
-    input: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12 },
-    textarea: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, minHeight: 90 },
-
-    switchRow: {
-        marginTop: 12,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-
-    saveBtn: {
-        marginTop: 18,
-        borderRadius: 12,
-        paddingVertical: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'row',
-        gap: 10,
-    },
-    saveBtnText: { color: 'white', fontWeight: '900', fontSize: 16 },
+    container: { flex: 1 },
+    content: { padding: 18, paddingBottom: 40 },
+    loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    card: { borderWidth: 1, borderRadius: 16, padding: 18 },
+    title: { fontSize: 24, fontWeight: '900', marginBottom: 18 },
+    logo: { width: 130, height: 130, borderRadius: 65, borderWidth: 2, alignSelf: 'center', backgroundColor: '#D1D5DB' },
+    imageButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, marginTop: 12, marginBottom: 12 },
+    imageButtonText: { marginLeft: 7, fontWeight: '800' },
+    label: { fontSize: 14, fontWeight: '800', marginTop: 14, marginBottom: 6 },
+    input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16 },
+    textArea: { minHeight: 90, textAlignVertical: 'top' },
+    switchRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 18 },
+    switchText: { flex: 1, paddingRight: 12 },
+    switchTitle: { fontSize: 16, fontWeight: '800' },
+    switchDescription: { marginTop: 3, fontSize: 12, lineHeight: 17 },
+    saveButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 14, marginTop: 22 },
+    saveText: { marginLeft: 8, fontSize: 16, fontWeight: '900' }
 });

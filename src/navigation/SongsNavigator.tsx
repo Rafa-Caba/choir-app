@@ -1,3 +1,5 @@
+// src/navigation/SongsNavigator.tsx
+
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -7,6 +9,9 @@ import { SongDetailScreen } from '../screens/songs/SongDetailScreen';
 import { CreateSongScreen } from '../screens/songs/CreateSongScreen';
 
 import { useTheme } from '../context/ThemeContext';
+import { canManageContent } from '../auth/permissions';
+import { AccessDeniedScreen } from '../components/auth/AccessDeniedScreen';
+import { useAuthStore } from '../store/useAuthStore';
 
 export type SongsStackParamList = {
     SongTypes: undefined;
@@ -16,6 +21,11 @@ export type SongsStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<SongsStackParamList>();
+
+const CreateSongGuard = () => {
+    const role = useAuthStore((state) => state.user?.role);
+    return canManageContent(role) ? <CreateSongScreen /> : <AccessDeniedScreen />;
+};
 
 export const SongsNavigator = () => {
     const { currentTheme } = useTheme();
@@ -55,7 +65,7 @@ export const SongsNavigator = () => {
             />
             <Stack.Screen
                 name="CreateSongScreen"
-                component={CreateSongScreen}
+                component={CreateSongGuard}
                 options={{ title: 'Detalles del Canto' }}
             />
         </Stack.Navigator>

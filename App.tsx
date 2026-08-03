@@ -33,6 +33,7 @@ interface AppContentProps {
 const AppContent = ({ onReady }: AppContentProps) => {
     const status = useAuthStore((state) => state.status);
     const requiresPasswordChange = useAuthStore((state) => state.requiresPasswordChange);
+    const userRole = useAuthStore((state) => state.user?.role);
     const checkAuth = useAuthStore((state) => state.checkAuth);
     const fetchAppConfig = useAppConfigStore((state) => state.fetchAppConfig);
     const connect = useChatStore((state) => state.connect);
@@ -48,7 +49,7 @@ const AppContent = ({ onReady }: AppContentProps) => {
     }, [checkAuth, onReady]);
 
     useEffect(() => {
-        if (status === 'authenticated' && !requiresPasswordChange) {
+        if (status === 'authenticated' && !requiresPasswordChange && userRole !== 'SUPER_ADMIN') {
             fetchAppConfig().catch(() => undefined);
             connect();
             return disconnect;
@@ -56,7 +57,7 @@ const AppContent = ({ onReady }: AppContentProps) => {
 
         disconnect();
         return undefined;
-    }, [connect, disconnect, fetchAppConfig, requiresPasswordChange, status]);
+    }, [connect, disconnect, fetchAppConfig, requiresPasswordChange, status, userRole]);
 
     return (
         <NavigationContainer>

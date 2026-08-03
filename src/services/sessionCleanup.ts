@@ -19,7 +19,9 @@ export const resetApplicationStores = async (): Promise<void> => {
         themeModule,
         adminChoirsModule,
         adminThemesModule,
-        adminUsersModule
+        adminUsersModule,
+        auditLogsModule,
+        targetChoirModule
     ] = await Promise.all([
         import('../store/useAnnouncementStore'),
         import('../store/useAppConfigStore'),
@@ -30,7 +32,9 @@ export const resetApplicationStores = async (): Promise<void> => {
         import('../store/useThemeStore'),
         import('../store/useAdminChoirsStore'),
         import('../store/useAdminThemesStore'),
-        import('../store/useAdminUsersStore')
+        import('../store/useAdminUsersStore'),
+        import('../store/useAuditLogsStore'),
+        import('../store/useTargetChoirStore')
     ]);
 
     chatModule.useChatStore.getState().disconnect();
@@ -44,6 +48,8 @@ export const resetApplicationStores = async (): Promise<void> => {
     adminChoirsModule.useAdminChoirsStore.getState().reset();
     adminThemesModule.useAdminThemesStore.getState().reset();
     adminUsersModule.useAdminUsersStore.getState().reset();
+    auditLogsModule.useAuditLogsStore.getState().reset();
+    targetChoirModule.useTargetChoirStore.getState().clearSelection();
 };
 
 export const clearLocalSessionData = async (

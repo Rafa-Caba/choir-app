@@ -1,31 +1,43 @@
+// src/screens/settings/SettingsScreen.tsx
+
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore } from '../../store/useAuthStore';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import {
+    canManageSettings,
+    canManageUsers,
+    canViewAuditLogs
+} from '../../auth/permissions';
 import { useTheme } from '../../context/ThemeContext';
+import type { SettingsStackParamList } from '../../navigation/SettingsNavigator';
+import { useAuthStore } from '../../store/useAuthStore';
 
-export const SettingsScreen = ({ navigation }: any) => {
-    const { user, logout } = useAuthStore();
-    const insets = useSafeAreaInsets();
-    const { currentTheme } = useTheme();
-    const { width } = useWindowDimensions();
-    const middleScreens = width > 450;
-    const colors = currentTheme;
+type Props = NativeStackScreenProps<SettingsStackParamList, 'SettingsScreen'>;
+interface SettingsItemProps {
+    readonly icon: keyof typeof Ionicons.glyphMap;
+    readonly text: string;
+    readonly onPress: () => void;
+    readonly destructive?: boolean;
+}
 
-    const Item = ({ icon, text, target, action, destructive }: any) => (
-        <TouchableOpacity
-            style={[styles.item, { marginTop: destructive ? 15 : 8 }]}
-            activeOpacity={0.6}
-            onPress={() => {
-                if (action) action();
-                else if (target) navigation.navigate(target);
-            }}
-        >
-            <Ionicons name={icon} size={28} color={destructive ? '#e74c3c' : colors.textColor} />
-            <Text style={[styles.itemText, { color: destructive ? '#e74c3c' : colors.textColor }]}>
-                {text}
-            </Text>
+export const SettingsScreen = ({ navigation }: Props) => {
+    const user = useAuthStore((state) => state.user);
+    const logout = useAuthStore((state) => state.logout);
+    const colors = useTheme().currentTheme;
+
+    const Item = ({ icon, text, onPress, destructive = false }: SettingsItemProps) => (
+        <TouchableOpacity style={styles.item} activeOpacity={0.65} onPress={onPress}>
+            <Ionicons name={icon} size={25} color={destructive ? '#C62828' : colors.textColor} />
+            <Text style={[styles.itemText, { color: destructive ? '#C62828' : colors.textColor }]}>{text}</Text>
+            {!destructive && <Ionicons name="chevron-forward" size={19} color={colors.secondaryTextColor} />}
         </TouchableOpacity>
     );
 
@@ -33,43 +45,45 @@ export const SettingsScreen = ({ navigation }: any) => {
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
             <Text style={[styles.title, { color: colors.textColor }]}>Ajustes</Text>
 
-            <View style={styles.profileSection}>
-                <TouchableOpacity onPress={() => navigation.navigate('PerfilScreen')}>
-                    <Image
-                        source={{ uri: user?.imageUrl || 'https://via.placeholder.com/150' }}
-                        style={[styles.avatar, { borderColor: colors.primaryColor }]}
-                    />
-                </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.profile} onPress={() => navigation.navigate('PerfilScreen')}>
+                <Image
+                    source={{ uri: user?.cachedImageUrl ?? user?.imageUrl ?? 'https://via.placeholder.com/120' }}
+                    style={[styles.avatar, { borderColor: colors.primaryColor }]}
+                />
+                <View style={styles.profileText}>
+                    <Text style={[styles.name, { color: colors.textColor }]}>{user?.name ?? 'Usuario'}</Text>
+                    <Text style={[styles.username, { color: colors.secondaryTextColor }]}>@{user?.username ?? ''} · {user?.role ?? ''}</Text>
+                </View>
+            </TouchableOpacity>
 
-            <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-                <Item icon="person-outline" text="Perfil" target="PerfilScreen" />
-                <Item icon="create-outline" text="Editar Perfil" target="EditarPerfilScreen" />
-                <Item icon="color-palette-outline" text="Apariencia / Temas" target="ThemeSelectionScreen" />
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
+                <Item icon="person-outline" text="Mi perfil" onPress={() => navigation.navigate('PerfilScreen')} />
+                <Item icon="create-outline" text="Editar perfil" onPress={() => navigation.navigate('EditarPerfilScreen')} />
+                <Item icon="color-palette-outline" text="Apariencia y temas" onPress={() => navigation.navigate('ThemeSelectionScreen')} />
 
-                {user?.role === 'ADMIN' && (
-                    <View>
-                        <View style={[styles.divider, { backgroundColor: colors.borderColor || '#ccc' }]} />
-                        <Text style={[styles.sectionHeader, { color: colors.secondaryTextColor }]}>Administración</Text>
-
-                        <Item icon="people-outline" text="Gestionar Usuarios" target="UsersListScreen" />
-                        <Item icon="color-filter-outline" text="Gestionar Temas" target="ThemesListScreen" />
-                        <Item icon="settings-outline" text="Ajustes de la App" target="AdminSettingsScreen" />
-                    </View>
+                {(canManageUsers(user?.role) || canManageSettings(user?.role) || canViewAuditLogs(user?.role)) && (
+                    <Text style={[styles.sectionTitle, { color: colors.secondaryTextColor }]}>Administración</Text>
                 )}
 
-                <Item icon="log-out-outline" text="Cerrar Sesión" action={logout} destructive />
+                {canManageUsers(user?.role) && (
+                    <Item icon="people-outline" text="Gestionar usuarios" onPress={() => navigation.navigate('UsersListScreen')} />
+                )}
+                {canManageSettings(user?.role) && (
+                    <>
+                        <Item icon="color-filter-outline" text="Gestionar temas" onPress={() => navigation.navigate('ThemesListScreen')} />
+                        <Item icon="settings-outline" text="Configuración del coro" onPress={() => navigation.navigate('AdminSettingsScreen')} />
+                    </>
+                )}
+                {canViewAuditLogs(user?.role) && (
+                    <Item icon="shield-checkmark-outline" text="Auditoría del coro" onPress={() => navigation.navigate('AuditLogsScreen', { scope: 'tenant' })} />
+                )}
 
-                <View style={[styles.bgIconContainer, { marginTop: middleScreens ? -250 : -255 }]} pointerEvents="none">
-                    <Ionicons
-                        name="musical-notes" size={150}
-                        color={currentTheme.isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}
-                    />
-                </View>
+                <View style={[styles.separator, { backgroundColor: colors.borderColor }]} />
+                <Item icon="log-out-outline" text="Cerrar sesión" destructive onPress={() => logout().catch(() => undefined)} />
 
-                <View style={[styles.footer, { marginTop: middleScreens ? 40 : 30 }]}>
-                    <Text style={{ fontWeight: 'bold', textAlign: 'center', color: colors.textColor }}>Acerca de:</Text>
-                    <Text style={{ textAlign: 'center', color: colors.secondaryTextColor }}>Rafael Cabanillas - 2025</Text>
+                <View style={styles.footer}>
+                    <Text style={[styles.footerTitle, { color: colors.textColor }]}>Choir App</Text>
+                    <Text style={[styles.footerText, { color: colors.secondaryTextColor }]}>Rafael Cabanillas · 2026</Text>
                 </View>
             </ScrollView>
         </View>
@@ -77,15 +91,19 @@ export const SettingsScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, paddingHorizontal: 20 },
-    title: { fontSize: 28, marginBottom: 5, fontWeight: 'bold' },
-    profileSection: { alignItems: 'center', marginVertical: 15 },
-    avatar: { width: 120, height: 120, borderRadius: 60, borderWidth: 2 },
-    listContainer: { flex: 1, marginVertical: 10 },
-    item: { borderRadius: 15, marginTop: 8, marginBottom: 3, flexDirection: 'row', alignItems: 'center', paddingBottom: 5 },
-    itemText: { marginLeft: 15, fontSize: 18 },
-    bgIconContainer: { alignItems: 'center', marginTop: -230, marginBottom: 80 },
-    footer: { marginTop: 30, marginBottom: 10, alignSelf: 'center' },
-    divider: { height: 1, marginVertical: 20, width: '100%' },
-    sectionHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, marginTop: 10 }
+    container: { flex: 1, paddingHorizontal: 20, paddingTop: 12 },
+    title: { fontSize: 29, fontWeight: '900' },
+    profile: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18 },
+    avatar: { width: 78, height: 78, borderRadius: 39, borderWidth: 2, backgroundColor: '#D1D5DB' },
+    profileText: { flex: 1, marginLeft: 14 },
+    name: { fontSize: 20, fontWeight: '900' },
+    username: { marginTop: 3, fontSize: 13 },
+    list: { paddingBottom: 34 },
+    item: { flexDirection: 'row', alignItems: 'center', minHeight: 52, borderRadius: 12, paddingHorizontal: 4 },
+    itemText: { flex: 1, marginLeft: 14, fontSize: 17, fontWeight: '600' },
+    sectionTitle: { marginTop: 20, marginBottom: 6, fontSize: 13, fontWeight: '900', textTransform: 'uppercase' },
+    separator: { height: 1, marginVertical: 18 },
+    footer: { alignItems: 'center', marginTop: 30 },
+    footerTitle: { fontWeight: '900' },
+    footerText: { marginTop: 3, fontSize: 12 }
 });

@@ -1,161 +1,247 @@
+// src/screens/admin/UsersListScreen.tsx
+
 import React, { useCallback } from 'react';
 import {
-    View, Text, FlatList, Image, TouchableOpacity, StyleSheet,
-    Alert, Platform, ActivityIndicator
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Image,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAdminUsersStore } from '../../store/useAdminUsersStore';
+import {
+    useFocusEffect,
+    useNavigation,
+    type NavigationProp
+} from '@react-navigation/native';
+import { canManageUsers, isSuperAdmin } from '../../auth/permissions';
+import { AccessDeniedScreen } from '../../components/auth/AccessDeniedScreen';
 import { useTheme } from '../../context/ThemeContext';
+import { useAdminUsersStore } from '../../store/useAdminUsersStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useTargetChoirStore } from '../../store/useTargetChoirStore';
 import type { User } from '../../types/auth';
 
+type UserManagementParamList = {
+    readonly UsersListScreen: undefined;
+    readonly ManageUserScreen: { readonly user?: User } | undefined;
+};
+
 export const UsersListScreen = () => {
-    const navigation = useNavigation<any>();
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
+    const navigation = useNavigation<NavigationProp<UserManagementParamList>>();
+    const colors = useTheme().currentTheme;
+    const currentUser = useAuthStore((state) => state.user);
+    const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
+    const {
+        users,
+        fetchUsers,
+        removeUserAction,
+        setUserActiveAction,
+        resetPasswordAction,
+        reset,
+        loading,
+        refreshing
+    } = useAdminUsersStore();
+    const hasAccess = canManageUsers(currentUser?.role);
+    const requiresTarget = isSuperAdmin(currentUser?.role);
 
-    const { users, fetchUsers, removeUserAction, loading, refreshing } = useAdminUsersStore();
-
-    // Refresh list when screen comes into focus
     useFocusEffect(
         useCallback(() => {
-            fetchUsers(true);
-        }, [])
+            reset();
+
+            if (hasAccess && (!requiresTarget || selectedChoir)) {
+                fetchUsers(true).catch(() => undefined);
+            }
+
+            return reset;
+        }, [fetchUsers, hasAccess, requiresTarget, reset, selectedChoir])
     );
 
-    const handleEdit = (user: User) => {
-        navigation.navigate('ManageUserScreen', { user });
+    if (!hasAccess) {
+        return <AccessDeniedScreen />;
+    }
+
+    if (requiresTarget && !selectedChoir) {
+        return (
+            <AccessDeniedScreen
+                title="Selecciona un coro"
+                message="Debes seleccionar un coro desde la consola de plataforma antes de administrar usuarios."
+            />
+        );
+    }
+
+    const toggleUser = (user: User): void => {
+        const nextStatus = !user.isActive;
+        Alert.alert(
+            nextStatus ? 'Activar usuario' : 'Suspender usuario',
+            `¿Deseas ${nextStatus ? 'activar' : 'suspender'} a ${user.name}?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: nextStatus ? 'Activar' : 'Suspender',
+                    style: nextStatus ? 'default' : 'destructive',
+                    onPress: async () => {
+                        const success = await setUserActiveAction(user.id, nextStatus);
+                        if (!success) {
+                            Alert.alert('Error', 'No fue posible cambiar el estado del usuario.');
+                        }
+                    }
+                }
+            ]
+        );
     };
 
-    const handleDelete = (id: string, name: string) => {
-        if (Platform.OS === 'web') {
-            const confirm = window.confirm(`¿Estás seguro de eliminar a ${name}?`);
-            if (confirm) removeUserAction(id);
-        } else {
-            Alert.alert(
-                "Eliminar Usuario",
-                `¿Estás seguro de eliminar a ${name}?`,
-                [
-                    { text: "Cancelar", style: "cancel" },
-                    { text: "Eliminar", style: "destructive", onPress: () => removeUserAction(id) }
-                ]
-            );
-        }
+    const resetPassword = (user: User): void => {
+        Alert.alert(
+            'Restablecer contraseña',
+            `Se generará una contraseña temporal para ${user.name} y se cerrarán sus sesiones activas.`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Restablecer',
+                    onPress: async () => {
+                        const temporaryPassword = await resetPasswordAction(user.id);
+                        Alert.alert(
+                            temporaryPassword ? 'Contraseña temporal' : 'Error',
+                            temporaryPassword ?? 'No fue posible restablecer la contraseña.'
+                        );
+                    }
+                }
+            ]
+        );
     };
 
-    const renderItem = ({ item }: { item: User }) => (
-        <View style={[styles.card, { backgroundColor: colors.cardColor }]}>
+    const removeUser = (user: User): void => {
+        Alert.alert(
+            'Eliminar usuario',
+            `¿Deseas eliminar a ${user.name}? Esta acción revocará todas sus sesiones.`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        const success = await removeUserAction(user.id);
+                        if (!success) {
+                            Alert.alert('Error', 'No fue posible eliminar el usuario.');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const renderUser = ({ item }: { readonly item: User }) => (
+        <View
+            style={[
+                styles.card,
+                {
+                    backgroundColor: colors.cardColor,
+                    borderColor: colors.borderColor,
+                    opacity: item.isActive ? 1 : 0.65
+                }
+            ]}
+        >
             <TouchableOpacity
                 style={styles.cardContent}
-                onPress={() => handleEdit(item)}
+                onPress={() => navigation.navigate('ManageUserScreen', { user: item })}
             >
                 <Image
-                    source={{ uri: item.imageUrl || 'https://via.placeholder.com/50' }}
+                    source={{ uri: item.cachedImageUrl ?? item.imageUrl ?? 'https://via.placeholder.com/50' }}
                     style={styles.avatar}
                 />
-                <View style={{ flex: 1 }}>
-                    <Text style={[styles.name, { color: colors.textColor }]}>
-                        {item.name}
+                <View style={styles.userDetails}>
+                    <Text style={[styles.name, { color: colors.textColor }]}>{item.name}</Text>
+                    <Text style={[styles.role, { color: colors.secondaryTextColor }]}>@{item.username} · {item.role}</Text>
+                    <Text style={[styles.status, { color: item.isActive ? '#2E7D32' : '#C62828' }]}>
+                        {item.isActive ? 'Activo' : 'Suspendido'}
                     </Text>
-                    <Text style={[styles.role, { color: colors.secondaryTextColor }]}>
-                        {item.role} • {item.instrument || 'Sin instrumento'}
-                    </Text>
-                    {item.voice && (
-                        <View style={styles.voiceTag}>
-                            <Ionicons name="mic" size={10} color="white" />
-                            <Text style={styles.voiceText}>Voz</Text>
-                        </View>
-                    )}
                 </View>
             </TouchableOpacity>
 
             <View style={styles.actions}>
-                <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
-                    <Ionicons name="pencil" size={20} color={colors.primaryColor} />
+                <TouchableOpacity style={styles.actionButton} onPress={() => resetPassword(item)}>
+                    <Ionicons name="key-outline" size={20} color={colors.primaryColor} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={styles.actionBtn}>
-                    <Ionicons name="trash-outline" size={20} color="#E91E63" />
+                <TouchableOpacity style={styles.actionButton} onPress={() => toggleUser(item)}>
+                    <Ionicons
+                        name={item.isActive ? 'pause-circle-outline' : 'play-circle-outline'}
+                        size={21}
+                        color={item.isActive ? '#F57C00' : '#2E7D32'}
+                    />
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => navigation.navigate('ManageUserScreen', { user: item })}
+                >
+                    <Ionicons name="pencil-outline" size={20} color={colors.primaryColor} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionButton} onPress={() => removeUser(item)}>
+                    <Ionicons name="trash-outline" size={20} color="#C62828" />
                 </TouchableOpacity>
             </View>
         </View>
     );
 
-    const renderFooter = () => {
-        if (!loading || refreshing) return null;
-        return (
-            <View style={{ paddingVertical: 20 }}>
-                <ActivityIndicator size="small" color={colors.primaryColor} />
-            </View>
-        );
-    };
-
-    // Initial Load Spinner
-    if (loading && users.length === 0) {
-        return (
-            <View style={[styles.container, { backgroundColor: colors.backgroundColor, justifyContent: 'center', alignItems: 'center' }]}>
-                <ActivityIndicator size="large" color={colors.primaryColor} />
-            </View>
-        );
-    }
-
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
             <View style={styles.header}>
-                <Text style={[styles.title, { color: colors.textColor }]}>Usuarios</Text>
+                <View>
+                    <Text style={[styles.title, { color: colors.textColor }]}>Usuarios</Text>
+                    <Text style={[styles.subtitle, { color: colors.secondaryTextColor }]}>
+                        {selectedChoir?.name ?? 'Administración de tu coro'}
+                    </Text>
+                </View>
                 <TouchableOpacity
-                    style={[styles.addBtn, { backgroundColor: colors.buttonColor }]}
+                    style={[styles.addButton, { backgroundColor: colors.buttonColor }]}
                     onPress={() => navigation.navigate('ManageUserScreen')}
                 >
-                    <Ionicons name="person-add" size={20} color={colors.buttonTextColor} />
+                    <Ionicons name="person-add-outline" size={21} color={colors.buttonTextColor} />
                 </TouchableOpacity>
             </View>
 
             <FlatList
                 data={users}
                 keyExtractor={(item) => item.id}
-                renderItem={renderItem}
-
+                renderItem={renderUser}
                 refreshing={refreshing}
                 onRefresh={() => fetchUsers(true)}
-
                 onEndReached={() => fetchUsers(false)}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={renderFooter}
-
-                contentContainerStyle={{ paddingBottom: 20 }}
-                ListEmptyComponent={
-                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
-                        No hay usuarios registrados.
-                    </Text>
-                }
+                onEndReachedThreshold={0.4}
+                contentContainerStyle={users.length === 0 ? styles.emptyContainer : styles.list}
+                ListEmptyComponent={loading ? (
+                    <ActivityIndicator size="large" color={colors.primaryColor} />
+                ) : (
+                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>No hay usuarios registrados.</Text>
+                )}
+                ListFooterComponent={loading && users.length > 0 ? (
+                    <ActivityIndicator style={styles.footerLoader} color={colors.primaryColor} />
+                ) : null}
             />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20, paddingTop: 10 },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 10 },
-    title: { fontSize: 28, fontWeight: 'bold' },
-    addBtn: { padding: 12, borderRadius: 25, elevation: 3 },
-
-    card: {
-        flexDirection: 'row', alignItems: 'center', borderRadius: 12,
-        marginBottom: 10, elevation: 2, overflow: 'hidden'
-    },
-    cardContent: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 15 },
-    avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15, backgroundColor: '#ccc' },
-    name: { fontSize: 16, fontWeight: 'bold' },
-    role: { fontSize: 12, marginTop: 2, textTransform: 'uppercase' },
-
-    voiceTag: {
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#4CAF50',
-        paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
-        marginTop: 4, alignSelf: 'flex-start'
-    },
-    voiceText: { color: 'white', fontSize: 10, marginLeft: 2, fontWeight: 'bold' },
-
-    actions: { flexDirection: 'row', paddingRight: 10 },
-    actionBtn: { padding: 8 },
-    emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16 }
+    container: { flex: 1 },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14 },
+    title: { fontSize: 28, fontWeight: '900' },
+    subtitle: { marginTop: 3, fontSize: 13 },
+    addButton: { width: 45, height: 45, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+    list: { paddingHorizontal: 16, paddingBottom: 28 },
+    card: { borderWidth: 1, borderRadius: 14, marginBottom: 11, overflow: 'hidden' },
+    cardContent: { flexDirection: 'row', alignItems: 'center', padding: 14 },
+    avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#D1D5DB' },
+    userDetails: { flex: 1, marginLeft: 12 },
+    name: { fontSize: 16, fontWeight: '800' },
+    role: { marginTop: 2, fontSize: 12 },
+    status: { marginTop: 4, fontSize: 12, fontWeight: '800' },
+    actions: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 8, paddingBottom: 8 },
+    actionButton: { padding: 9 },
+    emptyContainer: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
+    emptyText: { fontSize: 16, textAlign: 'center' },
+    footerLoader: { paddingVertical: 18 }
 });

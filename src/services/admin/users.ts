@@ -12,7 +12,6 @@ export interface AdminUserInput {
     readonly email: string;
     readonly role: TenantManagedRole;
     readonly password?: string;
-    readonly instrument?: string;
     readonly instrumentId?: string | null;
     readonly instrumentLabel?: string;
     readonly bio?: string;
@@ -26,6 +25,21 @@ interface PaginatedUsersResponse {
     readonly totalUsers: number;
 }
 
+interface UserResponse {
+    readonly user: User;
+    readonly temporaryPassword?: string;
+}
+
+export interface SaveUserResult {
+    readonly user: User;
+    readonly temporaryPassword: string | null;
+}
+
+export interface PasswordResetResponse {
+    readonly message: string;
+    readonly temporaryPassword: string;
+}
+
 export const getAllUsers = async (
     page = 1,
     limit = 10
@@ -37,15 +51,15 @@ export const getAllUsers = async (
 };
 
 export const getUserDirectory = async (): Promise<readonly User[]> => {
-    const response = await choirApi.get<readonly User[]>('/users/directory');
-    return response.data;
+    const response = await choirApi.get<{ readonly users: readonly User[] }>('/users/directory');
+    return response.data.users;
 };
 
 export const saveUser = async (
     userData: AdminUserInput,
     imageUri?: string,
     userId?: string
-): Promise<void> => {
+): Promise<SaveUserResult> => {
     const formData = new FormData();
     formData.append('data', JSON.stringify({
         name: userData.name,
@@ -53,7 +67,6 @@ export const saveUser = async (
         email: userData.email,
         role: userData.role,
         temporaryPassword: userData.password || undefined,
-        instrument: userData.instrument,
         instrumentId: userData.instrumentId,
         instrumentLabel: userData.instrumentLabel,
         bio: userData.bio,
@@ -69,11 +82,33 @@ export const saveUser = async (
         });
     }
 
-    if (userId) {
-        await choirApi.put(`/users/${userId}`, formData, getMultipartRequestConfig());
-    } else {
-        await choirApi.post('/users', formData, getMultipartRequestConfig());
-    }
+    const response = userId
+        ? await choirApi.put<UserResponse>(`/users/${userId}`, formData, getMultipartRequestConfig())
+        : await choirApi.post<UserResponse>('/users', formData, getMultipartRequestConfig());
+
+    return {
+        user: response.data.user,
+        temporaryPassword: response.data.temporaryPassword ?? null
+    };
+};
+
+export const setUserActiveStatus = async (
+    id: string,
+    isActive: boolean
+): Promise<User> => {
+    const response = await choirApi.patch<UserResponse>(`/users/${id}/status`, { isActive });
+    return response.data.user;
+};
+
+export const resetUserPassword = async (
+    id: string,
+    temporaryPassword?: string
+): Promise<PasswordResetResponse> => {
+    const response = await choirApi.post<PasswordResetResponse>(
+        `/users/${id}/reset-password`,
+        temporaryPassword ? { temporaryPassword } : {}
+    );
+    return response.data;
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
