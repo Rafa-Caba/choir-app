@@ -1,91 +1,106 @@
-// /src/api/choirApi.ts
+// src/api/choirApi.ts
 
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, {
+    AxiosError,
+    type InternalAxiosRequestConfig
+} from 'axios';
 import ENV from '../config/env';
+import type { AuthSessionResponse } from '../types/auth';
 import { authBridge } from './authTokenBridge';
 
 const API_BASE_URL = ENV.API_BASE_URL;
+
+interface ApiErrorPayload {
+    readonly code?: string;
+    readonly message?: string;
+}
 
 interface FailedRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
 }
 
-interface RefreshResponse {
-    accessToken?: string;
-}
-
 const choirApi = axios.create({
     baseURL: API_BASE_URL,
-    withCredentials: false,
+    withCredentials: false
 });
 
-console.log('🎯 choirApi baseURL:', API_BASE_URL);
+const TERMINAL_SESSION_CODES = new Set([
+    'AUTHENTICATED_USER_NOT_FOUND',
+    'SESSION_REVOKED',
+    'USER_INACTIVE',
+    'CHOIR_INACTIVE'
+]);
 
-// --- REQUEST INTERCEPTOR ---
+let refreshPromise: Promise<AuthSessionResponse> | null = null;
+
+const refreshSession = async (): Promise<AuthSessionResponse> => {
+    const refreshToken = authBridge.getRefreshToken();
+
+    if (!refreshToken) {
+        throw new Error('No refresh token is available');
+    }
+
+    const response = await axios.post<AuthSessionResponse>(
+        `${API_BASE_URL}/auth/refresh`,
+        { refreshToken }
+    );
+
+    await authBridge.applySession(response.data);
+    return response.data;
+};
+
 choirApi.interceptors.request.use(
-    async (config) => {
-        const token = authBridge.getAccessToken();
+    (config) => {
+        const accessToken = authBridge.getAccessToken();
 
-        if (token) {
-            config.headers = config.headers ?? {};
-            config.headers.Authorization = `Bearer ${token}`;
+        if (accessToken) {
+            config.headers.Authorization = `Bearer ${accessToken}`;
         }
 
         return config;
     },
-    (error: AxiosError) => Promise.reject(error)
+    (error: AxiosError<ApiErrorPayload>) => Promise.reject(error)
 );
 
-// --- RESPONSE INTERCEPTOR (Refresh Token Logic) ---
 choirApi.interceptors.response.use(
     (response) => response,
-    async (error: AxiosError) => {
+    async (error: AxiosError<ApiErrorPayload>) => {
         const originalRequest = error.config as FailedRequestConfig | undefined;
+        const errorCode = error.response?.data?.code;
 
-        if (!originalRequest) {
+        if (errorCode && TERMINAL_SESSION_CODES.has(errorCode)) {
+            await authBridge.expireSession();
             return Promise.reject(error);
         }
 
-        // If backend says 401, try refresh once
-        if (error.response?.status === 401 && !originalRequest._retry) {
-            originalRequest._retry = true;
-
-            try {
-                console.log('🔄 Token expired. Attempting refresh...');
-
-                const refreshToken = authBridge.getRefreshToken();
-
-                if (!refreshToken) {
-                    throw new Error('No refresh token');
-                }
-
-                // Backend accepts: req.body.token OR req.body.refreshToken
-                const refreshRes = await axios.post<RefreshResponse>(`${API_BASE_URL}/auth/refresh`, {
-                    refreshToken,
-                });
-
-                const { accessToken } = refreshRes.data;
-
-                if (!accessToken) {
-                    throw new Error('No accessToken in refresh response');
-                }
-
-                // Update auth store via bridge
-                authBridge.setAccessToken(accessToken);
-
-                originalRequest.headers = originalRequest.headers ?? {};
-                originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-
-                return choirApi(originalRequest);
-            } catch (refreshError) {
-                console.log('🔒 Session expired completely. Logging out.');
-                await authBridge.logout();
-
-                return Promise.reject(refreshError);
-            }
+        if (!originalRequest || error.response?.status !== 401 || originalRequest._retry) {
+            return Promise.reject(error);
         }
 
-        return Promise.reject(error);
+        originalRequest._retry = true;
+
+        try {
+            refreshPromise ??= refreshSession().finally(() => {
+                refreshPromise = null;
+            });
+
+            const session = await refreshPromise;
+            originalRequest.headers.Authorization = `Bearer ${session.accessToken}`;
+            return choirApi(originalRequest);
+        } catch (refreshError) {
+            const refreshStatus = axios.isAxiosError(refreshError)
+                ? refreshError.response?.status
+                : undefined;
+            const refreshWasRejected = refreshStatus === 400 ||
+                refreshStatus === 401 ||
+                refreshStatus === 403;
+
+            if (refreshWasRejected) {
+                await authBridge.expireSession();
+            }
+
+            return Promise.reject(refreshError);
+        }
     }
 );
 

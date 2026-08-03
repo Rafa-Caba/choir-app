@@ -1,3 +1,4 @@
+// src/components/blog/BlogCard.tsx
 import React, { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import type { BlogPost } from '../../types/blog';
@@ -18,11 +19,12 @@ export const BlogCard = ({ post, onPress, onEdit, onDelete }: Props) => {
     const { currentTheme } = useTheme();
     const colors = currentTheme;
     const [showModal, setShowModal] = useState(false);
+    const displayImageUrl = post.cachedImageUrl ?? post.imageUrl ?? null;
 
     const dateStr = new Date(post.createdAt).toLocaleDateString();
     const preview = getPreviewFromRichText(post.content, 120);
 
-    const authorName = post.author?.name || 'Unknown Author';
+    const authorName = post.author?.name || 'Autor desconocido';
     const authorImage = post.author?.imageUrl || `https://ui-avatars.com/api/?name=${authorName}`;
 
     const commentCount = post.comments?.length || 0;
@@ -34,14 +36,14 @@ export const BlogCard = ({ post, onPress, onEdit, onDelete }: Props) => {
             <MediaViewerModal
                 visible={showModal}
                 onClose={() => setShowModal(false)}
-                mediaUrl={post.imageUrl || null}
+                mediaUrl={displayImageUrl}
                 mediaType="image"
             />
 
             {/* Header Image */}
-            {post.imageUrl && (
+            {displayImageUrl && (
                 <TouchableOpacity onPress={() => setShowModal(true)}>
-                    <Image source={{ uri: post.imageUrl }} style={styles.coverImage} />
+                    <Image source={{ uri: displayImageUrl }} style={styles.coverImage} />
                 </TouchableOpacity>
             )}
 

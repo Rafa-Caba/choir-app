@@ -1,13 +1,23 @@
+// src/screens/settings/profile/EditProfileScreen.tsx
+
 import React, { useState } from 'react';
 import {
-    View, Text, TextInput, TouchableOpacity, Alert, ScrollView, StyleSheet, Image, ActivityIndicator
+    ActivityIndicator,
+    Alert,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 
-import { useAuthStore } from '../../../store/useAuthStore';
 import { useTheme } from '../../../context/ThemeContext';
+import { useAuthStore } from '../../../store/useAuthStore';
 
 export const EditProfileScreen = () => {
     const navigation = useNavigation();
@@ -15,38 +25,56 @@ export const EditProfileScreen = () => {
     const { currentTheme } = useTheme();
     const colors = currentTheme;
 
-    // Initialize with English keys
-    const [name, setName] = useState(user?.name || '');
-    const [instrument, setInstrument] = useState(user?.instrument || '');
-    const [bio, setBio] = useState(user?.bio || '');
+    const [name, setName] = useState(user?.name ?? '');
+    const [instrumentLabel, setInstrumentLabel] = useState(
+        user?.instrumentLabel ?? user?.instrument ?? ''
+    );
+    const [bio, setBio] = useState(user?.bio ?? '');
+    const [imageUri, setImageUri] = useState<string | undefined>(
+        user?.cachedImageUrl ?? user?.imageUrl
+    );
 
-    const [imageUri, setImageUri] = useState<string | undefined>(user?.imageUrl);
-
-    const pickImage = async () => {
+    const pickImage = async (): Promise<void> => {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.5,
+            quality: 0.5
         });
 
         if (!result.canceled) {
-            setImageUri(result.assets[0].uri);
+            const selectedAsset = result.assets[0];
+
+            if (selectedAsset) {
+                setImageUri(selectedAsset.uri);
+            }
         }
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (): Promise<void> => {
+        const normalizedName = name.trim();
+
+        if (!normalizedName) {
+            Alert.alert('Nombre requerido', 'Ingresa tu nombre antes de guardar.');
+            return;
+        }
+
         const success = await updateUserProfile(
-            { name, instrument, bio },
+            {
+                name: normalizedName,
+                instrumentLabel: instrumentLabel.trim(),
+                bio: bio.trim()
+            },
             imageUri
         );
 
         if (success) {
-            Alert.alert('Success', 'Profile updated successfully');
+            Alert.alert('Éxito', 'El perfil se actualizó correctamente.');
             navigation.goBack();
-        } else {
-            Alert.alert('Error', 'Could not update profile');
+            return;
         }
+
+        Alert.alert('Error', 'No fue posible actualizar el perfil.');
     };
 
     const inputStyle = [
@@ -54,27 +82,52 @@ export const EditProfileScreen = () => {
         {
             backgroundColor: colors.cardColor,
             borderColor: colors.borderColor,
-            color: colors.textColor,
+            color: colors.textColor
         }
     ];
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-
+        <ScrollView
+            style={[
+                styles.container,
+                { backgroundColor: colors.backgroundColor }
+            ]}
+        >
             <View style={styles.imageContainer}>
                 <TouchableOpacity onPress={pickImage}>
                     <Image
-                        source={{ uri: imageUri || 'https://via.placeholder.com/150' }}
-                        style={[styles.avatar, { borderColor: colors.primaryColor }]}
+                        source={{
+                            uri: imageUri || 'https://via.placeholder.com/150'
+                        }}
+                        style={[
+                            styles.avatar,
+                            { borderColor: colors.primaryColor }
+                        ]}
                     />
-                    <View style={[styles.editIconBadge, { backgroundColor: colors.buttonColor }]}>
-                        <Ionicons name="camera" size={20} color={colors.buttonTextColor} />
+                    <View
+                        style={[
+                            styles.editIconBadge,
+                            { backgroundColor: colors.buttonColor }
+                        ]}
+                    >
+                        <Ionicons
+                            name="camera"
+                            size={20}
+                            color={colors.buttonTextColor}
+                        />
                     </View>
                 </TouchableOpacity>
-                <Text style={[styles.changePhotoText, { color: colors.primaryColor }]}>Change Photo</Text>
+                <Text
+                    style={[
+                        styles.changePhotoText,
+                        { color: colors.primaryColor }
+                    ]}
+                >
+                    Cambiar foto
+                </Text>
             </View>
 
-            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Name</Text>
+            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Nombre</Text>
             <TextInput
                 style={inputStyle}
                 value={name}
@@ -82,17 +135,17 @@ export const EditProfileScreen = () => {
                 placeholderTextColor={colors.secondaryTextColor}
             />
 
-            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Instrument</Text>
+            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Instrumento</Text>
             <TextInput
                 style={inputStyle}
-                value={instrument}
-                onChangeText={setInstrument}
+                value={instrumentLabel}
+                onChangeText={setInstrumentLabel}
                 placeholderTextColor={colors.secondaryTextColor}
             />
 
-            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Bio</Text>
+            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Biografía</Text>
             <TextInput
-                style={[inputStyle, { height: 100, textAlignVertical: 'top' }]}
+                style={[inputStyle, styles.bioInput]}
                 value={bio}
                 onChangeText={setBio}
                 multiline
@@ -100,14 +153,21 @@ export const EditProfileScreen = () => {
             />
 
             <TouchableOpacity
-                style={[styles.btn, { backgroundColor: colors.buttonColor }]}
+                style={[styles.button, { backgroundColor: colors.buttonColor }]}
                 onPress={handleSubmit}
                 disabled={loading}
             >
                 {loading ? (
                     <ActivityIndicator color={colors.buttonTextColor} />
                 ) : (
-                    <Text style={[styles.btnText, { color: colors.buttonTextColor }]}>Save Changes</Text>
+                    <Text
+                        style={[
+                            styles.buttonText,
+                            { color: colors.buttonTextColor }
+                        ]}
+                    >
+                        Guardar cambios
+                    </Text>
                 )}
             </TouchableOpacity>
         </ScrollView>
@@ -115,16 +175,58 @@ export const EditProfileScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20 },
-    imageContainer: { alignItems: 'center', marginBottom: 20 },
-    avatar: { width: 120, height: 120, borderRadius: 60, borderWidth: 3 },
-    editIconBadge: {
-        position: 'absolute', bottom: 0, right: 0,
-        padding: 8, borderRadius: 20, borderWidth: 2, borderColor: 'white'
+    container: {
+        flex: 1,
+        padding: 20
     },
-    changePhotoText: { marginTop: 10, fontWeight: '600' },
-    label: { fontSize: 16, fontWeight: '600', marginTop: 15, marginBottom: 5 },
-    input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16 },
-    btn: { padding: 15, borderRadius: 10, marginTop: 30, marginBottom: 50, alignItems: 'center' },
-    btnText: { fontWeight: 'bold', fontSize: 16 }
+    imageContainer: {
+        alignItems: 'center',
+        marginBottom: 20
+    },
+    avatar: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        borderWidth: 3
+    },
+    editIconBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        padding: 8,
+        borderRadius: 20,
+        borderWidth: 2,
+        borderColor: 'white'
+    },
+    changePhotoText: {
+        marginTop: 10,
+        fontWeight: '600'
+    },
+    label: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginTop: 15,
+        marginBottom: 5
+    },
+    input: {
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16
+    },
+    bioInput: {
+        height: 100,
+        textAlignVertical: 'top'
+    },
+    button: {
+        padding: 15,
+        borderRadius: 10,
+        marginTop: 30,
+        marginBottom: 50,
+        alignItems: 'center'
+    },
+    buttonText: {
+        fontWeight: 'bold',
+        fontSize: 16
+    }
 });

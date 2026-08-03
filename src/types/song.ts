@@ -1,35 +1,37 @@
+// src/types/song.ts
+
+import type { JsonValue } from './json';
+
 export interface SongType {
-    id: string;
-    name: string;
-    order: number;
-    parentId?: string;
-    isParent: boolean;
+    readonly id: string;
+    readonly name: string;
+    readonly order: number;
+    readonly parentId?: string | null;
+    readonly isParent: boolean;
+    readonly updatedAt?: string;
+}
+
+export interface SongContent {
+    readonly type: string;
+    readonly content?: readonly JsonValue[];
 }
 
 export interface Song {
-    id: string;
-    title: string;
-    composer?: string;
-    // TipTap JSON
-    content: {
-        type: string;
-        content?: any[];
-    };
-
-    // Hierarchy Reference
-    songTypeId: string | null;
-    songTypeName: string;
-
-    audioUrl?: string;
-
-    createdAt: string;
-    updatedAt: string;
+    readonly id: string;
+    readonly title: string;
+    readonly composer?: string;
+    readonly content: SongContent;
+    readonly songTypeId: string | null;
+    readonly songTypeName: string;
+    readonly audioUrl?: string;
+    readonly cachedAudioUrl?: string | null;
+    readonly createdAt: string;
+    readonly updatedAt: string;
 }
 
-// Payload for Forms
 export interface CreateSongPayload {
-    title: string;
-    composer?: string;
-    content: any;
-    songTypeId: string;
+    readonly title: string;
+    readonly composer?: string;
+    readonly content: SongContent;
+    readonly songTypeId: string;
 }

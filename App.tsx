@@ -1,152 +1,104 @@
+// App.tsx
+
 import 'react-native-gesture-handler';
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
-import * as SplashScreen from 'expo-splash-screen';
+import React, { useCallback, useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-
-// Stores & Services
-import { useAuthStore } from './src/store/useAuthStore';
-import { useAppConfigStore } from './src/store/useAppConfigStore';
-import { useChatStore } from './src/store/useChatStore';
-import { ThemeProvider, useTheme } from './src/context/ThemeContext';
-import { updatePushToken } from './src/services/auth';
-
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { usePushNotifications } from './src/hooks/usePushNotifications';
+import { useAppConfigStore } from './src/store/useAppConfigStore';
+import { useAuthStore } from './src/store/useAuthStore';
+import { useChatStore } from './src/store/useChatStore';
 
-SplashScreen.preventAutoHideAsync().catch(() => {
-});
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+    handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false
+    })
 });
 
-async function registerForPushNotificationsAsync() {
-  if (Platform.OS === 'web') return null;
-
-  try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== 'granted') {
-      console.log('Push permissions not granted, skipping token registration.');
-      return null;
-    }
-
-    const token = (await Notifications.getExpoPushTokenAsync()).data;
-    return token;
-  } catch (e: any) {
-    if (e?.code === 'E_REGISTRATION_FAILED') {
-      console.log(
-        '🔕 Push registration failed (FCM not configured for native build). Skipping token.'
-      );
-      return null;
-    }
-
-    console.error('Error getting push token:', e);
-    return null;
-  }
+interface AppContentProps {
+    readonly onReady: () => void;
 }
 
-const AppContent = ({ onReady }: { onReady: () => void }) => {
-  const { checkAuth, user } = useAuthStore();
-  const { fetchAppConfig } = useAppConfigStore();
-  const { connect, disconnect } = useChatStore();
-  const { currentTheme } = useTheme();
+const AppContent = ({ onReady }: AppContentProps) => {
+    const status = useAuthStore((state) => state.status);
+    const requiresPasswordChange = useAuthStore((state) => state.requiresPasswordChange);
+    const checkAuth = useAuthStore((state) => state.checkAuth);
+    const fetchAppConfig = useAppConfigStore((state) => state.fetchAppConfig);
+    const connect = useChatStore((state) => state.connect);
+    const disconnect = useChatStore((state) => state.disconnect);
+    const currentTheme = useTheme().currentTheme;
 
-  useEffect(() => {
-    async function prepare() {
-      try {
-        await Promise.all([
-          checkAuth(),
-          fetchAppConfig(),
-        ]);
-      } catch (e) {
-        console.warn('App init error:', e);
-      } finally {
-        onReady();
-      }
-    }
+    usePushNotifications();
 
-    prepare();
-  }, [checkAuth, fetchAppConfig, onReady]);
+    useEffect(() => {
+        checkAuth()
+            .catch(() => undefined)
+            .finally(onReady);
+    }, [checkAuth, onReady]);
 
-  useEffect(() => {
-    if (user) {
-      connect();
-
-      registerForPushNotificationsAsync().then((token) => {
-        if (token) {
-          console.log('🔔 Push Token:', token);
-          updatePushToken(token);
+    useEffect(() => {
+        if (status === 'authenticated' && !requiresPasswordChange) {
+            fetchAppConfig().catch(() => undefined);
+            connect();
+            return disconnect;
         }
-      });
-    } else {
-      disconnect();
-    }
-  }, [user, connect, disconnect]);
 
-  return (
-    <NavigationContainer>
-      <StatusBar style={currentTheme.isDark ? 'light' : 'dark'} />
-      <AppNavigator />
-    </NavigationContainer>
-  );
+        disconnect();
+        return undefined;
+    }, [connect, disconnect, fetchAppConfig, requiresPasswordChange, status]);
+
+    return (
+        <NavigationContainer>
+            <StatusBar style={currentTheme.isDark ? 'light' : 'dark'} />
+            <AppNavigator />
+        </NavigationContainer>
+    );
 };
 
 export default function App() {
-  const [appIsReady, setAppIsReady] = useState(false);
+    const [appIsReady, setAppIsReady] = useState(false);
+    const [fontsLoaded] = useFonts({
+        MyCustomFont: require('./assets/fonts/Pacifico-Regular.ttf'),
+        MyRoboFont: require('./assets/fonts/Roboto-VariableFont_wdth,wght.ttf'),
+        MyRoboItalicFont: require('./assets/fonts/Roboto-Italic-VariableFont_wdth,wght.ttf')
+    });
+    const handleReady = useCallback(() => setAppIsReady(true), []);
 
-  const [fontsLoaded] = useFonts({
-    MyCustomFont: require('./assets/fonts/Pacifico-Regular.ttf'),
-    MyRoboFont: require('./assets/fonts/Roboto-VariableFont_wdth,wght.ttf'),
-    MyRoboItalicFont: require('./assets/fonts/Roboto-Italic-VariableFont_wdth,wght.ttf'),
-  });
-
-  useEffect(() => {
-    async function hideSplashIfReady() {
-      if (appIsReady && fontsLoaded) {
-        try {
-          await SplashScreen.hideAsync();
-        } catch (e) {
-          console.warn('Error hiding splash screen:', e);
+    useEffect(() => {
+        if (appIsReady && fontsLoaded) {
+            SplashScreen.hideAsync().catch(() => undefined);
         }
-      }
+    }, [appIsReady, fontsLoaded]);
+
+    if (!fontsLoaded) {
+        return null;
     }
 
-    hideSplashIfReady();
-  }, [appIsReady, fontsLoaded]);
-
-  if (!fontsLoaded) {
-    return null;
-  }
-
-  return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <View style={styles.container}>
-          <AppContent onReady={() => setAppIsReady(true)} />
-        </View>
-      </ThemeProvider>
-    </SafeAreaProvider>
-  );
+    return (
+        <SafeAreaProvider>
+            <ThemeProvider>
+                <View style={styles.container}>
+                    <AppContent onReady={handleReady} />
+                </View>
+            </ThemeProvider>
+        </SafeAreaProvider>
+    );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+    container: {
+        flex: 1,
+        backgroundColor: '#ffffff'
+    }
 });

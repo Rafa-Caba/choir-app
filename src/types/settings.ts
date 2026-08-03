@@ -1,43 +1,41 @@
+// src/types/settings.ts
+
+import type { JsonValue } from './json';
+
 export interface SocialLinks {
-    facebook: string;
-    instagram: string;
-    youtube: string;
-    whatsapp: string;
-    email: string;
+    readonly facebook: string;
+    readonly instagram: string;
+    readonly youtube: string;
+    readonly whatsapp: string;
+    readonly email: string;
 }
 
 export interface HomeLegends {
-    principal: string;
-    secondary: string;
+    readonly principal: string;
+    readonly secondary: string;
+}
+
+export interface RichTextDocument {
+    readonly type: string;
+    readonly content?: readonly JsonValue[];
 }
 
 export interface AppSettings {
-    id: string;
-    webTitle: string;
-    contactPhone: string;
-
-    logoUrl?: string;
-
-    socials: SocialLinks;
-    homeLegends: HomeLegends;
-
-    // Rich Text JSON
-    history: {
-        type: string;
-        content?: any[];
-    };
-
-    updatedAt: string;
+    readonly id: string;
+    readonly webTitle: string;
+    readonly contactPhone: string;
+    readonly logoUrl?: string;
+    readonly cachedLogoUrl?: string | null;
+    readonly socials: SocialLinks;
+    readonly homeLegends: HomeLegends;
+    readonly history: RichTextDocument;
+    readonly updatedAt: string;
 }
 
-// Payload for updating
 export interface UpdateSettingsPayload {
-    webTitle?: string;
-    contactPhone?: string;
-    socials?: SocialLinks;
-    homeLegends?: HomeLegends;
-    history?: {
-        type: string;
-        content: any[];
-    };
+    readonly webTitle?: string;
+    readonly contactPhone?: string;
+    readonly socials?: SocialLinks;
+    readonly homeLegends?: HomeLegends;
+    readonly history?: RichTextDocument;
 }

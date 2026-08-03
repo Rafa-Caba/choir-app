@@ -1,155 +1,133 @@
+// src/store/useBlogStore.ts
+
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuthStore } from './useAuthStore';
-
 import {
-    getPublicPosts,
-    getAllPosts,
-    likePost,
     commentOnPost,
-    createPost as createPostService,
+    createPost,
     deletePost,
-    updatePost as updatePostService
+    togglePostLike,
+    updatePost
 } from '../services/blog';
-
+import { CACHE_TTL_MS } from '../config/cachePolicy';
+import { syncCacheFirst } from '../services/sync';
+import { cacheRemoteMedia } from '../storage/mediaCache';
 import type { BlogPost, CreateBlogPayload } from '../types/blog';
+import { useAuthStore } from './useAuthStore';
 
 interface BlogState {
     posts: BlogPost[];
     currentPost: BlogPost | null;
     loading: boolean;
-
     fetchPosts: () => Promise<void>;
     selectPost: (post: BlogPost) => void;
-
     likePost: (id: string) => Promise<void>;
     commentOnPost: (id: string, text: string) => Promise<void>;
     addPost: (payload: CreateBlogPayload) => Promise<boolean>;
     updatePost: (id: string, payload: Partial<CreateBlogPayload>) => Promise<boolean>;
     deletePost: (id: string) => Promise<void>;
+    reset: () => void;
 }
 
-export const useBlogStore = create<BlogState>()(
-    persist(
-        (set, get) => ({
-            posts: [],
-            currentPost: null,
-            loading: false,
+const hydratePosts = async (posts: readonly BlogPost[]): Promise<BlogPost[]> => {
+    const context = useAuthStore.getState().getTenantContext();
 
-            fetchPosts: async () => {
-                set({ loading: true });
-                try {
-                    const { user } = useAuthStore.getState();
-                    const isAdmin = user?.role === 'ADMIN' || user?.role === 'EDITOR';
+    if (!context) {
+        return [...posts];
+    }
 
-                    const data = isAdmin ? await getAllPosts() : await getPublicPosts();
-                    set({ posts: Array.isArray(data) ? data : [] });
-                } catch (e) {
-                    console.log("Offline: Keeping cached blog posts");
-                } finally {
-                    set({ loading: false });
-                }
-            },
+    return Promise.all(posts.map(async (post) => ({
+        ...post,
+        cachedImageUrl: await cacheRemoteMedia(context, 'blog', post.imageUrl)
+    })));
+};
 
-            selectPost: (post) => set({ currentPost: post }),
+export const useBlogStore = create<BlogState>((set, get) => ({
+    posts: [],
+    currentPost: null,
+    loading: false,
 
-            likePost: async (id) => {
-                const { user } = useAuthStore.getState();
-                if (!user) return;
+    fetchPosts: async () => {
+        const context = useAuthStore.getState().getTenantContext();
+        if (!context) return;
+        set({ loading: true });
 
-                try {
-                    // Optimistic Update
-                    set((state) => {
-                        const updateLogic = (p: BlogPost) => {
-                            if (p.id !== id) return p;
-                            const isLiked = p.likesUsers.includes(user.id); // Check by ID
-                            return {
-                                ...p,
-                                likes: isLiked ? p.likes - 1 : p.likes + 1,
-                                likesUsers: isLiked
-                                    ? p.likesUsers.filter(uid => uid !== user.id)
-                                    : [...p.likesUsers, user.id]
-                            };
-                        };
-
-                        const newPosts = state.posts.map(updateLogic);
-                        const newCurrent = state.currentPost?.id === id
-                            ? updateLogic(state.currentPost)
-                            : state.currentPost;
-
-                        return { posts: newPosts, currentPost: newCurrent };
-                    });
-
-                    // API Call
-                    const updated = await likePost(id, user.id);
-
-                    // Sync
-                    set((state) => ({
-                        posts: state.posts.map(p => p.id === id ? updated : p),
-                        currentPost: state.currentPost?.id === id ? updated : state.currentPost
-                    }));
-                } catch (e) { console.error("Like failed", e); }
-            },
-
-            commentOnPost: async (id, text) => {
-                const { user } = useAuthStore.getState();
-                if (!user) return;
-
-                try {
-                    // Backend expects simple text which it converts to TipTap, or we send TipTap directly?
-                    // Service takes string, let's rely on Service/Backend logic.
-                    const updated = await commentOnPost(id, text, user.username);
-
-                    set((state) => ({
-                        posts: state.posts.map(p => p.id === id ? updated : p),
-                        currentPost: state.currentPost?.id === id ? updated : state.currentPost
-                    }));
-                } catch (e) { console.error("Comment failed", e); }
-            },
-
-            addPost: async (payload) => {
-                set({ loading: true });
-                try {
-                    await createPostService(payload);
-                    await get().fetchPosts();
-                    return true;
-                } catch (e) {
-                    console.error("Create failed", e);
-                    return false;
-                } finally {
-                    set({ loading: false });
-                }
-            },
-
-            updatePost: async (id, payload) => {
-                set({ loading: true });
-                try {
-                    await updatePostService(id, payload);
-                    await get().fetchPosts();
-                    return true;
-                } catch (e) {
-                    console.error("Update failed", e);
-                    return false;
-                } finally {
-                    set({ loading: false });
-                }
-            },
-
-            deletePost: async (id) => {
-                try {
-                    await deletePost(id);
-                    set((state) => ({
-                        posts: state.posts.filter(p => p.id !== id),
-                        currentPost: null
-                    }));
-                } catch (e) { console.error("Delete failed", e); }
-            }
-        }),
-        {
-            name: 'blog-storage',
-            storage: createJSONStorage(() => AsyncStorage),
-            partialize: (state) => ({ posts: state.posts, currentPost: null }),
+        try {
+            const result = await syncCacheFirst<readonly BlogPost[]>({
+                context,
+                resource: 'blog',
+                path: '/blog',
+                ttlMs: CACHE_TTL_MS.blog,
+                onData: (data) => set({ posts: [...data] })
+            });
+            const hydrated = await hydratePosts(result.data);
+            set((state) => ({
+                posts: hydrated,
+                currentPost: state.currentPost
+                    ? hydrated.find((post) => post.id === state.currentPost?.id) ?? null
+                    : null
+            }));
+        } finally {
+            set({ loading: false });
         }
-    )
-);
+    },
+
+    selectPost: (post) => set({ currentPost: post }),
+
+    likePost: async (id) => {
+        const user = useAuthStore.getState().user;
+        if (!user) return;
+
+        const response = await togglePostLike(id);
+        const update = (post: BlogPost): BlogPost => {
+            if (post.id !== id) return post;
+            const likedUsers = response.liked
+                ? [...post.likesUsers.filter((userId) => userId !== user.id), user.id]
+                : post.likesUsers.filter((userId) => userId !== user.id);
+            return { ...post, likes: response.likes, likesUsers: likedUsers };
+        };
+
+        set((state) => ({
+            posts: state.posts.map(update),
+            currentPost: state.currentPost ? update(state.currentPost) : null
+        }));
+        await get().fetchPosts();
+    },
+
+    commentOnPost: async (id, text) => {
+        await commentOnPost(id, text);
+        await get().fetchPosts();
+    },
+
+    addPost: async (payload) => {
+        set({ loading: true });
+        try {
+            await createPost(payload);
+            await get().fetchPosts();
+            return true;
+        } catch {
+            return false;
+        } finally {
+            set({ loading: false });
+        }
+    },
+
+    updatePost: async (id, payload) => {
+        set({ loading: true });
+        try {
+            await updatePost(id, payload);
+            await get().fetchPosts();
+            return true;
+        } catch {
+            return false;
+        } finally {
+            set({ loading: false });
+        }
+    },
+
+    deletePost: async (id) => {
+        await deletePost(id);
+        await get().fetchPosts();
+    },
+
+    reset: () => set({ posts: [], currentPost: null, loading: false })
+}));

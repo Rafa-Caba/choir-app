@@ -1,28 +1,32 @@
-export type LogoutFn = () => Promise<void> | void;
+// src/api/authTokenBridge.ts
+
+import type { AuthSessionResponse } from '../types/auth';
+
+export type ExpireSessionFn = () => Promise<void>;
 
 type GetTokenFn = () => string | null;
-type SetTokenFn = (token: string | null) => void;
+type ApplySessionFn = (session: AuthSessionResponse) => Promise<void>;
 
 let getAccessTokenFn: GetTokenFn = () => null;
 let getRefreshTokenFn: GetTokenFn = () => null;
-let setAccessTokenFn: SetTokenFn = () => { };
-let logoutFn: LogoutFn = () => { };
+let applySessionFn: ApplySessionFn = async () => undefined;
+let expireSessionFn: ExpireSessionFn = async () => undefined;
 
-export const registerAuthBridge = (opts: {
-    getAccessToken: GetTokenFn;
-    getRefreshToken: GetTokenFn;
-    setAccessToken: SetTokenFn;
-    logout: LogoutFn;
-}) => {
-    getAccessTokenFn = opts.getAccessToken;
-    getRefreshTokenFn = opts.getRefreshToken;
-    setAccessTokenFn = opts.setAccessToken;
-    logoutFn = opts.logout;
+export const registerAuthBridge = (options: {
+    readonly getAccessToken: GetTokenFn;
+    readonly getRefreshToken: GetTokenFn;
+    readonly applySession: ApplySessionFn;
+    readonly expireSession: ExpireSessionFn;
+}): void => {
+    getAccessTokenFn = options.getAccessToken;
+    getRefreshTokenFn = options.getRefreshToken;
+    applySessionFn = options.applySession;
+    expireSessionFn = options.expireSession;
 };
 
 export const authBridge = {
-    getAccessToken: () => getAccessTokenFn(),
-    getRefreshToken: () => getRefreshTokenFn(),
-    setAccessToken: (token: string | null) => setAccessTokenFn(token),
-    logout: () => logoutFn(),
+    getAccessToken: (): string | null => getAccessTokenFn(),
+    getRefreshToken: (): string | null => getRefreshTokenFn(),
+    applySession: (session: AuthSessionResponse): Promise<void> => applySessionFn(session),
+    expireSession: (): Promise<void> => expireSessionFn()
 };

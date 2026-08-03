@@ -1,5 +1,12 @@
+// src/store/useAdminUsersStore.ts
+
 import { create } from 'zustand';
-import { getAllUsers, saveUser, deleteUser } from '../services/admin/users';
+import {
+    deleteUser,
+    getAllUsers,
+    saveUser,
+    type AdminUserInput
+} from '../services/admin/users';
 import type { User } from '../types/auth';
 
 interface AdminUsersState {
@@ -8,48 +15,37 @@ interface AdminUsersState {
     refreshing: boolean;
     page: number;
     hasMore: boolean;
-
     fetchUsers: (refresh?: boolean) => Promise<void>;
-    saveUserAction: (data: any, imageUri?: string, id?: string) => Promise<boolean>;
+    saveUserAction: (data: AdminUserInput, imageUri?: string, id?: string) => Promise<boolean>;
     removeUserAction: (id: string) => Promise<boolean>;
+    reset: () => void;
 }
 
 export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
     users: [],
     loading: false,
     refreshing: false,
-    page: 1,
+    page: 0,
     hasMore: true,
 
     fetchUsers: async (refresh = false) => {
-        const { page, users, loading, hasMore } = get();
+        const state = get();
+        if (state.loading || (!refresh && !state.hasMore)) return;
 
-        if (loading) return;
-        if (!refresh && !hasMore) return;
-
-        // Show full spinner on first load, small spinner on refresh
-        if (refresh && users.length === 0) {
-            set({ loading: true, refreshing: false });
-        } else if (refresh) {
-            set({ refreshing: true, loading: false });
-        } else {
-            set({ loading: true, refreshing: false });
-        }
+        const nextPage = refresh ? 1 : state.page + 1;
+        set({ loading: !refresh, refreshing: refresh });
 
         try {
-            const nextPage = refresh ? 1 : page + 1;
-            const limit = 10;
-
-            // 🛠️ FIX: Destructure English keys from Service
-            const { users: newUsers, totalPages } = await getAllUsers(nextPage, limit);
-
-            set({
-                users: refresh ? newUsers : [...users, ...newUsers],
-                page: nextPage,
-                hasMore: nextPage < totalPages,
-            });
-        } catch (e) {
-            console.error("Fetch Users Failed:", e);
+            const response = await getAllUsers(nextPage, 10);
+            set((current) => ({
+                users: refresh
+                    ? [...response.users]
+                    : [...current.users, ...response.users.filter(
+                        (incoming) => !current.users.some((existing) => existing.id === incoming.id)
+                    )],
+                page: response.currentPage,
+                hasMore: response.currentPage < response.totalPages
+            }));
         } finally {
             set({ loading: false, refreshing: false });
         }
@@ -61,8 +57,7 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
             await saveUser(data, imageUri, id);
             await get().fetchUsers(true);
             return true;
-        } catch (e) {
-            console.error("Save User Failed:", e);
+        } catch {
             return false;
         } finally {
             set({ loading: false });
@@ -72,8 +67,18 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
     removeUserAction: async (id) => {
         try {
             await deleteUser(id);
-            set(state => ({ users: state.users.filter(u => u.id !== id) }));
+            set((state) => ({ users: state.users.filter((user) => user.id !== id) }));
             return true;
-        } catch (e) { return false; }
-    }
+        } catch {
+            return false;
+        }
+    },
+
+    reset: () => set({
+        users: [],
+        loading: false,
+        refreshing: false,
+        page: 0,
+        hasMore: true
+    })
 }));

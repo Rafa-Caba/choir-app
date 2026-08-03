@@ -1,76 +1,138 @@
+// src/screens/settings/themes/ThemeSelectionScreen.tsx
+
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import {
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    ListRenderItemInfo,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeStore } from '../../../store/useThemeStore';
-import { useAuthStore } from '../../../store/useAuthStore';
+
 import { useTheme } from '../../../context/ThemeContext';
-import { updateTheme as updateUserThemeService } from '../../../services/auth'; // Use the service directly or add action to store
+import { useAuthStore } from '../../../store/useAuthStore';
+import { useThemeStore } from '../../../store/useThemeStore';
+import type { Theme } from '../../../types/theme';
+
+const resolveThemeId = (
+    themeId: string | Theme | null | undefined
+): string | null => {
+    if (!themeId) return null;
+    return typeof themeId === 'string' ? themeId : themeId.id;
+};
 
 export const ThemeSelectionScreen = () => {
     const { publicThemes, fetchPublicThemes, loading } = useThemeStore();
-    const { user, checkAuth } = useAuthStore();
+    const user = useAuthStore((state) => state.user);
     const { currentTheme, setThemeById } = useTheme();
     const colors = currentTheme;
-
+    const selectedThemeId = resolveThemeId(user?.themeId);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        fetchPublicThemes();
-    }, []);
+        fetchPublicThemes().catch(() => undefined);
+    }, [fetchPublicThemes]);
 
-    const handleSelectTheme = async (theme: any) => {
+    const handleSelectTheme = async (theme: Theme): Promise<void> => {
         setSaving(true);
+
         try {
-            // This now handles both UI update AND Backend persistence
             await setThemeById(theme.id);
-            Alert.alert("Success", `Theme changed to: ${theme.name}`);
-        } catch (e) {
-            Alert.alert("Error", "Could not change theme");
+            Alert.alert('Éxito', `Tema seleccionado: ${theme.name}`);
+        } catch {
+            Alert.alert('Error', 'No fue posible cambiar el tema.');
         } finally {
             setSaving(false);
         }
     };
 
-    const renderItem = ({ item }: { item: any }) => {
-        const isSelected = user?.themeId === item.id || user?.themeId?._id === item.id || currentTheme.id === item.id;
+    const renderItem = ({ item }: ListRenderItemInfo<Theme>) => {
+        const isSelected =
+            selectedThemeId === item.id || currentTheme.id === item.id;
 
         return (
             <TouchableOpacity
                 style={[
                     styles.card,
                     {
-                        backgroundColor: item.cardColor, // Use the theme's own colors for preview!
-                        borderColor: isSelected ? colors.primaryColor : 'transparent',
+                        backgroundColor: item.cardColor,
+                        borderColor: isSelected
+                            ? colors.primaryColor
+                            : 'transparent',
                         borderWidth: isSelected ? 3 : 0
                     }
                 ]}
                 onPress={() => handleSelectTheme(item)}
                 activeOpacity={0.8}
+                disabled={saving}
             >
                 <View style={styles.previewHeader}>
-                    <Text style={[styles.themeName, { color: item.textColor }]}>{item.name}</Text>
-                    {isSelected && <Ionicons name="checkmark-circle" size={24} color={colors.primaryColor} />}
+                    <Text style={[styles.themeName, { color: item.textColor }]}>
+                        {item.name}
+                    </Text>
+                    {isSelected && (
+                        <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            color={colors.primaryColor}
+                        />
+                    )}
                 </View>
 
-                {/* Mini UI Preview */}
-                <View style={[styles.miniBtn, { backgroundColor: item.buttonColor }]}>
-                    <Text style={{ color: item.buttonTextColor, fontSize: 10, fontWeight: 'bold' }}>Botón</Text>
+                <View
+                    style={[
+                        styles.previewButton,
+                        { backgroundColor: item.buttonColor }
+                    ]}
+                >
+                    <Text
+                        style={[
+                            styles.previewButtonText,
+                            { color: item.buttonTextColor }
+                        ]}
+                    >
+                        Botón
+                    </Text>
                 </View>
 
-                <View style={[styles.colorRow, { marginTop: 10 }]}>
-                    <View style={[styles.colorDot, { backgroundColor: item.primaryColor }]} />
-                    <View style={[styles.colorDot, { backgroundColor: item.accentColor }]} />
-                    <View style={[styles.colorDot, { backgroundColor: item.backgroundColor, borderWidth: 1, borderColor: '#ccc' }]} />
+                <View style={styles.colorRow}>
+                    <View
+                        style={[
+                            styles.colorDot,
+                            { backgroundColor: item.primaryColor }
+                        ]}
+                    />
+                    <View
+                        style={[
+                            styles.colorDot,
+                            { backgroundColor: item.accentColor }
+                        ]}
+                    />
+                    <View
+                        style={[
+                            styles.colorDot,
+                            styles.borderedColorDot,
+                            { backgroundColor: item.backgroundColor }
+                        ]}
+                    />
                 </View>
             </TouchableOpacity>
         );
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-            {/* Header */}
+        <View
+            style={[
+                styles.container,
+                { backgroundColor: colors.backgroundColor }
+            ]}
+        >
             <View style={styles.header}>
-                <Text style={[styles.title, { color: colors.textColor }]}>Elige tu Estilo</Text>
+                <Text style={[styles.title, { color: colors.textColor }]}>Elige tu estilo</Text>
                 {saving && <ActivityIndicator color={colors.primaryColor} />}
             </View>
 
@@ -80,18 +142,30 @@ export const ThemeSelectionScreen = () => {
                 renderItem={renderItem}
                 refreshing={loading}
                 onRefresh={fetchPublicThemes}
-                contentContainerStyle={{ padding: 10 }}
-                numColumns={2} // Grid layout
+                contentContainerStyle={styles.listContent}
+                numColumns={2}
             />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    header: { padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    title: { fontSize: 24, fontWeight: 'bold' },
-
+    container: {
+        flex: 1
+    },
+    header: {
+        padding: 20,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+    },
+    title: {
+        fontSize: 24,
+        fontWeight: 'bold'
+    },
+    listContent: {
+        padding: 10
+    },
     card: {
         flex: 1,
         margin: 8,
@@ -101,18 +175,45 @@ const styles = StyleSheet.create({
         shadowColor: '#000',
         shadowOpacity: 0.1,
         shadowRadius: 4,
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: {
+            width: 0,
+            height: 2
+        },
         minHeight: 120,
         justifyContent: 'space-between'
     },
-    previewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    themeName: { fontSize: 16, fontWeight: 'bold' },
-
-    miniBtn: {
-        paddingVertical: 5, paddingHorizontal: 10,
-        borderRadius: 5, alignSelf: 'flex-start', marginTop: 8
+    previewHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start'
     },
-
-    colorRow: { flexDirection: 'row', gap: 5 },
-    colorDot: { width: 20, height: 20, borderRadius: 10 }
+    themeName: {
+        fontSize: 16,
+        fontWeight: 'bold'
+    },
+    previewButton: {
+        paddingVertical: 5,
+        paddingHorizontal: 10,
+        borderRadius: 5,
+        alignSelf: 'flex-start',
+        marginTop: 8
+    },
+    previewButtonText: {
+        fontSize: 10,
+        fontWeight: 'bold'
+    },
+    colorRow: {
+        flexDirection: 'row',
+        gap: 5,
+        marginTop: 10
+    },
+    colorDot: {
+        width: 20,
+        height: 20,
+        borderRadius: 10
+    },
+    borderedColorDot: {
+        borderWidth: 1,
+        borderColor: '#ccc'
+    }
 });

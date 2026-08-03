@@ -1,183 +1,472 @@
+// src/store/useAuthStore.ts
+
+import axios from 'axios';
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import {
-    loginUser,
-    registerUser,
-    getUserProfile,
-    updateProfile,
-    logoutUser,
-} from '../services/auth';
-
-import type { User, LoginPayload, RegisterPayload } from '../types/auth';
 import { registerAuthBridge } from '../api/authTokenBridge';
+import {
+    changePassword,
+    getApiErrorMessage,
+    getCurrentSession,
+    getUserProfile,
+    loginPlatform,
+    loginTenant,
+    logoutUser,
+    updateProfile
+} from '../services/auth';
+import { getOrCreateDeviceId } from '../services/deviceIdentity';
+import { clearLocalSessionData } from '../services/sessionCleanup';
+import { cacheRemoteMedia } from '../storage/mediaCache';
+import {
+    clearSecureSession,
+    loadSecureSession,
+    saveSecureSession
+} from '../storage/secureSessionStorage';
+import {
+    clearLegacyStorage,
+    loadLastChoirCode,
+    loadPersistedSessionContext,
+    saveLastChoirCode,
+    savePersistedSessionContext
+} from '../storage/tenantStorage';
+import type {
+    AuthSessionResponse,
+    AuthStatus,
+    AuthenticatedChoir,
+    ChangePasswordPayload,
+    ConnectionMode,
+    PlatformLoginPayload,
+    TenantLoginPayload,
+    UpdateProfileInput,
+    User
+} from '../types/auth';
+import type { TenantStorageContext } from '../types/sync';
+
+const OFFLINE_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 interface AuthState {
     token: string | null;
     refreshToken: string | null;
+    sessionId: string | null;
     user: User | null;
-
-    status: 'checking' | 'authenticated' | 'unauthenticated';
+    choir: AuthenticatedChoir | null;
+    requiresPasswordChange: boolean;
+    status: AuthStatus;
+    connectionMode: ConnectionMode;
     loading: boolean;
     errorMessage: string | null;
+    lastChoirCode: string;
 
-    login: (payload: LoginPayload) => Promise<boolean>;
-    register: (payload: RegisterPayload) => Promise<boolean>;
+    login: (payload: TenantLoginPayload) => Promise<boolean>;
+    loginAsPlatform: (payload: PlatformLoginPayload) => Promise<boolean>;
+    completePasswordChange: (payload: ChangePasswordPayload) => Promise<boolean>;
     logout: () => Promise<void>;
+    expireSession: () => Promise<void>;
     checkAuth: () => Promise<void>;
     clearError: () => void;
-
-    updateUserProfile: (data: any, imageUri?: string) => Promise<boolean>;
-    setAccessToken: (token: string | null) => void;
-    setRefreshToken: (token: string | null) => void;
+    updateUserProfile: (data: UpdateProfileInput, imageUri?: string) => Promise<boolean>;
+    applySession: (session: AuthSessionResponse, connectionMode?: ConnectionMode) => Promise<void>;
+    replaceUser: (user: User) => Promise<void>;
+    getTenantContext: () => TenantStorageContext | null;
 }
 
-export const useAuthStore = create<AuthState>()(
-    persist(
-        (set, get) => ({
-            token: null,
-            refreshToken: null,
-            user: null,
+const mergeUser = (current: User | null, incoming: User): User => {
+    if (!current || current.id !== incoming.id) {
+        return incoming;
+    }
 
-            status: 'checking',
+    return {
+        ...current,
+        ...incoming
+    };
+};
+
+const getContext = (
+    user: User | null,
+    choir: AuthenticatedChoir | null
+): TenantStorageContext | null => {
+    const choirId = choir?.id ?? user?.choirId ?? null;
+
+    if (!user || !choirId) {
+        return null;
+    }
+
+    return {
+        choirId,
+        userId: user.id
+    };
+};
+
+const hydrateUserMedia = async (
+    user: User,
+    choir: AuthenticatedChoir | null
+): Promise<User> => {
+    const context = getContext(user, choir);
+
+    if (!context || !user.imageUrl) {
+        return user;
+    }
+
+    return {
+        ...user,
+        cachedImageUrl: await cacheRemoteMedia(
+            context,
+            'users',
+            user.imageUrl
+        )
+    };
+};
+
+export const useAuthStore = create<AuthState>((set, get) => ({
+    token: null,
+    refreshToken: null,
+    sessionId: null,
+    user: null,
+    choir: null,
+    requiresPasswordChange: false,
+    status: 'checking',
+    connectionMode: 'none',
+    loading: false,
+    errorMessage: null,
+    lastChoirCode: '',
+
+    applySession: async (session, connectionMode = 'online') => {
+        const previousContext = get().getTenantContext();
+        const nextContext = getContext(session.user, session.choir);
+        const changedTenant = previousContext && nextContext && (
+            previousContext.choirId !== nextContext.choirId ||
+            previousContext.userId !== nextContext.userId
+        );
+
+        if (changedTenant) {
+            await clearLocalSessionData(previousContext);
+        }
+
+        const currentUser = get().user;
+        const mergedUser = mergeUser(currentUser, session.user);
+        const user = await hydrateUserMedia(mergedUser, session.choir);
+
+        await saveSecureSession({
+            accessToken: session.accessToken,
+            refreshToken: session.refreshToken,
+            sessionId: session.sessionId,
+            userId: user.id
+        });
+
+        if (session.choir?.code) {
+            await saveLastChoirCode(session.choir.code);
+        }
+
+        await savePersistedSessionContext({
+            user,
+            choir: session.choir,
+            requiresPasswordChange: session.requiresPasswordChange,
+            metadata: {
+                userId: user.id,
+                choirId: session.choir?.id ?? user.choirId,
+                validatedAt: new Date().toISOString()
+            }
+        });
+
+        set({
+            token: session.accessToken,
+            refreshToken: session.refreshToken,
+            sessionId: session.sessionId,
+            user,
+            choir: session.choir,
+            requiresPasswordChange: session.requiresPasswordChange,
+            status: 'authenticated',
+            connectionMode,
             loading: false,
             errorMessage: null,
+            lastChoirCode: session.choir?.code ?? get().lastChoirCode
+        });
+    },
 
-            login: async (payload) => {
-                set({ loading: true, errorMessage: null });
+    login: async (payload) => {
+        set({ loading: true, errorMessage: null });
 
+        try {
+            const session = await loginTenant({
+                choirCode: payload.choirCode.trim().toLowerCase(),
+                identifier: payload.identifier.trim(),
+                password: payload.password
+            });
+            await get().applySession(session);
+
+            if (!session.requiresPasswordChange) {
                 try {
-                    const response = await loginUser(payload);
-
-                    set({
-                        token: response.accessToken,
-                        refreshToken: response.refreshToken,
-                        user: response.user,
-                        status: 'authenticated',
-                        loading: false,
-                    });
-
-                    return true;
-                } catch (error: any) {
-                    set({
-                        loading: false,
-                        status: 'unauthenticated',
-                        errorMessage: error.response?.data?.message || 'Login failed',
-                    });
-                    return false;
+                    await get().replaceUser(await getUserProfile());
+                } catch {
+                    // The authenticated session remains valid even if profile enrichment fails.
                 }
-            },
+            }
 
-            register: async (payload) => {
-                set({ loading: true, errorMessage: null });
-
-                try {
-                    const response = await registerUser(payload);
-
-                    set({
-                        token: response.accessToken,
-                        refreshToken: response.refreshToken,
-                        user: response.user,
-                        status: 'authenticated',
-                        loading: false,
-                    });
-
-                    return true;
-                } catch (error: any) {
-                    set({
-                        loading: false,
-                        status: 'unauthenticated',
-                        errorMessage: error.response?.data?.message || 'Registration failed',
-                    });
-                    return false;
-                }
-            },
-
-            logout: async () => {
-                const { refreshToken } = get();
-
-                if (refreshToken) {
-                    try {
-                        await logoutUser(refreshToken);
-                    } catch (e) {
-                        console.log('Logout API failed', e);
-                    }
-                }
-
-                set({
-                    token: null,
-                    refreshToken: null,
-                    user: null,
-                    status: 'unauthenticated',
-                    errorMessage: null,
-                    loading: false,
-                });
-
-                await AsyncStorage.removeItem('auth-storage');
-            },
-
-            checkAuth: async () => {
-                const { token } = get();
-
-                if (!token) {
-                    set({ status: 'unauthenticated' });
-                    return;
-                }
-
-                try {
-                    const user = await getUserProfile();
-                    set({ user, status: 'authenticated' });
-                } catch (error) {
-                    console.log('CheckAuth: Token invalid or expired');
-                    set({
-                        status: 'unauthenticated',
-                        token: null,
-                        refreshToken: null,
-                        user: null,
-                    });
-                }
-            },
-
-            clearError: () => set({ errorMessage: null }),
-
-            updateUserProfile: async (data, imageUri) => {
-                set({ loading: true });
-
-                try {
-                    const updatedUser = await updateProfile(data, imageUri);
-                    set({ user: updatedUser, loading: false });
-                    return true;
-                } catch (error) {
-                    console.error(error);
-                    set({ loading: false });
-                    return false;
-                }
-            },
-
-            setAccessToken: (newToken) => {
-                set({ token: newToken });
-            },
-
-            setRefreshToken: (newRefreshToken) => {
-                set({ refreshToken: newRefreshToken });
-            },
-        }),
-        {
-            name: 'auth-storage',
-            storage: createJSONStorage(() => AsyncStorage),
-            onRehydrateStorage: () => (state) => {
-                // no-op; you can log if needed
-            },
+            return true;
+        } catch (error) {
+            set({
+                loading: false,
+                status: 'unauthenticated',
+                connectionMode: 'none',
+                errorMessage: error instanceof Error
+                    ? getApiErrorMessage(error)
+                    : 'No fue posible iniciar sesión'
+            });
+            return false;
         }
-    )
-);
+    },
+
+    loginAsPlatform: async (payload) => {
+        set({ loading: true, errorMessage: null });
+
+        try {
+            const session = await loginPlatform(payload);
+            await get().applySession(session);
+            return true;
+        } catch (error) {
+            set({
+                loading: false,
+                status: 'unauthenticated',
+                connectionMode: 'none',
+                errorMessage: error instanceof Error
+                    ? getApiErrorMessage(error)
+                    : 'No fue posible iniciar sesión de plataforma'
+            });
+            return false;
+        }
+    },
+
+    completePasswordChange: async (payload) => {
+        set({ loading: true, errorMessage: null });
+
+        try {
+            const session = await changePassword(payload);
+            await get().applySession(session);
+            return true;
+        } catch (error) {
+            set({
+                loading: false,
+                errorMessage: error instanceof Error
+                    ? getApiErrorMessage(error)
+                    : 'No fue posible cambiar la contraseña'
+            });
+            return false;
+        }
+    },
+
+    logout: async () => {
+        const { refreshToken, token } = get();
+        const context = get().getTenantContext();
+        const serverLogout = async (): Promise<void> => {
+            if (!refreshToken || !token) {
+                return;
+            }
+
+            const deviceId = await getOrCreateDeviceId();
+            await logoutUser({
+                refreshToken,
+                accessToken: token,
+                deviceId
+            });
+        };
+
+        set({
+            token: null,
+            refreshToken: null,
+            sessionId: null,
+            user: null,
+            choir: null,
+            requiresPasswordChange: false,
+            status: 'unauthenticated',
+            connectionMode: 'none',
+            errorMessage: null,
+            loading: false
+        });
+
+        await Promise.allSettled([
+            serverLogout(),
+            clearSecureSession(),
+            clearLocalSessionData(context)
+        ]);
+    },
+
+    expireSession: async () => {
+        const context = get().getTenantContext();
+
+        set({
+            token: null,
+            refreshToken: null,
+            sessionId: null,
+            user: null,
+            choir: null,
+            requiresPasswordChange: false,
+            status: 'unauthenticated',
+            connectionMode: 'none',
+            errorMessage: 'Tu sesión expiró. Inicia sesión nuevamente.',
+            loading: false
+        });
+
+        await Promise.allSettled([
+            clearSecureSession(),
+            clearLocalSessionData(context)
+        ]);
+    },
+
+    checkAuth: async () => {
+        set({ status: 'checking', loading: true });
+        await clearLegacyStorage();
+
+        const [secureSession, persisted, lastChoirCode] = await Promise.all([
+            loadSecureSession(),
+            loadPersistedSessionContext(),
+            loadLastChoirCode()
+        ]);
+
+        set({ lastChoirCode });
+
+        if (!secureSession) {
+            const staleContext = persisted?.metadata.choirId
+                ? {
+                    choirId: persisted.metadata.choirId,
+                    userId: persisted.metadata.userId
+                }
+                : null;
+            await clearLocalSessionData(staleContext);
+            set({
+                status: 'unauthenticated',
+                connectionMode: 'none',
+                loading: false
+            });
+            return;
+        }
+
+        set({
+            token: secureSession.accessToken,
+            refreshToken: secureSession.refreshToken,
+            sessionId: secureSession.sessionId
+        });
+
+        try {
+            const currentSession = await getCurrentSession();
+            let profile = currentSession.user;
+
+            if (!currentSession.requiresPasswordChange) {
+                try {
+                    profile = await getUserProfile();
+                } catch {
+                    profile = currentSession.user;
+                }
+            }
+
+            const sessionResponse: AuthSessionResponse = {
+                accessToken: get().token ?? secureSession.accessToken,
+                refreshToken: get().refreshToken ?? secureSession.refreshToken,
+                sessionId: get().sessionId ?? secureSession.sessionId,
+                user: profile,
+                choir: currentSession.choir,
+                requiresPasswordChange: currentSession.requiresPasswordChange
+            };
+            await get().applySession(sessionResponse, 'online');
+        } catch (error) {
+            const isAuthorizationFailure = axios.isAxiosError(error) &&
+                (error.response?.status === 401 || error.response?.status === 403);
+            const persistedAge = persisted
+                ? Date.now() - Date.parse(persisted.metadata.validatedAt)
+                : Number.POSITIVE_INFINITY;
+            const canRestoreOffline = Boolean(
+                persisted &&
+                persisted.metadata.userId === secureSession.userId &&
+                persistedAge <= OFFLINE_SESSION_MAX_AGE_MS &&
+                !isAuthorizationFailure
+            );
+
+            if (canRestoreOffline && persisted) {
+                set({
+                    token: secureSession.accessToken,
+                    refreshToken: secureSession.refreshToken,
+                    sessionId: secureSession.sessionId,
+                    user: persisted.user,
+                    choir: persisted.choir,
+                    requiresPasswordChange: persisted.requiresPasswordChange,
+                    status: 'authenticated',
+                    connectionMode: 'offline',
+                    loading: false,
+                    errorMessage: null
+                });
+                return;
+            }
+
+            const failedContext = persisted?.metadata.choirId
+                ? {
+                    choirId: persisted.metadata.choirId,
+                    userId: persisted.metadata.userId
+                }
+                : null;
+            await clearSecureSession();
+            await clearLocalSessionData(failedContext);
+            set({
+                token: null,
+                refreshToken: null,
+                sessionId: null,
+                user: null,
+                choir: null,
+                requiresPasswordChange: false,
+                status: 'unauthenticated',
+                connectionMode: 'none',
+                errorMessage: 'Tu sesión ya no es válida. Inicia sesión nuevamente.',
+                loading: false
+            });
+        }
+    },
+
+    clearError: () => set({ errorMessage: null }),
+
+    updateUserProfile: async (data, imageUri) => {
+        set({ loading: true, errorMessage: null });
+
+        try {
+            await get().replaceUser(await updateProfile(data, imageUri));
+            set({ loading: false });
+            return true;
+        } catch (error) {
+            set({
+                loading: false,
+                errorMessage: error instanceof Error
+                    ? getApiErrorMessage(error)
+                    : 'No fue posible actualizar el perfil'
+            });
+            return false;
+        }
+    },
+
+    replaceUser: async (incomingUser) => {
+        const current = get();
+        const user = await hydrateUserMedia(
+            mergeUser(current.user, incomingUser),
+            current.choir
+        );
+
+        set({ user });
+
+        if (current.status === 'authenticated') {
+            await savePersistedSessionContext({
+                user,
+                choir: current.choir,
+                requiresPasswordChange: current.requiresPasswordChange,
+                metadata: {
+                    userId: user.id,
+                    choirId: current.choir?.id ?? user.choirId,
+                    validatedAt: new Date().toISOString()
+                }
+            });
+        }
+    },
+
+    getTenantContext: () => getContext(get().user, get().choir)
+}));
 
 registerAuthBridge({
     getAccessToken: () => useAuthStore.getState().token,
     getRefreshToken: () => useAuthStore.getState().refreshToken,
-    setAccessToken: (token) => useAuthStore.getState().setAccessToken(token),
-    logout: async () => {
-        await useAuthStore.getState().logout();
-    },
+    applySession: (session) => useAuthStore.getState().applySession(session),
+    expireSession: () => useAuthStore.getState().expireSession()
 });

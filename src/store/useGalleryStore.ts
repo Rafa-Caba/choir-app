@@ -1,88 +1,91 @@
+// src/store/useGalleryStore.ts
+
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getAllImages, addImage, removeImage, setFlags } from '../services/gallery';
-import type { GalleryImage, CreateGalleryPayload } from '../types/gallery';
+import {
+    addImage,
+    removeImage,
+    setGalleryFlags
+} from '../services/gallery';
+import { CACHE_TTL_MS } from '../config/cachePolicy';
+import { syncCacheFirst } from '../services/sync';
+import { cacheRemoteMedia } from '../storage/mediaCache';
+import type {
+    CreateGalleryPayload,
+    GalleryFlags,
+    GalleryImage
+} from '../types/gallery';
+import { useAuthStore } from './useAuthStore';
 
 interface GalleryState {
     images: GalleryImage[];
     loading: boolean;
-
     fetchImages: () => Promise<void>;
     addImage: (payload: CreateGalleryPayload) => Promise<boolean>;
     removeImage: (id: string) => Promise<boolean>;
-    setFlags: (id: string, flags: any) => Promise<void>;
+    setFlags: (id: string, flags: GalleryFlags) => Promise<void>;
+    reset: () => void;
 }
 
-export const useGalleryStore = create<GalleryState>()(
-    persist(
-        (set, get) => ({
-            images: [],
-            loading: false,
+const hydrateImages = async (images: readonly GalleryImage[]): Promise<GalleryImage[]> => {
+    const context = useAuthStore.getState().getTenantContext();
+    if (!context) return [...images];
 
-            fetchImages: async () => {
-                set({ loading: true });
-                try {
-                    const data = await getAllImages();
-                    set({ images: Array.isArray(data) ? data : [] });
-                } catch (error) {
-                    console.log("Offline: Using cached gallery");
-                } finally {
-                    set({ loading: false });
-                }
-            },
+    return Promise.all(images.map(async (image) => ({
+        ...image,
+        cachedImageUrl: await cacheRemoteMedia(context, 'gallery', image.imageUrl)
+    })));
+};
 
-            addImage: async (payload) => {
-                set({ loading: true });
-                try {
-                    const success = await addImage(payload);
-                    if (success) await get().fetchImages();
-                    return success;
-                } catch (error) { return false; }
-                finally { set({ loading: false }); }
-            },
+export const useGalleryStore = create<GalleryState>((set, get) => ({
+    images: [],
+    loading: false,
 
-            removeImage: async (id) => {
-                try {
-                    await removeImage(id);
-                    set((state) => ({
-                        images: state.images.filter((img) => img.id !== id)
-                    }));
-                    return true;
-                } catch (error) { return false; }
-            },
+    fetchImages: async () => {
+        const context = useAuthStore.getState().getTenantContext();
+        if (!context) return;
+        set({ loading: true });
 
-            setFlags: async (id, flags) => {
-                try {
-                    // Optimistic Update
-                    set(state => {
-                        const newImages = state.images.map(img => {
-                            const isTarget = img.id === id;
-                            let updates = { ...img };
-
-                            // If setting a flag true (exclusive flags), turn off others
-                            const exclusiveKeys = ['imageLogo', 'imageStart', 'imageTopBar', 'imageUs'];
-
-                            exclusiveKeys.forEach(key => {
-                                // 🛠️ FIX: Cast to 'any' to allow dynamic boolean assignment
-                                if (flags[key] && !isTarget) {
-                                    (updates as any)[key] = false;
-                                }
-                            });
-
-                            if (isTarget) return { ...updates, ...flags };
-                            return updates;
-                        });
-                        return { images: newImages };
-                    });
-
-                    await setFlags(id, flags);
-                } catch (e) { console.error("Flag update failed", e); }
-            }
-        }),
-        {
-            name: 'gallery-storage',
-            storage: createJSONStorage(() => AsyncStorage),
+        try {
+            const result = await syncCacheFirst<readonly GalleryImage[]>({
+                context,
+                resource: 'gallery',
+                path: '/gallery',
+                ttlMs: CACHE_TTL_MS.gallery,
+                onData: (data) => set({ images: [...data] })
+            });
+            set({ images: await hydrateImages(result.data) });
+        } finally {
+            set({ loading: false });
         }
-    )
-);
+    },
+
+    addImage: async (payload) => {
+        set({ loading: true });
+        try {
+            await addImage(payload);
+            await get().fetchImages();
+            return true;
+        } catch {
+            return false;
+        } finally {
+            set({ loading: false });
+        }
+    },
+
+    removeImage: async (id) => {
+        try {
+            await removeImage(id);
+            await get().fetchImages();
+            return true;
+        } catch {
+            return false;
+        }
+    },
+
+    setFlags: async (id, flags) => {
+        await setGalleryFlags(id, flags);
+        await get().fetchImages();
+    },
+
+    reset: () => set({ images: [], loading: false })
+}));

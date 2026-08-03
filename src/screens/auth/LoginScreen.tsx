@@ -1,119 +1,148 @@
+// src/screens/auth/LoginScreen.tsx
+
 import React, { useEffect, useState } from 'react';
 import {
-    View, StyleSheet, Image, TextInput, Text, TouchableOpacity,
-    Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView
+    Alert,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import Config from 'react-native-config';
+import { useTheme } from '../../context/ThemeContext';
 import { useAuthStore } from '../../store/useAuthStore';
 import { LoadingScreen } from '../LoadingScreen';
-import { useAppConfigStore } from '../../store/useAppConfigStore';
-import { useTheme } from '../../context/ThemeContext';
-import ENV from '../../config/env';
 
 export const LoginScreen = () => {
-    const navigation = useNavigation<any>();
-
-    const { login, errorMessage, clearError, loading } = useAuthStore();
-    const { appTitle, appLogoUrl } = useAppConfigStore();
-
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
-    // State (English)
-    const [username, setUsername] = useState('');
+    const login = useAuthStore((state) => state.login);
+    const loginAsPlatform = useAuthStore((state) => state.loginAsPlatform);
+    const errorMessage = useAuthStore((state) => state.errorMessage);
+    const clearError = useAuthStore((state) => state.clearError);
+    const loading = useAuthStore((state) => state.loading);
+    const lastChoirCode = useAuthStore((state) => state.lastChoirCode);
+    const colors = useTheme().currentTheme;
+    const [choirCode, setChoirCode] = useState(lastChoirCode);
+    const [identifier, setIdentifier] = useState('');
     const [password, setPassword] = useState('');
+    const [platformMode, setPlatformMode] = useState(false);
+
+    useEffect(() => {
+        if (lastChoirCode && choirCode.length === 0) {
+            setChoirCode(lastChoirCode);
+        }
+    }, [choirCode.length, lastChoirCode]);
 
     useEffect(() => {
         if (errorMessage) {
-            Alert.alert('Login Incorrecto', errorMessage, [{
-                text: 'Ok',
-                onPress: clearError
-            }]);
+            Alert.alert('No fue posible iniciar sesión', errorMessage, [
+                { text: 'Aceptar', onPress: clearError }
+            ]);
         }
-    }, [errorMessage, clearError]);
+    }, [clearError, errorMessage]);
 
-    const onLogin = async () => {
+    const onLogin = async (): Promise<void> => {
         Keyboard.dismiss();
-        if (!username || !password) {
-            Alert.alert('Error', 'Por favor ingrese usuario y contraseña');
+
+        if (!identifier.trim() || !password) {
+            Alert.alert('Datos incompletos', 'Ingresa tu usuario o correo y contraseña.');
             return;
         }
 
-        // The store handles the API call and Token storage
-        await login({ username, password });
-        // Navigation is usually handled automatically by the AppNavigator observing 'user' state
+        if (!platformMode && !choirCode.trim()) {
+            Alert.alert('Código requerido', 'Ingresa el código de tu coro.');
+            return;
+        }
+
+        if (platformMode) {
+            await loginAsPlatform({ identifier, password });
+            return;
+        }
+
+        await login({ choirCode, identifier, password });
     };
 
-    if (loading) return <LoadingScreen />;
+    if (loading) {
+        return <LoadingScreen />;
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
-                <View style={{ alignItems: 'center' }}>
-                    <Image
-                        source={appLogoUrl ? { uri: appLogoUrl } : require('../../../assets/icon.png')}
-                        resizeMode="contain"
-                        style={styles.logo}
-                        borderRadius={35}
-                    />
-                </View>
+            <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+            >
+                <Image
+                    source={require('../../../assets/icon.png')}
+                    resizeMode="contain"
+                    style={styles.logo}
+                />
+                <Text style={[styles.title, { color: colors.textColor }]}>Choir App</Text>
+                <Text style={[styles.subtitle, { color: colors.secondaryTextColor }]}>Acceso privado para miembros del coro</Text>
 
-                <Text style={[styles.title, { color: colors.textColor }]}>
-                    {appTitle || 'Ero Cras'}
-                </Text>
-
-                <KeyboardAvoidingView
-                    behavior={(Platform.OS === 'ios') ? 'padding' : undefined}
-                >
-                    <View style={{ marginHorizontal: 15 }}>
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                    {!platformMode && (
                         <TextInput
                             style={[styles.input, {
                                 backgroundColor: colors.cardColor,
                                 color: colors.textColor,
-                                borderColor: colors.borderColor || '#ccc'
+                                borderColor: colors.borderColor
                             }]}
-                            placeholder="Correo o Usuario"
-                            value={username}
+                            placeholder="Código del coro"
                             placeholderTextColor={colors.secondaryTextColor}
-                            keyboardType="email-address"
+                            value={choirCode}
                             autoCapitalize="none"
                             autoCorrect={false}
-                            onChangeText={setUsername}
+                            onChangeText={setChoirCode}
                         />
-                        <TextInput
-                            style={[styles.input, {
-                                backgroundColor: colors.cardColor,
-                                color: colors.textColor,
-                                borderColor: colors.borderColor || '#ccc'
-                            }]}
-                            placeholder="Contraseña"
-                            value={password}
-                            placeholderTextColor={colors.secondaryTextColor}
-                            onChangeText={setPassword}
-                            secureTextEntry
-                        />
+                    )}
+                    <TextInput
+                        style={[styles.input, {
+                            backgroundColor: colors.cardColor,
+                            color: colors.textColor,
+                            borderColor: colors.borderColor
+                        }]}
+                        placeholder="Correo o usuario"
+                        placeholderTextColor={colors.secondaryTextColor}
+                        value={identifier}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        onChangeText={setIdentifier}
+                    />
+                    <TextInput
+                        style={[styles.input, {
+                            backgroundColor: colors.cardColor,
+                            color: colors.textColor,
+                            borderColor: colors.borderColor
+                        }]}
+                        placeholder="Contraseña"
+                        placeholderTextColor={colors.secondaryTextColor}
+                        value={password}
+                        secureTextEntry
+                        onChangeText={setPassword}
+                        onSubmitEditing={onLogin}
+                    />
 
-                        <View style={styles.buttonContainer}>
-                            <TouchableOpacity
-                                style={[styles.btnLogin, { backgroundColor: colors.buttonColor }]}
-                                activeOpacity={0.6}
-                                onPress={onLogin}
-                            >
-                                <Text style={[styles.btnLoginText, { color: colors.buttonTextColor }]}>
-                                    {loading ? 'Cargando...' : 'Iniciar Sesión'}
-                                </Text>
-                            </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.primaryButton, { backgroundColor: colors.buttonColor }]}
+                        onPress={onLogin}
+                    >
+                        <Text style={[styles.primaryButtonText, { color: colors.buttonTextColor }]}>Iniciar sesión</Text>
+                    </TouchableOpacity>
 
-                            <TouchableOpacity
-                                onPress={() => navigation.navigate('Register')}
-                                style={styles.loginLink}
-                            >
-                                <Text style={{ color: colors.secondaryTextColor }}>¿No tienes cuenta? </Text>
-                                <Text style={{ color: colors.primaryColor, fontWeight: 'bold' }}>Regístrate</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
+                    <TouchableOpacity
+                        style={styles.platformButton}
+                        onPress={() => setPlatformMode((current) => !current)}
+                    >
+                        <Text style={{ color: colors.primaryColor }}>
+                            {platformMode ? 'Usar acceso de un coro' : 'Acceso de plataforma'}
+                        </Text>
+                    </TouchableOpacity>
                 </KeyboardAvoidingView>
             </ScrollView>
         </View>
@@ -121,50 +150,13 @@ export const LoginScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        paddingHorizontal: 30,
-    },
-    logo: {
-        width: 130,
-        height: 130,
-        marginBottom: 30,
-        borderRadius: 20
-    },
-    title: {
-        fontSize: 28,
-        textAlign: 'center',
-        marginBottom: 25,
-        fontWeight: '600'
-    },
-    input: {
-        fontSize: 16,
-        paddingHorizontal: 20,
-        paddingVertical: 15,
-        marginBottom: 15,
-        borderRadius: 12,
-        borderWidth: 1,
-        width: '100%',
-    },
-    buttonContainer: {
-        alignItems: 'center',
-        marginTop: 20
-    },
-    btnLogin: {
-        width: '100%',
-        paddingVertical: 15,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
-    },
-    btnLoginText: {
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    loginLink: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 }
+    container: { flex: 1, paddingHorizontal: 30 },
+    scrollContent: { flexGrow: 1, justifyContent: 'center' },
+    logo: { width: 130, height: 130, alignSelf: 'center', marginBottom: 24, borderRadius: 24 },
+    title: { fontSize: 30, fontWeight: '700', textAlign: 'center' },
+    subtitle: { fontSize: 15, textAlign: 'center', marginTop: 8, marginBottom: 28 },
+    input: { fontSize: 16, paddingHorizontal: 18, paddingVertical: 15, marginBottom: 14, borderRadius: 12, borderWidth: 1 },
+    primaryButton: { paddingVertical: 15, borderRadius: 12, alignItems: 'center', marginTop: 8 },
+    primaryButtonText: { fontSize: 17, fontWeight: '700' },
+    platformButton: { alignItems: 'center', paddingVertical: 18 }
 });

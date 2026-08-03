@@ -1,6 +1,7 @@
+// src/screens/songs/SongDetailScreen.tsx
 import React, { useEffect, useState, useLayoutEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, type NavigationProp, type RouteProp } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -9,10 +10,16 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import { getPreviewFromRichText } from '../../utils/textUtils';
 import { RichTextViewer } from '../../components/common/RichTextViewer';
+import type { Song } from '../../types/song';
+
+type SongDetailParams = {
+    SongDetailScreen: { readonly songId: string };
+    CreateSongScreen: { readonly songToEdit: Song };
+};
 
 export const SongDetailScreen = () => {
-    const route = useRoute<any>();
-    const navigation = useNavigation<any>();
+    const route = useRoute<RouteProp<SongDetailParams, 'SongDetailScreen'>>();
+    const navigation = useNavigation<NavigationProp<SongDetailParams>>();
     const { songId } = route.params;
     const { songs, removeSong } = useSongsStore();
     const { user } = useAuthStore();
@@ -46,7 +53,8 @@ export const SongDetailScreen = () => {
     }, [sound]);
 
     const handlePlayPause = async () => {
-        if (!song?.audioUrl) return;
+        const audioSource = song?.cachedAudioUrl ?? song?.audioUrl;
+        if (!audioSource) return;
 
         try {
             if (sound) {
@@ -63,7 +71,7 @@ export const SongDetailScreen = () => {
                 await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
 
                 const { sound: newSound } = await Audio.Sound.createAsync(
-                    { uri: song.audioUrl },
+                    { uri: audioSource },
                     { shouldPlay: true }
                 );
                 setSound(newSound);
@@ -77,9 +85,8 @@ export const SongDetailScreen = () => {
                     }
                 });
             }
-        } catch (error) {
+        } catch {
             Alert.alert("Error", "No se pudo reproducir el audio.");
-            console.log(error);
         } finally {
             setIsLoadingAudio(false);
         }
@@ -138,7 +145,7 @@ export const SongDetailScreen = () => {
             ) : null}
 
             {/* Audio Player */}
-            {song.audioUrl && (
+            {(song.cachedAudioUrl || song.audioUrl) && (
                 <View style={[styles.playerContainer, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
                     <TouchableOpacity onPress={handlePlayPause} disabled={isLoadingAudio}>
                         {isLoadingAudio ? (

@@ -1,24 +1,37 @@
+// src/types/gallery.ts
+
 export interface GalleryImage {
-    id: string;
-    title: string;
-    description: string;
-    imageUrl: string;
-    mediaType: 'IMAGE' | 'VIDEO';
-
-    // Flags
-    imageStart: boolean;
-    imageTopBar: boolean;
-    imageUs: boolean;
-    imageLogo: boolean;
-    imageGallery: boolean;
-
-    createdAt: string;
-    updatedAt: string;
+    readonly id: string;
+    readonly title: string;
+    readonly description: string;
+    readonly imageUrl: string;
+    readonly cachedImageUrl?: string | null;
+    readonly mediaType: 'IMAGE' | 'VIDEO';
+    readonly imageStart: boolean;
+    readonly imageTopBar: boolean;
+    readonly imageUs: boolean;
+    readonly imageLogo: boolean;
+    readonly imageGallery: boolean;
+    readonly imageLeftMenu?: boolean;
+    readonly imageRightMenu?: boolean;
+    readonly createdAt: string;
+    readonly updatedAt: string;
 }
 
 export interface CreateGalleryPayload {
-    title: string;
-    description: string;
-    imageUri: string;
-    imageGallery: boolean;
+    readonly title: string;
+    readonly description: string;
+    readonly imageUri: string;
+    readonly imageGallery: boolean;
 }
+
+export type GalleryFlag =
+    | 'imageStart'
+    | 'imageTopBar'
+    | 'imageUs'
+    | 'imageLogo'
+    | 'imageGallery'
+    | 'imageLeftMenu'
+    | 'imageRightMenu';
+
+export type GalleryFlags = Partial<Record<GalleryFlag, boolean>>;

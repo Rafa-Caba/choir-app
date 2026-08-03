@@ -1,3 +1,4 @@
+// src/screens/blog/BlogDetailScreen.tsx
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Image, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { useBlogStore } from '../../store/useBlogStore';
@@ -15,6 +16,7 @@ export const BlogDetailScreen = () => {
     const { user } = useAuthStore();
     const [comment, setComment] = useState('');
     const [showImageModal, setShowImageModal] = useState(false);
+    const displayImageUrl = currentPost?.cachedImageUrl ?? currentPost?.imageUrl ?? null;
 
     if (!currentPost) return (
         <View style={[styles.center, { backgroundColor: colors.backgroundColor }]}>
@@ -22,7 +24,7 @@ export const BlogDetailScreen = () => {
         </View>
     );
 
-    const authorName = currentPost.author?.name || 'Unknown Author';
+    const authorName = currentPost.author?.name || 'Autor desconocido';
     const isLiked = user ? currentPost.likesUsers.includes(user.id) : false;
 
     const handleComment = () => {
@@ -37,14 +39,14 @@ export const BlogDetailScreen = () => {
             <MediaViewerModal
                 visible={showImageModal}
                 onClose={() => setShowImageModal(false)}
-                mediaUrl={currentPost.imageUrl || null}
+                mediaUrl={displayImageUrl}
                 mediaType="image"
             />
 
             <ScrollView style={styles.container}>
-                {currentPost.imageUrl && (
+                {displayImageUrl && (
                     <TouchableOpacity onPress={() => setShowImageModal(true)}>
-                        <Image source={{ uri: currentPost.imageUrl }} style={styles.image} />
+                        <Image source={{ uri: displayImageUrl }} style={styles.image} />
                     </TouchableOpacity>
                 )}
 

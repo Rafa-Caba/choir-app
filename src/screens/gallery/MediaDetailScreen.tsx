@@ -1,10 +1,16 @@
+// src/screens/gallery/MediaDetailScreen.tsx
 import React, { useState, useRef } from 'react';
 import {
     View, Image, TouchableOpacity, StyleSheet, Text,
     Alert, ActivityIndicator, Modal, Switch, ScrollView, Platform,
     TouchableWithoutFeedback
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import {
+    useNavigation,
+    useRoute,
+    type NavigationProp,
+    type RouteProp
+} from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
@@ -13,14 +19,20 @@ import * as Sharing from 'expo-sharing';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useGalleryStore } from '../../store/useGalleryStore';
 import { useTheme } from '../../context/ThemeContext';
+import type { GalleryFlag, GalleryImage } from '../../types/gallery';
+
+type MediaDetailParams = {
+    MediaDetailScreen: { readonly media: GalleryImage };
+};
 
 export const MediaDetailScreen = () => {
-    const navigation = useNavigation();
-    const route = useRoute<any>();
+    const navigation = useNavigation<NavigationProp<MediaDetailParams>>();
+    const route = useRoute<RouteProp<MediaDetailParams, 'MediaDetailScreen'>>();
     const { currentTheme } = useTheme();
     const colors = currentTheme;
 
-    const [media, setMedia] = useState(route.params.media);
+    const [media, setMedia] = useState<GalleryImage>(route.params.media);
+    const displayMediaUrl = media.cachedImageUrl ?? media.imageUrl;
     const { user } = useAuthStore();
     const { removeImage, setFlags } = useGalleryStore();
 
@@ -64,25 +76,25 @@ export const MediaDetailScreen = () => {
                 if (await Sharing.isAvailableAsync()) {
                     await Sharing.shareAsync(uri);
                 } else {
-                    Alert.alert("Download Complete", "File saved.");
+                    Alert.alert("Descarga completada", "El archivo se guardó correctamente.");
                 }
             }
         } catch (e) {
-            Alert.alert("Error", "Download failed.");
+            Alert.alert("Error", "No fue posible descargar el archivo.");
         }
     };
 
     const handleDelete = () => {
         if (Platform.OS === 'web') {
-            if (window.confirm("Delete this file?")) {
+            if (window.confirm("¿Deseas eliminar este archivo?")) {
                 removeImage(media.id);
                 navigation.goBack();
             }
         } else {
-            Alert.alert("Delete", "Are you sure?", [
-                { text: "Cancel", style: "cancel" },
+            Alert.alert("Eliminar", "¿Seguro que deseas eliminarlo?", [
+                { text: "Cancelar", style: "cancel" },
                 {
-                    text: "Delete", style: "destructive",
+                    text: "Eliminar", style: "destructive",
                     onPress: async () => {
                         await removeImage(media.id);
                         navigation.goBack();
@@ -92,13 +104,13 @@ export const MediaDetailScreen = () => {
         }
     };
 
-    const toggleFlag = async (key: string, value: boolean) => {
+    const toggleFlag = async (key: GalleryFlag, value: boolean) => {
         const updatedMedia = { ...media, [key]: value };
         setMedia(updatedMedia);
         await setFlags(media.id, { [key]: value });
     };
 
-    const renderSwitch = (label: string, key: string, value: boolean) => (
+    const renderSwitch = (label: string, key: GalleryFlag, value: boolean) => (
         <View style={styles.switchRow}>
             <Text style={[styles.switchLabel, { color: colors.textColor }]}>{label}</Text>
             <Switch
@@ -143,7 +155,7 @@ export const MediaDetailScreen = () => {
                 {media.mediaType === 'VIDEO' ? (
                     <Video
                         style={styles.media}
-                        source={{ uri: media.imageUrl }}
+                        source={{ uri: displayMediaUrl }}
                         posterSource={{ uri: getThumbnail(media.imageUrl) }}
                         usePoster={true}
                         useNativeControls
@@ -164,7 +176,7 @@ export const MediaDetailScreen = () => {
                     >
                         <TouchableWithoutFeedback onPress={handleDoubleTap}>
                             <Image
-                                source={{ uri: media.imageUrl }}
+                                source={{ uri: displayMediaUrl }}
                                 style={[
                                     styles.media,
                                     {
@@ -197,23 +209,23 @@ export const MediaDetailScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
                         <View style={styles.modalHeader}>
-                            <Text style={[styles.modalTitle, { color: colors.textColor }]}>Image Settings</Text>
+                            <Text style={[styles.modalTitle, { color: colors.textColor }]}>Configuración de imagen</Text>
                             <TouchableOpacity onPress={() => setSettingsVisible(false)}>
                                 <Ionicons name="close" size={24} color={colors.textColor} />
                             </TouchableOpacity>
                         </View>
 
                         <ScrollView>
-                            <Text style={[styles.sectionTitle, { color: colors.primaryColor }]}>Usage Flags</Text>
-                            {renderSwitch("App Logo", "imageLogo", media.imageLogo)}
-                            {renderSwitch("Splash Screen", "imageStart", media.imageStart)}
-                            {renderSwitch("Top Bar", "imageTopBar", media.imageTopBar)}
-                            {renderSwitch("About Us Section", "imageUs", media.imageUs)}
+                            <Text style={[styles.sectionTitle, { color: colors.primaryColor }]}>Ubicación</Text>
+                            {renderSwitch("Logo de la app", "imageLogo", media.imageLogo)}
+                            {renderSwitch("Pantalla de inicio", "imageStart", media.imageStart)}
+                            {renderSwitch("Barra superior", "imageTopBar", media.imageTopBar)}
+                            {renderSwitch("Sección Nosotros", "imageUs", media.imageUs)}
 
                             <View style={{ height: 1, backgroundColor: colors.borderColor, marginVertical: 15 }} />
 
-                            <Text style={[styles.sectionTitle, { color: colors.primaryColor }]}>Visibility</Text>
-                            {renderSwitch("Show in Public Gallery", "imageGallery", media.imageGallery)}
+                            <Text style={[styles.sectionTitle, { color: colors.primaryColor }]}>Visibilidad</Text>
+                            {renderSwitch("Mostrar en la galería", "imageGallery", media.imageGallery)}
                         </ScrollView>
                     </View>
                 </View>

@@ -1,79 +1,60 @@
+// src/services/announcement.ts
+
 import choirApi from '../api/choirApi';
-import { Platform } from 'react-native';
 import type { Announcement, CreateAnnouncementPayload } from '../types/announcement';
+import { appendLocalFile, getMultipartRequestConfig } from './multipart';
 
-// Helper: Async FormData
-const createFormData = async (payload: any, imageUri?: string) => {
+const createAnnouncementFormData = async (
+    payload: Partial<CreateAnnouncementPayload>
+): Promise<FormData> => {
     const formData = new FormData();
+    formData.append('data', JSON.stringify({
+        title: payload.title,
+        content: payload.content,
+        isPublic: payload.isPublic
+    }));
 
-    const { imageUri: _, ...dataPayload } = payload;
-
-    // Map to Backend Keys
-    const finalPayload = {
-        title: dataPayload.title,
-        content: dataPayload.content,
-        isPublic: dataPayload.isPublic
-    };
-
-    formData.append('data', JSON.stringify(finalPayload));
-
-    if (imageUri && !imageUri.startsWith('http')) {
-        const filename = 'cover.jpg';
-        const type = 'image/jpeg';
-
-        if (Platform.OS === 'web') {
-            try {
-                const response = await fetch(imageUri);
-                const blob = await response.blob();
-                formData.append('file', blob, filename);
-            } catch (e) { console.error(e); }
-        } else {
-            // @ts-ignore
-            formData.append('file', {
-                uri: Platform.OS === 'android' ? imageUri : imageUri.replace('file://', ''),
-                name: filename,
-                type: type,
-            });
-        }
+    if (payload.imageUri && !payload.imageUri.startsWith('http')) {
+        await appendLocalFile(formData, 'file', {
+            uri: payload.imageUri,
+            filename: 'announcement-cover.jpg',
+            mimeType: 'image/jpeg'
+        });
     }
+
     return formData;
 };
 
-// GET Public
-export const getPublicAnnouncements = async (): Promise<Announcement[]> => {
-    const { data } = await choirApi.get<Announcement[]>('/announcements/public');
-    return data;
+export const getAnnouncements = async (): Promise<readonly Announcement[]> => {
+    const response = await choirApi.get<readonly Announcement[]>('/announcements');
+    return response.data;
 };
 
-// GET Admin
-export const getAdminAnnouncements = async (): Promise<Announcement[]> => {
-    const { data } = await choirApi.get<Announcement[]>('/announcements/admin');
-    return data;
+export const createAnnouncement = async (
+    payload: CreateAnnouncementPayload
+): Promise<Announcement> => {
+    const formData = await createAnnouncementFormData(payload);
+    const response = await choirApi.post<Announcement>(
+        '/announcements',
+        formData,
+        getMultipartRequestConfig()
+    );
+    return response.data;
 };
 
-// CREATE
-export const createAnnouncement = async (payload: CreateAnnouncementPayload): Promise<Announcement> => {
-    const formData = await createFormData(payload, payload.imageUri);
-
-    const requestConfig: any = { headers: { 'Content-Type': 'multipart/form-data' } };
-    if (Platform.OS === 'web') delete requestConfig.headers['Content-Type'];
-
-    const { data } = await choirApi.post<Announcement>('/announcements', formData, requestConfig);
-    return data;
+export const updateAnnouncement = async (
+    id: string,
+    payload: Partial<CreateAnnouncementPayload>
+): Promise<Announcement> => {
+    const formData = await createAnnouncementFormData(payload);
+    const response = await choirApi.put<Announcement>(
+        `/announcements/${id}`,
+        formData,
+        getMultipartRequestConfig()
+    );
+    return response.data;
 };
 
-// UPDATE
-export const updateAnnouncement = async (id: string, payload: Partial<CreateAnnouncementPayload>): Promise<Announcement> => {
-    const formData = await createFormData(payload, payload.imageUri);
-
-    const requestConfig: any = { headers: { 'Content-Type': 'multipart/form-data' } };
-    if (Platform.OS === 'web') delete requestConfig.headers['Content-Type'];
-
-    const { data } = await choirApi.put<Announcement>(`/announcements/${id}`, formData, requestConfig);
-    return data;
-};
-
-// DELETE
 export const deleteAnnouncement = async (id: string): Promise<void> => {
     await choirApi.delete(`/announcements/${id}`);
 };

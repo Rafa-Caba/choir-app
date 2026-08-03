@@ -1,41 +1,66 @@
-// rn/utils/normalizeChatMessage.ts
-import type { ChatMessage, ChatUserSummary, MessageType } from '../types/chat';
+// src/utils/normalizeChatMessage.ts
 
-export const normalizeChatMessage = (raw: any): ChatMessage => {
-    const candidate = raw?.text && raw.text.author ? raw.text : raw;
-    const base = candidate ?? {};
+import type {
+    ChatMessage,
+    ChatUserSummary,
+    MessageReaction,
+    RawChatMessage,
+    RawChatUser,
+    ReplyPreview
+} from '../types/chat';
 
-    const rawAuthor: any = base.author || {};
-    const author: ChatUserSummary = {
-        id: (rawAuthor.id || rawAuthor._id || '').toString(),
-        name: rawAuthor.name || 'Usuario',
-        username: rawAuthor.username || 'usuario',
-        imageUrl: rawAuthor.imageUrl || '',
+const normalizeUser = (rawUser?: RawChatUser): ChatUserSummary => ({
+    id: rawUser?.id ?? rawUser?._id ?? '',
+    name: rawUser?.name ?? 'Usuario',
+    username: rawUser?.username ?? 'usuario',
+    imageUrl: rawUser?.imageUrl
+});
+
+const normalizeReactionUser = (rawUser: RawChatUser | string | undefined): ChatUserSummary | string => {
+    if (typeof rawUser === 'string') {
+        return rawUser;
+    }
+
+    return normalizeUser(rawUser);
+};
+
+const normalizeReply = (raw: RawChatMessage['replyTo']): ReplyPreview | null => {
+    if (!raw) {
+        return null;
+    }
+
+    const textPreview = typeof raw.content === 'string'
+        ? raw.content
+        : 'Mensaje';
+
+    return {
+        id: raw.id ?? raw._id ?? '',
+        username: raw.author?.username ?? 'usuario',
+        textPreview
     };
+};
 
-    const id = (base.id || base._id || '').toString();
-    const createdAt = base.createdAt || new Date().toISOString();
-    const updatedAt = base.updatedAt || createdAt;
+export const normalizeChatMessage = (raw: RawChatMessage): ChatMessage => {
+    const createdAt = raw.createdAt ?? new Date().toISOString();
+    const reactions: readonly MessageReaction[] = (raw.reactions ?? []).map((reaction) => ({
+        emoji: reaction.emoji ?? '',
+        user: normalizeReactionUser(reaction.user),
+        username: reaction.username
+    }));
 
-    const message: ChatMessage = {
-        id,
-        author,
-        content: base.content,
-        type: (base.type || 'TEXT') as MessageType,
-
-        fileUrl: base.fileUrl || '',
-        filename: base.filename || '',
-        imageUrl: base.imageUrl,
-        audioUrl: base.audioUrl,
-        imagePublicId: base.imagePublicId,
-
-        reactions: base.reactions || [],
-
-        replyTo: base.replyTo ?? null,
-
+    return {
+        id: raw.id ?? raw._id ?? '',
+        author: normalizeUser(raw.author),
+        content: raw.content ?? '',
+        type: raw.type ?? 'TEXT',
+        fileUrl: raw.fileUrl,
+        filename: raw.filename,
+        imageUrl: raw.imageUrl,
+        audioUrl: raw.audioUrl,
+        imagePublicId: raw.imagePublicId,
+        reactions,
+        replyTo: normalizeReply(raw.replyTo),
         createdAt,
-        updatedAt,
+        updatedAt: raw.updatedAt ?? createdAt
     };
-
-    return message;
 };

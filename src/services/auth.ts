@@ -1,90 +1,142 @@
-import { Platform } from 'react-native';
-import choirApi from '../api/choirApi';
-import type { AuthResponse, LoginPayload, RegisterPayload, User } from '../types/auth';
+// src/services/auth.ts
 
-// --- Standard Auth Calls ---
+import axios from 'axios';
+import choirApi, { API_BASE_URL } from '../api/choirApi';
+import {
+    appendLocalFile,
+    getMultipartRequestConfig
+} from './multipart';
+import type {
+    AuthSessionResponse,
+    ChangePasswordPayload,
+    CurrentSessionResponse,
+    LogoutPayload,
+    PlatformLoginPayload,
+    TenantLoginPayload,
+    UpdateProfileInput,
+    User,
+    UserResponse
+} from '../types/auth';
 
-export const loginUser = async (payload: LoginPayload): Promise<AuthResponse> => {
-    const { data } = await choirApi.post<AuthResponse>('/auth/login', payload);
-    return data;
+export const loginTenant = async (
+    payload: TenantLoginPayload
+): Promise<AuthSessionResponse> => {
+    const response = await choirApi.post<AuthSessionResponse>('/auth/login', payload);
+    return response.data;
 };
 
-export const registerUser = async (payload: RegisterPayload): Promise<AuthResponse> => {
-    const { data } = await choirApi.post<AuthResponse>('/auth/register', payload);
-    return data;
+export const loginPlatform = async (
+    payload: PlatformLoginPayload
+): Promise<AuthSessionResponse> => {
+    const response = await choirApi.post<AuthSessionResponse>('/auth/platform-login', payload);
+    return response.data;
 };
 
-export const logoutUser = async (refreshToken: string): Promise<void> => {
-    await choirApi.post('/auth/logout', { refreshToken });
+export const getCurrentSession = async (): Promise<CurrentSessionResponse> => {
+    const response = await choirApi.get<CurrentSessionResponse>('/auth/me');
+    return response.data;
 };
 
-// --- User Profile Calls ---
+export const changePassword = async (
+    payload: ChangePasswordPayload
+): Promise<AuthSessionResponse> => {
+    const response = await choirApi.post<AuthSessionResponse>('/auth/change-password', payload);
+    return response.data;
+};
+
+interface LogoutSessionInput extends LogoutPayload {
+    readonly accessToken: string;
+}
+
+const submitLogout = async (
+    accessToken: string,
+    payload: LogoutPayload
+): Promise<void> => {
+    await axios.post(
+        `${API_BASE_URL}/auth/logout`,
+        payload,
+        {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            }
+        }
+    );
+};
+
+export const logoutUser = async (input: LogoutSessionInput): Promise<void> => {
+    const payload: LogoutPayload = {
+        refreshToken: input.refreshToken,
+        deviceId: input.deviceId
+    };
+
+    try {
+        await submitLogout(input.accessToken, payload);
+    } catch (error) {
+        if (!axios.isAxiosError(error) || error.response?.status !== 401) {
+            throw error;
+        }
+
+        const refreshed = await axios.post<AuthSessionResponse>(
+            `${API_BASE_URL}/auth/refresh`,
+            { refreshToken: input.refreshToken }
+        );
+        await submitLogout(refreshed.data.accessToken, {
+            refreshToken: refreshed.data.refreshToken,
+            deviceId: input.deviceId
+        });
+    }
+};
 
 export const getUserProfile = async (): Promise<User> => {
-    const { data } = await choirApi.get<User>('/users/me');
-    return data;
-};
-
-export const updatePushToken = async (token: string): Promise<void> => {
-    await choirApi.put('/users/me/push-token', { token });
+    const response = await choirApi.get<UserResponse>('/users/me');
+    return response.data.user;
 };
 
 export const updateTheme = async (themeId: string): Promise<User> => {
-    const { data } = await choirApi.put<User>('/users/me/theme', { themeId });
-    return data;
+    const response = await choirApi.put<UserResponse>('/users/me/theme', { themeId });
+    return response.data.user;
 };
 
-// --- Hybrid Update (Multipart) ---
-
-export const updateProfile = async (userData: any, imageUri?: string): Promise<User> => {
+export const updateProfile = async (
+    input: UpdateProfileInput,
+    imageUri?: string
+): Promise<User> => {
     const formData = new FormData();
-
-    const userDTO = {
-        name: userData.name,
-        username: userData.username,
-        email: userData.email,
-
-        // Backward compatibility
-        instrument: userData.instrument,
-        instrumentId: userData.instrumentId ?? undefined,
-        instrumentLabel: userData.instrumentLabel ?? undefined,
-
-        bio: userData.bio,
-        voice: userData.voice,
-        ...(userData.password ? { password: userData.password } : {}),
-    };
-
-    formData.append('data', JSON.stringify(userDTO));
+    formData.append('data', JSON.stringify(input));
 
     if (imageUri && !imageUri.startsWith('http')) {
-        const filename = imageUri.split('/').pop() || 'profile.jpg';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : `image/jpeg`;
+        const filename = imageUri.split('/').pop() ?? 'profile.jpg';
+        const extension = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
+        const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
 
-        if (Platform.OS === 'web') {
-            const response = await fetch(imageUri);
-            const blob = await response.blob();
-            // @ts-ignore
-            formData.append('file', blob, filename);
-        } else {
-            // @ts-ignore
-            formData.append('file', {
-                uri: Platform.OS === 'android' ? imageUri : imageUri.replace('file://', ''),
-                name: filename,
-                type,
-            });
+        await appendLocalFile(formData, 'file', {
+            uri: imageUri,
+            filename,
+            mimeType
+        });
+    }
+
+    const response = await choirApi.put<UserResponse>(
+        '/users/me',
+        formData,
+        getMultipartRequestConfig()
+    );
+    return response.data.user;
+};
+
+export const getApiErrorMessage = (error: object): string => {
+    if (axios.isAxiosError(error)) {
+        const responseData = error.response?.data;
+
+        if (
+            responseData &&
+            typeof responseData === 'object' &&
+            'message' in responseData &&
+            typeof responseData.message === 'string'
+        ) {
+            return responseData.message;
         }
     }
 
-    const requestConfig: any = {
-        headers: { 'Content-Type': 'multipart/form-data' },
-    };
-
-    // RN-web: allow axios to set boundary
-    if (Platform.OS === 'web') {
-        delete requestConfig.headers['Content-Type'];
-    }
-
-    const { data } = await choirApi.put<User>('/users/me', formData, requestConfig);
-    return data;
+    return error instanceof Error ? error.message : 'No fue posible completar la solicitud';
 };

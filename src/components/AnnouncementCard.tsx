@@ -1,3 +1,4 @@
+// src/components/AnnouncementCard.tsx
 import React, { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +19,7 @@ export const AnnouncementCard = ({ announcement, onPress, onDelete }: Props) => 
     const { currentTheme } = useTheme();
     const colors = currentTheme;
     const [showModal, setShowModal] = useState(false);
+    const displayImageUrl = announcement.cachedImageUrl ?? announcement.imageUrl ?? null;
 
     const dateStr = new Date(announcement.createdAt).toLocaleDateString();
     // const preview = getPreviewFromRichText(announcement.content, 150);
@@ -29,13 +31,13 @@ export const AnnouncementCard = ({ announcement, onPress, onDelete }: Props) => 
             <MediaViewerModal
                 visible={showModal}
                 onClose={() => setShowModal(false)}
-                mediaUrl={announcement.imageUrl || null}
+                mediaUrl={displayImageUrl}
                 mediaType="image"
             />
 
-            {announcement.imageUrl && (
+            {displayImageUrl && (
                 <TouchableOpacity onPress={() => setShowModal(true)}>
-                    <Image source={{ uri: announcement.imageUrl }} style={styles.image} />
+                    <Image source={{ uri: displayImageUrl }} style={styles.image} />
                 </TouchableOpacity>
             )}
 

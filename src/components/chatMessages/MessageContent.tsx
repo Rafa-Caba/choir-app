@@ -1,9 +1,11 @@
+// src/components/chatMessages/MessageContent.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TouchableOpacity, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 
 import type { ChatMessage } from '../../types/chat';
+import type { Theme } from '../../types/theme';
 import { getPreviewFromRichText } from '../../utils/textUtils';
 import { MediaViewerModal } from '../shared/MediaViewerModal';
 import { RichTextViewer } from '../common/RichTextViewer';
@@ -11,7 +13,7 @@ import { RichTextViewer } from '../common/RichTextViewer';
 interface MessageContentProps {
     message: ChatMessage;
     isMe: boolean;
-    colors: any;
+    colors: Theme;
     textColor: string;
     timeColor: string;
 }
@@ -26,8 +28,8 @@ export const MessageContent = ({ message, isMe, colors, textColor, timeColor }: 
     // 1. Extract Data (English)
     // The backend refactor standardized 'fileUrl' to hold the URL for everything.
     // But 'imageUrl' / 'audioUrl' aliases exist in toJSON for convenience.
-    const mediaUrl = message.fileUrl || message.imageUrl || message.audioUrl || '';
-    const filename = message.filename || 'Attachment';
+    const mediaUrl = message.cachedMediaUrl || message.fileUrl || message.imageUrl || message.audioUrl || '';
+    const filename = message.filename || 'Archivo adjunto';
     const type = message.type || 'TEXT';
 
     const isVideo = type === 'VIDEO';
@@ -67,7 +69,9 @@ export const MessageContent = ({ message, isMe, colors, textColor, timeColor }: 
                     }
                 });
             }
-        } catch (error) { console.log("Audio Error", error); }
+        } catch {
+            setIsPlaying(false);
+        }
         finally { setIsLoadingAudio(false); }
     };
 
@@ -103,7 +107,7 @@ export const MessageContent = ({ message, isMe, colors, textColor, timeColor }: 
                     mediaType={isVideo ? 'video' : 'image'}
                 />
 
-                {!isMe && <Text style={[styles.autor, { color: colors.primaryColor }]}>{message.author?.name || 'User'}</Text>}
+                {!isMe && <Text style={[styles.autor, { color: colors.primaryColor }]}>{message.author?.name || 'Usuario'}</Text>}
 
                 <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.mediaPreview} activeOpacity={0.9}>
                     <Image
@@ -147,7 +151,7 @@ export const MessageContent = ({ message, isMe, colors, textColor, timeColor }: 
     return (
         <View>
             {!isMe && <Text style={[styles.autor, { color: colors.primaryColor }]}>{message.author?.name}</Text>}
-            <Text style={[styles.mensajeText, { color: textColor }]}>{textContent || 'Empty message'}</Text>
+            <Text style={[styles.mensajeText, { color: textColor }]}>{textContent || 'Mensaje vacío'}</Text>
         </View>
     );
 };

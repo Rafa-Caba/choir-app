@@ -1,44 +1,50 @@
-import type { User } from './auth';
+// src/types/blog.ts
 
-// Recursive-ish type for TipTap Content to allow flexibility (Bold, Italic, Empty lines)
+import type { JsonObject, JsonValue } from './json';
+
+export interface TipTapMark {
+    readonly type: string;
+}
+
 export interface TipTapNode {
-    type: string;
-    text?: string;
-    content?: TipTapNode[];
-    marks?: { type: string }[];
-    attrs?: Record<string, any>;
+    readonly type: string;
+    readonly text?: string;
+    readonly content?: readonly TipTapNode[];
+    readonly marks?: readonly TipTapMark[];
+    readonly attrs?: JsonObject;
 }
 
 export interface BlogComment {
-    author: string;
-    text: { type: string, content?: TipTapNode[] };
-    date: string;
+    readonly author: string;
+    readonly text: JsonValue;
+    readonly date: string;
+}
+
+export interface BlogAuthor {
+    readonly id: string;
+    readonly name: string;
+    readonly username: string;
+    readonly imageUrl?: string;
 }
 
 export interface BlogPost {
-    id: string;
-    title: string;
-    content: { type: string, content?: TipTapNode[] };
-    author: {
-        id: string;
-        name: string;
-        username: string;
-        imageUrl: string;
-    };
-    imageUrl?: string;
-    isPublic: boolean;
-    likes: number;
-    likesUsers: string[];
-    comments: BlogComment[];
-    createdAt: string;
+    readonly id: string;
+    readonly title: string;
+    readonly content: TipTapNode;
+    readonly author: BlogAuthor;
+    readonly imageUrl?: string;
+    readonly cachedImageUrl?: string | null;
+    readonly isPublic: boolean;
+    readonly likes: number;
+    readonly likesUsers: readonly string[];
+    readonly comments: readonly BlogComment[];
+    readonly createdAt: string;
+    readonly updatedAt?: string;
 }
 
 export interface CreateBlogPayload {
-    title: string;
-    content: {
-        type: string;
-        content: TipTapNode[];
-    };
-    imageUri?: string;
-    isPublic: boolean;
+    readonly title: string;
+    readonly content: TipTapNode;
+    readonly imageUri?: string;
+    readonly isPublic: boolean;
 }

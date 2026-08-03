@@ -1,42 +1,25 @@
-// import choirApi from '../../api/choirApi';
-// import type { ThemeDefinition } from '../../types/theme';
+// src/services/admin/themes.ts
 
-// // Helper: Convert Flat Mobile Object -> Backend Array Structure
-// const mapThemeToBackend = (data: ThemeDefinition) => {
-//     return {
-//         nombre: data.name,
-//         colores: [
-//             { nombre: 'Principal', colorClass: 'primary', color: data.primaryColor },
-//             { nombre: 'Acento', colorClass: 'accent', color: data.accentColor },
-//             { nombre: 'Fondo', colorClass: 'background', color: data.backgroundColor },
-//             { nombre: 'Texto Principal', colorClass: 'text', color: data.textColor },
-//             { nombre: 'Tarjeta', colorClass: 'card', color: data.cardColor },
-//             { nombre: 'Botón', colorClass: 'button', color: data.buttonColor },
-//             { nombre: 'Navegación', colorClass: 'nav', color: data.navColor },
+import choirApi from '../../api/choirApi';
+import type { Theme } from '../../types/theme';
 
-//             // Optional fields
-//             ...(data.buttonTextColor ? [{ nombre: 'Texto Botón', colorClass: 'buttontext', color: data.buttonTextColor }] : []),
-//             ...(data.secondaryTextColor ? [{ nombre: 'Texto Secundario', colorClass: 'secondarytext', color: data.secondaryTextColor }] : []),
-//             ...(data.borderColor ? [{ nombre: 'Bordes', colorClass: 'border', color: data.borderColor }] : [])
-//         ]
-//     };
-// };
-
-// // PUT /api/themes-group/{id}
-// export const updateThemeDefinition = async (id: string, data: ThemeDefinition): Promise<ThemeDefinition> => {
-//     const backendPayload = mapThemeToBackend(data);
-//     const { data: response } = await choirApi.put<any>(`/theme-groups/${id}`, backendPayload);
-//     return response;
-// };
-
-// // POST /api/themes-group (Create new)
-// export const createThemeDefinition = async (data: ThemeDefinition): Promise<ThemeDefinition> => {
-//     const backendPayload = mapThemeToBackend(data);
-//     const { data: response } = await choirApi.post<any>('/theme-groups', backendPayload);
-//     return response;
-// };
-
-// // DELETE /api/themes-group/{id}
-// export const deleteThemeDefinition = async (id: string): Promise<void> => {
-//     // await choirApi.delete(`/theme-groups/${id}`);
-// };
+export const updateThemeDefinition = async (
+    id: string,
+    data: Theme
+): Promise<Theme> => {
+    const response = await choirApi.put<Theme>(`/themes/${id}`, {
+        name: data.name,
+        isDark: data.isDark,
+        primaryColor: data.primaryColor,
+        accentColor: data.accentColor,
+        backgroundColor: data.backgroundColor,
+        textColor: data.textColor,
+        cardColor: data.cardColor,
+        buttonColor: data.buttonColor,
+        navColor: data.navColor,
+        buttonTextColor: data.buttonTextColor,
+        secondaryTextColor: data.secondaryTextColor,
+        borderColor: data.borderColor
+    });
+    return response.data;
+};

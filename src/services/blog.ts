@@ -1,99 +1,68 @@
+// src/services/blog.ts
+
 import choirApi from '../api/choirApi';
-import type { BlogPost, CreateBlogPayload } from '../types/blog';
-import { Platform } from 'react-native';
+import type { BlogComment, BlogPost, CreateBlogPayload } from '../types/blog';
+import { appendLocalFile, getMultipartRequestConfig } from './multipart';
 
-// Helper: Async FormData
-const createFormData = async (payload: Partial<CreateBlogPayload>, imageUri?: string) => {
+interface LikeResponse {
+    readonly likes: number;
+    readonly liked: boolean;
+}
+
+const createBlogFormData = async (
+    payload: Partial<CreateBlogPayload>
+): Promise<FormData> => {
     const formData = new FormData();
+    formData.append('data', JSON.stringify({
+        title: payload.title,
+        content: payload.content,
+        isPublic: payload.isPublic
+    }));
 
-    // Separate image from data
-    const { imageUri: _, ...dataPayload } = payload;
-
-    const finalPayload = {
-        title: dataPayload.title,
-        content: dataPayload.content,
-        isPublic: dataPayload.isPublic,
-        // Optional author if admin wants to override, otherwise handled by backend token
-    };
-
-    formData.append('data', JSON.stringify(finalPayload));
-
-    if (imageUri && !imageUri.startsWith('http')) {
-        const filename = 'cover.jpg';
-        const type = 'image/jpeg';
-
-        if (Platform.OS === 'web') {
-            try {
-                const response = await fetch(imageUri);
-                const blob = await response.blob();
-                formData.append('file', blob, filename);
-            } catch (e) {
-                console.error("Web Blob Error:", e);
-            }
-        } else {
-            // @ts-ignore
-            formData.append('file', {
-                uri: Platform.OS === 'android' ? imageUri : imageUri.replace('file://', ''),
-                name: filename,
-                type: type,
-            });
-        }
+    if (payload.imageUri && !payload.imageUri.startsWith('http')) {
+        await appendLocalFile(formData, 'file', {
+            uri: payload.imageUri,
+            filename: 'blog-cover.jpg',
+            mimeType: 'image/jpeg'
+        });
     }
 
     return formData;
 };
 
-// GET Public
-export const getPublicPosts = async (): Promise<BlogPost[]> => {
-    const { data } = await choirApi.get<BlogPost[]>('/blog/public');
-    return data;
+export const getAllPosts = async (): Promise<readonly BlogPost[]> => {
+    const response = await choirApi.get<readonly BlogPost[]>('/blog');
+    return response.data;
 };
 
-// GET Admin
-export const getAllPosts = async (): Promise<BlogPost[]> => {
-    const { data } = await choirApi.get<BlogPost[]>('/blog');
-    return data;
-};
-
-// CREATE
 export const createPost = async (payload: CreateBlogPayload): Promise<BlogPost> => {
-    const formData = await createFormData(payload, payload.imageUri);
-
-    const requestConfig: any = { headers: { 'Content-Type': 'multipart/form-data' } };
-    if (Platform.OS === 'web') delete requestConfig.headers['Content-Type'];
-
-    const { data } = await choirApi.post<BlogPost>('/blog', formData, requestConfig);
-    return data;
+    const formData = await createBlogFormData(payload);
+    const response = await choirApi.post<BlogPost>('/blog', formData, getMultipartRequestConfig());
+    return response.data;
 };
 
-// UPDATE
-export const updatePost = async (id: string, payload: Partial<CreateBlogPayload>): Promise<BlogPost> => {
-    const formData = await createFormData(payload, payload.imageUri);
-
-    const requestConfig: any = { headers: { 'Content-Type': 'multipart/form-data' } };
-    if (Platform.OS === 'web') delete requestConfig.headers['Content-Type'];
-
-    const { data } = await choirApi.put<BlogPost>(`/blog/${id}`, formData, requestConfig);
-    return data;
+export const updatePost = async (
+    id: string,
+    payload: Partial<CreateBlogPayload>
+): Promise<BlogPost> => {
+    const formData = await createBlogFormData(payload);
+    const response = await choirApi.put<BlogPost>(`/blog/${id}`, formData, getMultipartRequestConfig());
+    return response.data;
 };
 
-// DELETE
 export const deletePost = async (id: string): Promise<void> => {
     await choirApi.delete(`/blog/${id}`);
 };
 
-// LIKE
-export const likePost = async (id: string, userId: string): Promise<BlogPost> => {
-    const { data } = await choirApi.post<BlogPost>(`/blog/${id}/like`, { userId });
-    return data;
+export const togglePostLike = async (id: string): Promise<LikeResponse> => {
+    const response = await choirApi.put<LikeResponse>(`/blog/${id}/like`);
+    return response.data;
 };
 
-// COMMENT
-export const commentOnPost = async (id: string, text: string, author: string): Promise<BlogPost> => {
-    // Backend expects 'text' and 'author'
-    const { data } = await choirApi.post<BlogPost>(`/blog/${id}/comments`, {
-        author,
-        text
-    });
-    return data;
+export const commentOnPost = async (
+    id: string,
+    text: string
+): Promise<BlogComment> => {
+    const response = await choirApi.post<BlogComment>(`/blog/${id}/comment`, { text });
+    return response.data;
 };

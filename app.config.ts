@@ -1,4 +1,4 @@
-// /app.config.ts
+// app.config.ts
 
 import 'dotenv/config';
 
@@ -58,6 +58,7 @@ export default {
         },
         plugins: [
             "expo-font",
+            "expo-secure-store",
             [
                 "expo-image-picker",
                 {

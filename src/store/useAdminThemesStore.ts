@@ -1,16 +1,19 @@
+// src/store/useAdminThemesStore.ts
+
 import { create } from 'zustand';
-import { ThemeDefinition } from '../types/theme';
-import { getAllThemes } from '../services/theme';
 import { updateThemeDefinition } from '../services/admin/themes';
+import { getAllThemes } from '../services/theme';
+import type { Theme } from '../types/theme';
 
 interface AdminThemesState {
-    themes: ThemeDefinition[];
+    themes: Theme[];
     loading: boolean;
     fetchThemes: () => Promise<void>;
-    saveTheme: (id: string, data: ThemeDefinition) => Promise<boolean>;
+    saveTheme: (id: string, data: Theme) => Promise<boolean>;
+    reset: () => void;
 }
 
-export const useAdminThemesStore = create<AdminThemesState>((set, get) => ({
+export const useAdminThemesStore = create<AdminThemesState>((set) => ({
     themes: [],
     loading: false,
 
@@ -18,9 +21,7 @@ export const useAdminThemesStore = create<AdminThemesState>((set, get) => ({
         set({ loading: true });
         try {
             const data = await getAllThemes();
-            set({ themes: data });
-        } catch (error) {
-            console.error(error);
+            set({ themes: [...data] });
         } finally {
             set({ loading: false });
         }
@@ -30,17 +31,16 @@ export const useAdminThemesStore = create<AdminThemesState>((set, get) => ({
         set({ loading: true });
         try {
             const updated = await updateThemeDefinition(id, data);
-
-            // Update local list
-            set(state => ({
-                themes: state.themes.map(t => t.id === id ? updated : t)
+            set((state) => ({
+                themes: state.themes.map((theme) => theme.id === id ? updated : theme)
             }));
             return true;
-        } catch (error) {
-            console.error(error);
+        } catch {
             return false;
         } finally {
             set({ loading: false });
         }
-    }
+    },
+
+    reset: () => set({ themes: [], loading: false })
 }));

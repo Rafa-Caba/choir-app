@@ -1,44 +1,26 @@
+// src/services/theme.ts
+
 import choirApi from '../api/choirApi';
-import type { Theme } from '../types/theme';
-import { useAuthStore } from '../store/useAuthStore';
+import type { CreateThemePayload, Theme } from '../types/theme';
 
-type ThemeApiResponse = Theme[] | { themes?: Theme[] } | any;
-
-const getToken = () => useAuthStore.getState().token;
-
-const normalizeThemes = (data: ThemeApiResponse): Theme[] => {
-    if (Array.isArray(data)) return data;
-    if (data && Array.isArray(data.themes)) return data.themes;
-    return [];
+export const getAllThemes = async (): Promise<readonly Theme[]> => {
+    const response = await choirApi.get<readonly Theme[]>('/themes');
+    return response.data;
 };
 
-// PUBLIC
-export const getPublicThemes = async (): Promise<Theme[]> => {
-    const { data } = await choirApi.get<ThemeApiResponse>('/themes/public');
-    return normalizeThemes(data);
+export const createTheme = async (payload: CreateThemePayload): Promise<Theme> => {
+    const response = await choirApi.post<Theme>('/themes', payload);
+    return response.data;
 };
 
-// PROTECTED
-export const getProtectedThemes = async (): Promise<Theme[]> => {
-    const { data } = await choirApi.get<ThemeApiResponse>('/themes');
-    return normalizeThemes(data);
+export const updateTheme = async (
+    id: string,
+    payload: Partial<CreateThemePayload>
+): Promise<Theme> => {
+    const response = await choirApi.put<Theme>(`/themes/${id}`, payload);
+    return response.data;
 };
 
-// SMART (token -> protected, else public; fallback on 401/403)
-export const getAllThemes = async (): Promise<Theme[]> => {
-    const token = getToken();
-
-    if (!token) {
-        return await getPublicThemes();
-    }
-
-    try {
-        return await getProtectedThemes();
-    } catch (err: any) {
-        const status = err?.response?.status;
-        if (status === 401 || status === 403) {
-            return await getPublicThemes();
-        }
-        throw err;
-    }
+export const deleteTheme = async (id: string): Promise<void> => {
+    await choirApi.delete(`/themes/${id}`);
 };

@@ -1,13 +1,20 @@
 // src/context/ThemeContext.tsx
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { getAllThemes } from '../services/theme';
+
+import React, {
+    createContext,
+    useContext,
+    useEffect,
+    useMemo,
+    useState
+} from 'react';
 import { updateTheme as persistUserTheme } from '../services/auth';
 import { useAuthStore } from '../store/useAuthStore';
+import { useThemeStore } from '../store/useThemeStore';
 import type { Theme } from '../types/theme';
 
 const DEFAULT_THEME: Theme = {
     id: 'default',
-    name: 'Default Light',
+    name: 'Predeterminado',
     isDark: false,
     primaryColor: '#6200EE',
     accentColor: '#03DAC6',
@@ -18,94 +25,72 @@ const DEFAULT_THEME: Theme = {
     navColor: '#ffffff',
     buttonTextColor: '#ffffff',
     secondaryTextColor: '#666666',
-    borderColor: '#e0e0e0',
+    borderColor: '#e0e0e0'
 };
 
 interface ThemeContextType {
-    currentTheme: Theme;
-    availableThemes: Theme[];
-    setTheme: (theme: Theme) => void;
-    setThemeById: (id: string) => Promise<void>;
-    loading: boolean;
-    colors: Theme;
+    readonly currentTheme: Theme;
+    readonly availableThemes: readonly Theme[];
+    readonly setTheme: (theme: Theme) => void;
+    readonly setThemeById: (id: string) => Promise<void>;
+    readonly loading: boolean;
+    readonly colors: Theme;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
     currentTheme: DEFAULT_THEME,
     availableThemes: [],
-    setTheme: () => { },
-    setThemeById: async () => { },
+    setTheme: () => undefined,
+    setThemeById: async () => undefined,
     loading: false,
-    colors: DEFAULT_THEME,
+    colors: DEFAULT_THEME
 });
 
-export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-    const [availableThemes, setAvailableThemes] = useState<Theme[]>([]);
-    const [currentTheme, setCurrentTheme] = useState<Theme>(DEFAULT_THEME);
-    const [loading, setLoading] = useState<boolean>(true);
+const resolveThemeId = (themeId: string | Theme | null | undefined): string | null => {
+    if (!themeId) return null;
+    return typeof themeId === 'string' ? themeId : themeId.id;
+};
 
-    const user = useAuthStore((s) => s.user);
+export const ThemeProvider = ({ children }: { readonly children: React.ReactNode }) => {
+    const status = useAuthStore((state) => state.status);
+    const user = useAuthStore((state) => state.user);
+    const replaceUser = useAuthStore((state) => state.replaceUser);
+    const themes = useThemeStore((state) => state.themes);
+    const loading = useThemeStore((state) => state.loading);
+    const fetchThemes = useThemeStore((state) => state.fetchThemes);
+    const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
+    const userThemeId = resolveThemeId(user?.themeId);
 
-    const isInitializingRef = useRef(false);
-
-    const userThemeId = useMemo(() => {
-        if (!user?.themeId) return null;
-        return typeof user.themeId === 'object' ? user.themeId.id : user.themeId;
-    }, [user?.themeId]);
-
-    const initThemes = async () => {
-        if (isInitializingRef.current) return;
-        isInitializingRef.current = true;
-
-        try {
-            setLoading(true);
-
-            const themes = await getAllThemes();
-            const safeThemes = Array.isArray(themes) ? themes : [];
-
-            setAvailableThemes(safeThemes);
-
-            let active: Theme = safeThemes[0] ?? DEFAULT_THEME;
-
-            if (userThemeId) {
-                const found = safeThemes.find((t) => t?.id === userThemeId);
-                if (found) active = found;
-            }
-
-            setCurrentTheme(active);
-        } catch (error) {
-            console.error('Error initializing themes:', error);
-            if (!currentTheme?.id) setCurrentTheme(DEFAULT_THEME);
-            setAvailableThemes([]);
-        } finally {
-            setLoading(false);
-            isInitializingRef.current = false;
-        }
-    };
-
-    // Re-init when auth user changes OR their theme preference changes
     useEffect(() => {
-        initThemes();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user?.id, userThemeId]);
+        if (status === 'authenticated') {
+            fetchThemes().catch(() => undefined);
+        } else {
+            setSelectedThemeId(null);
+        }
+    }, [fetchThemes, status, user?.id]);
 
-    const setTheme = (theme: Theme) => {
-        if (!theme?.id) return;
-        setCurrentTheme(theme);
+    useEffect(() => {
+        setSelectedThemeId(userThemeId);
+    }, [userThemeId]);
+
+    const currentTheme = useMemo(() => {
+        const preferredId = selectedThemeId ?? userThemeId;
+        return themes.find((theme) => theme.id === preferredId) ?? themes[0] ?? DEFAULT_THEME;
+    }, [selectedThemeId, themes, userThemeId]);
+
+    const setTheme = (theme: Theme): void => {
+        setSelectedThemeId(theme.id);
     };
 
-    const setThemeById = async (id: string) => {
-        const theme = availableThemes.find((t) => t.id === id);
+    const setThemeById = async (id: string): Promise<void> => {
+        const theme = themes.find((item) => item.id === id);
+
         if (!theme) return;
+        setSelectedThemeId(id);
 
-        setCurrentTheme(theme);
-
-        if (user?.id) {
-            try {
-                await persistUserTheme(id);
-            } catch (error) {
-                console.error('Failed to save theme preference', error);
-            }
+        if (user) {
+            const updatedUser = await persistUserTheme(id);
+            await replaceUser(updatedUser);
         }
     };
 
@@ -113,11 +98,11 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
         <ThemeContext.Provider
             value={{
                 currentTheme,
-                availableThemes,
+                availableThemes: themes,
                 setTheme,
                 setThemeById,
                 loading,
-                colors: currentTheme,
+                colors: currentTheme
             }}
         >
             {children}
@@ -125,4 +110,4 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     );
 };
 
-export const useTheme = () => useContext(ThemeContext);
+export const useTheme = (): ThemeContextType => useContext(ThemeContext);

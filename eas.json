@@ -11,9 +11,7 @@
       "android": {
         "buildType": "apk"
       },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://ero-cras-webapp-api-production.up.railway.app"
-      }
+      "environment": "development"
     },
     "preview": {
       "distribution": "internal",
@@ -21,15 +19,11 @@
       "android": {
         "buildType": "apk"
       },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://ero-cras-webapp-api-production.up.railway.app"
-      }
+      "environment": "preview"
     },
     "production": {
       "channel": "production",
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://ero-cras-webapp-api-production.up.railway.app"
-      }
+      "environment": "production"
     },
     "production-apk": {
       "distribution": "internal",
@@ -37,9 +31,7 @@
       "android": {
         "buildType": "apk"
       },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://ero-cras-webapp-api-production.up.railway.app"
-      }
+      "environment": "production"
     }
   },
   "submit": {

@@ -1,80 +1,96 @@
+// src/store/useAppConfigStore.ts
+
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getSettings } from '../services/admin/settings';
-import type { SocialLinks, HomeLegends } from '../types/settings';
+import { CACHE_TTL_MS } from '../config/cachePolicy';
+import { syncCacheFirst } from '../services/sync';
+import { cacheRemoteMedia } from '../storage/mediaCache';
+import type {
+    AppSettings,
+    HomeLegends,
+    RichTextDocument,
+    SocialLinks
+} from '../types/settings';
+import { useAuthStore } from './useAuthStore';
+
+const EMPTY_SOCIALS: SocialLinks = {
+    facebook: '',
+    instagram: '',
+    youtube: '',
+    whatsapp: '',
+    email: ''
+};
+
+const EMPTY_LEGENDS: HomeLegends = {
+    principal: '',
+    secondary: ''
+};
+
+const EMPTY_HISTORY: RichTextDocument = {
+    type: 'doc',
+    content: []
+};
 
 interface AppConfigState {
     appTitle: string;
     appLogoUrl: string | null;
     contactPhone: string;
-
     socialLinks: SocialLinks;
     homeLegends: HomeLegends;
-    history: any; // TipTap JSON
-
+    history: RichTextDocument;
     loading: boolean;
     fetchAppConfig: () => Promise<void>;
+    reset: () => void;
 }
 
-export const useAppConfigStore = create<AppConfigState>()(
-    persist(
-        (set) => ({
-            appTitle: 'Coro App',
-            appLogoUrl: null,
-            contactPhone: '',
+const toState = (settings: AppSettings, cachedLogoUrl?: string | null): Partial<AppConfigState> => ({
+    appTitle: settings.webTitle || 'Choir App',
+    appLogoUrl: cachedLogoUrl ?? settings.logoUrl ?? null,
+    contactPhone: settings.contactPhone || '',
+    socialLinks: settings.socials ?? EMPTY_SOCIALS,
+    homeLegends: settings.homeLegends ?? EMPTY_LEGENDS,
+    history: settings.history ?? EMPTY_HISTORY
+});
 
-            // Default empty structure
-            socialLinks: {
-                facebook: '',
-                instagram: '',
-                youtube: '',
-                whatsapp: '',
-                email: ''
-            },
-            homeLegends: {
-                principal: '',
-                secondary: ''
-            },
-            history: { type: 'doc', content: [] },
+export const useAppConfigStore = create<AppConfigState>((set) => ({
+    appTitle: 'Choir App',
+    appLogoUrl: null,
+    contactPhone: '',
+    socialLinks: EMPTY_SOCIALS,
+    homeLegends: EMPTY_LEGENDS,
+    history: EMPTY_HISTORY,
+    loading: false,
 
-            loading: false,
+    fetchAppConfig: async () => {
+        const context = useAuthStore.getState().getTenantContext();
+        if (!context) return;
+        set({ loading: true });
 
-            fetchAppConfig: async () => {
-                set({ loading: true });
-                try {
-                    const data = await getSettings();
-
-                    set({
-                        appTitle: data.webTitle || 'Coro App',
-                        appLogoUrl: data.logoUrl || null,
-                        contactPhone: data.contactPhone || '',
-
-                        socialLinks: {
-                            facebook: data.socials?.facebook || '',
-                            instagram: data.socials?.instagram || '',
-                            youtube: data.socials?.youtube || '',
-                            whatsapp: data.socials?.whatsapp || '',
-                            email: data.socials?.email || ''
-                        },
-
-                        homeLegends: {
-                            principal: data.homeLegends?.principal || '',
-                            secondary: data.homeLegends?.secondary || ''
-                        },
-
-                        history: data.history || { type: 'doc', content: [] }
-                    });
-                } catch (error) {
-                    console.log("Offline: Using cached app config");
-                } finally {
-                    set({ loading: false });
-                }
-            }
-        }),
-        {
-            name: 'app-config-storage',
-            storage: createJSONStorage(() => AsyncStorage),
+        try {
+            const result = await syncCacheFirst<AppSettings>({
+                context,
+                resource: 'settings',
+                path: '/settings',
+                ttlMs: CACHE_TTL_MS.settings,
+                onData: (data) => set(toState(data))
+            });
+            const cachedLogoUrl = await cacheRemoteMedia(
+                context,
+                'settings',
+                result.data.logoUrl
+            );
+            set(toState(result.data, cachedLogoUrl));
+        } finally {
+            set({ loading: false });
         }
-    )
-);
+    },
+
+    reset: () => set({
+        appTitle: 'Choir App',
+        appLogoUrl: null,
+        contactPhone: '',
+        socialLinks: EMPTY_SOCIALS,
+        homeLegends: EMPTY_LEGENDS,
+        history: EMPTY_HISTORY,
+        loading: false
+    })
+}));

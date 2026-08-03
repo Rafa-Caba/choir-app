@@ -1,3 +1,4 @@
+// src/navigation/SettingsNavigator.tsx
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
@@ -13,8 +14,9 @@ import { ManageUserScreen } from '../screens/admin/ManageUserScreen';
 import { ThemesListScreen } from '../screens/settings/themes/ThemesListScreen';
 import { ManageThemeScreen } from '../screens/settings/themes/ManageThemeScreen';
 import { useTheme } from '../context/ThemeContext';
-import { User } from '../types/auth';
-import { Theme } from '../types/theme';
+import type { User } from '../types/auth';
+import type { GalleryImage } from '../types/gallery';
+import type { Theme } from '../types/theme';
 
 export type SettingsStackParamList = {
     SettingsScreen: undefined;
@@ -30,7 +32,7 @@ export type SettingsStackParamList = {
     ThemesListScreen: undefined;
     ManageThemeScreen: { themeToEdit?: Theme } | undefined;
 
-    MediaDetailScreen: { media: any };
+    MediaDetailScreen: { readonly media: GalleryImage };
 };
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();

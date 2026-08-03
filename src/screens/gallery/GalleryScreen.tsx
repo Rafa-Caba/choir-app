@@ -1,9 +1,10 @@
+// src/screens/gallery/GalleryScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
     View, Text, FlatList, TouchableOpacity, StyleSheet, Image, ScrollView,
     Modal, TextInput, ActivityIndicator, Alert, Platform
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,9 +14,14 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import { LoadingScreen } from '../LoadingScreen';
 import { getCloudinaryThumbnail } from '../../utils/mediaUtils';
+import type { GalleryImage } from '../../types/gallery';
+
+type GalleryNavigationParams = {
+    MediaDetailScreen: { readonly media: GalleryImage };
+};
 
 export const GalleryScreen = () => {
-    const navigation = useNavigation<any>();
+    const navigation = useNavigation<NavigationProp<GalleryNavigationParams>>();
     const insets = useSafeAreaInsets();
 
     const { currentTheme } = useTheme();
@@ -70,7 +76,7 @@ export const GalleryScreen = () => {
 
     const handleConfirmUpload = async () => {
         if (!newTitle.trim() || !tempUri) {
-            Alert.alert("Missing Data", "Please add a title.");
+            Alert.alert("Datos incompletos", "Agrega un título.");
             return;
         }
 
@@ -87,7 +93,7 @@ export const GalleryScreen = () => {
             setModalVisible(false);
             setTempUri(null);
         } else {
-            Alert.alert("Error", "Upload failed.");
+            Alert.alert("Error", "No fue posible subir el archivo.");
         }
     };
 
@@ -96,8 +102,11 @@ export const GalleryScreen = () => {
     // 🆕 Allow both Images AND Videos in Carousel (Top 5)
     const featuredItems = images.slice(0, 5);
 
-    const renderGridItem = ({ item }: { item: any }) => {
-        const thumbUri = getSafeThumbnail(item.imageUrl, item.mediaType);
+    const renderGridItem = ({ item }: { readonly item: GalleryImage }) => {
+        const displayUrl = item.mediaType === 'VIDEO'
+            ? item.imageUrl
+            : item.cachedImageUrl ?? item.imageUrl;
+        const thumbUri = getSafeThumbnail(displayUrl, item.mediaType);
 
         return (
             <TouchableOpacity
@@ -122,11 +131,11 @@ export const GalleryScreen = () => {
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
 
             <View style={styles.header}>
-                <Text style={[styles.title, { color: colors.textColor }]}>Gallery</Text>
+                <Text style={[styles.title, { color: colors.textColor }]}>Galería</Text>
                 {canEdit && (
                     <TouchableOpacity onPress={handlePickMedia} style={[styles.addBtn, { backgroundColor: colors.buttonColor }]}>
                         <Ionicons name="add" size={24} color={colors.buttonTextColor} />
-                        <Text style={[styles.addBtnText, { color: colors.buttonTextColor }]}>Add</Text>
+                        <Text style={[styles.addBtnText, { color: colors.buttonTextColor }]}>Agregar</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -136,7 +145,10 @@ export const GalleryScreen = () => {
                 <View style={[styles.featuredContainer, { backgroundColor: colors.cardColor }]}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10 }}>
                         {featuredItems.map((item, index) => {
-                            const thumb = getSafeThumbnail(item.imageUrl, item.mediaType);
+                            const displayUrl = item.mediaType === 'VIDEO'
+                                ? item.imageUrl
+                                : item.cachedImageUrl ?? item.imageUrl;
+                            const thumb = getSafeThumbnail(displayUrl, item.mediaType);
 
                             return (
                                 <TouchableOpacity
@@ -172,7 +184,7 @@ export const GalleryScreen = () => {
 
             <FlatList
                 data={images}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item: GalleryImage) => item.id}
                 numColumns={3}
                 contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 5 }}
                 renderItem={renderGridItem}
@@ -185,7 +197,7 @@ export const GalleryScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: colors.backgroundColor }]}>
                         <Text style={[styles.modalTitle, { color: colors.textColor }]}>
-                            {tempType === 'video' ? 'New Video' : 'New Image'}
+                            {tempType === 'video' ? 'Nuevo video' : 'Nueva imagen'}
                         </Text>
 
                         {tempUri && (
@@ -200,14 +212,14 @@ export const GalleryScreen = () => {
                             </View>
                         )}
 
-                        <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Title</Text>
+                        <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Título</Text>
                         <TextInput
                             style={[styles.input, { backgroundColor: colors.cardColor, color: colors.textColor }]}
                             value={newTitle} onChangeText={setNewTitle}
                             placeholderTextColor={colors.secondaryTextColor}
                         />
 
-                        <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Description</Text>
+                        <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Descripción</Text>
                         <TextInput
                             style={[styles.input, { height: 60, backgroundColor: colors.cardColor, color: colors.textColor }]}
                             value={newDesc} onChangeText={setNewDesc} multiline
@@ -215,12 +227,12 @@ export const GalleryScreen = () => {
                         />
 
                         <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: colors.buttonColor }]} onPress={handleConfirmUpload} disabled={uploading}>
-                            {uploading ? <ActivityIndicator color={colors.buttonTextColor} /> : <Text style={[styles.uploadBtnText, { color: colors.buttonTextColor }]}>Upload</Text>}
+                            {uploading ? <ActivityIndicator color={colors.buttonTextColor} /> : <Text style={[styles.uploadBtnText, { color: colors.buttonTextColor }]}>Subir</Text>}
                         </TouchableOpacity>
 
                         {!uploading && (
                             <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}>
-                                <Text style={[styles.cancelText, { color: colors.secondaryTextColor }]}>Cancel</Text>
+                                <Text style={[styles.cancelText, { color: colors.secondaryTextColor }]}>Cancelar</Text>
                             </TouchableOpacity>
                         )}
                     </View>
