@@ -28,6 +28,7 @@ import type {
 } from '../types/chat';
 import { normalizeChatMessage } from '../utils/normalizeChatMessage';
 import { useAuthStore } from './useAuthStore';
+import { useTargetChoirStore } from './useTargetChoirStore';
 
 interface ServerToClientEvents {
     readonly 'online-users': (users: readonly SocketPresenceUser[]) => void;
@@ -223,14 +224,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     connect: () => {
         const { token, user, requiresPasswordChange } = useAuthStore.getState();
+        const targetChoirId = useTargetChoirStore.getState().selectedChoir?.id ?? null;
         const existing = get().socket;
 
-        if (!token || !user || requiresPasswordChange || existing?.connected) {
+        if (
+            !token ||
+            !user ||
+            requiresPasswordChange ||
+            existing?.connected ||
+            (user.role === 'SUPER_ADMIN' && !targetChoirId)
+        ) {
             return;
         }
 
+        const socketAuth = user.role === 'SUPER_ADMIN'
+            ? { accessToken: token, targetChoirId }
+            : { accessToken: token };
         const socket: ChoirSocket = io(ENV.SOCKET_URL, {
-            auth: { accessToken: token },
+            auth: socketAuth,
             transports: ['websocket'],
             reconnection: true,
             forceNew: true

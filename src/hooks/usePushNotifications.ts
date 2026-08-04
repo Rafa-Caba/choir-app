@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import * as Notifications from 'expo-notifications';
 import { registerCurrentPushDevice } from '../services/pushDevices';
 import { useAuthStore } from '../store/useAuthStore';
+import { useTargetChoirStore } from '../store/useTargetChoirStore';
 
 interface PushNotificationState {
 	readonly registered: boolean;
@@ -14,11 +15,17 @@ export const usePushNotifications = (): PushNotificationState => {
 	const status = useAuthStore((state) => state.status);
 	const requiresPasswordChange = useAuthStore((state) => state.requiresPasswordChange);
 	const userRole = useAuthStore((state) => state.user?.role);
+	const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
+	const viewMode = useTargetChoirStore((state) => state.viewMode);
 	const [registered, setRegistered] = useState(false);
 	const [notification, setNotification] = useState<Notifications.Notification | null>(null);
 
 	useEffect(() => {
-		if (status !== 'authenticated' || requiresPasswordChange || userRole === 'SUPER_ADMIN') {
+		const hasTenantContext = userRole !== 'SUPER_ADMIN' || (
+			viewMode === 'tenant' && selectedChoir !== null
+		);
+
+		if (status !== 'authenticated' || requiresPasswordChange || !hasTenantContext) {
 			setRegistered(false);
 			return undefined;
 		}
@@ -54,7 +61,7 @@ export const usePushNotifications = (): PushNotificationState => {
 			receivedSubscription.remove();
 			tokenSubscription.remove();
 		};
-	}, [requiresPasswordChange, status, userRole]);
+	}, [requiresPasswordChange, selectedChoir, status, userRole, viewMode]);
 
 	return { registered, notification };
 };

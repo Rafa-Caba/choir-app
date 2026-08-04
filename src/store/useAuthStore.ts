@@ -3,6 +3,7 @@
 import axios from 'axios';
 import { create } from 'zustand';
 import { registerAuthBridge } from '../api/authTokenBridge';
+import { useTargetChoirStore } from './useTargetChoirStore';
 import {
     changePassword,
     getApiErrorMessage,
@@ -121,7 +122,12 @@ const getContext = (
     user: User | null,
     choir: AuthenticatedChoir | null
 ): TenantStorageContext | null => {
-    const choirId = choir?.id ?? user?.choirId ?? null;
+    const targetState = useTargetChoirStore.getState();
+    const platformTenantChoirId = user?.role === 'SUPER_ADMIN' &&
+        targetState.viewMode === 'tenant'
+        ? targetState.selectedChoir?.id ?? null
+        : null;
+    const choirId = choir?.id ?? user?.choirId ?? platformTenantChoirId;
 
     if (!user || !choirId) {
         return null;

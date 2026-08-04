@@ -15,6 +15,7 @@ import { usePushNotifications } from './src/hooks/usePushNotifications';
 import { useAppConfigStore } from './src/store/useAppConfigStore';
 import { useAuthStore } from './src/store/useAuthStore';
 import { useChatStore } from './src/store/useChatStore';
+import { useTargetChoirStore } from './src/store/useTargetChoirStore';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -34,6 +35,8 @@ const AppContent = ({ onReady }: AppContentProps) => {
     const status = useAuthStore((state) => state.status);
     const requiresPasswordChange = useAuthStore((state) => state.requiresPasswordChange);
     const userRole = useAuthStore((state) => state.user?.role);
+    const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
+    const viewMode = useTargetChoirStore((state) => state.viewMode);
     const checkAuth = useAuthStore((state) => state.checkAuth);
     const fetchAppConfig = useAppConfigStore((state) => state.fetchAppConfig);
     const connect = useChatStore((state) => state.connect);
@@ -49,7 +52,11 @@ const AppContent = ({ onReady }: AppContentProps) => {
     }, [checkAuth, onReady]);
 
     useEffect(() => {
-        if (status === 'authenticated' && !requiresPasswordChange && userRole !== 'SUPER_ADMIN') {
+        const hasTenantContext = userRole !== 'SUPER_ADMIN' || (
+            viewMode === 'tenant' && selectedChoir !== null
+        );
+
+        if (status === 'authenticated' && !requiresPasswordChange && hasTenantContext) {
             fetchAppConfig().catch(() => undefined);
             connect();
             return disconnect;
@@ -57,7 +64,16 @@ const AppContent = ({ onReady }: AppContentProps) => {
 
         disconnect();
         return undefined;
-    }, [connect, disconnect, fetchAppConfig, requiresPasswordChange, status, userRole]);
+    }, [
+        connect,
+        disconnect,
+        fetchAppConfig,
+        requiresPasswordChange,
+        selectedChoir,
+        status,
+        userRole,
+        viewMode
+    ]);
 
     return (
         <NavigationContainer>

@@ -14,11 +14,15 @@ const cleanup = read('src/services/sessionCleanup.ts');
 const choirList = read('src/screens/choir/ChoirsListScreen.tsx');
 const auditTypes = read('src/types/audit.ts');
 const manageUser = read('src/screens/admin/ManageUserScreen.tsx');
+const platformProfile = read('src/screens/platform/PlatformProfileScreen.tsx');
+const targetChoirStore = read('src/store/useTargetChoirStore.ts');
 
 assert.match(permissions, /canManageChoirs: isSuperAdmin/u);
 assert.match(permissions, /canManageUsers: isSuperAdmin \|\| isAdmin/u);
 assert.match(permissions, /canManageContent: isSuperAdmin \|\| isAdmin \|\| isEditor/u);
-assert.match(appNavigator, /role === 'SUPER_ADMIN' \? <PlatformNavigator \/> : <TabsNavigator \/>/u);
+assert.match(appNavigator, /shouldShowTenantApp/u);
+assert.match(appNavigator, /return <PlatformNavigator \/>/u);
+assert.match(appNavigator, /return <TabsNavigator \/>/u);
 assert.match(platformNavigator, /name="ManageChoirScreen"/u);
 assert.match(platformNavigator, /name="UsersListScreen"/u);
 assert.match(platformNavigator, /name="AuditLogsScreen"/u);
@@ -31,5 +35,9 @@ assert.match(auditTypes, /actorUserId/u);
 assert.match(auditTypes, /targetUserId/u);
 assert.match(auditTypes, /timestamp/u);
 assert.match(manageUser, /result\.temporaryPassword/u);
+assert.match(platformProfile, /preferredChoirId/u);
+assert.match(platformProfile, /completePasswordChange/u);
+assert.match(targetChoirStore, /enterChoir/u);
+assert.match(targetChoirStore, /returnToPlatform/u);
 
 console.log('Phase 14-16 RN contract tests passed.');

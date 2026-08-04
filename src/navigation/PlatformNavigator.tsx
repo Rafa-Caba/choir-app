@@ -9,6 +9,7 @@ import { ManageUserScreen } from '../screens/admin/ManageUserScreen';
 import { UsersListScreen } from '../screens/admin/UsersListScreen';
 import { ChoirsListScreen } from '../screens/choir/ChoirsListScreen';
 import { ManageChoirScreen } from '../screens/choir/ManageChoirScreen';
+import { PlatformProfileScreen } from '../screens/platform/PlatformProfileScreen';
 import { useAuthStore } from '../store/useAuthStore';
 import type { AuditScope } from '../types/audit';
 import type { User } from '../types/auth';
@@ -19,6 +20,7 @@ export type PlatformStackParamList = {
     UsersListScreen: undefined;
     ManageUserScreen: { readonly user?: User } | undefined;
     AuditLogsScreen: { readonly scope?: AuditScope } | undefined;
+    PlatformProfileScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<PlatformStackParamList>();
@@ -65,6 +67,11 @@ export const PlatformNavigator = () => {
                 name="AuditLogsScreen"
                 component={AuditLogsScreen}
                 options={{ title: 'Auditoría' }}
+            />
+            <Stack.Screen
+                name="PlatformProfileScreen"
+                component={PlatformProfileScreen}
+                options={{ title: 'Mi perfil' }}
             />
         </Stack.Navigator>
     );

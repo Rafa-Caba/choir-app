@@ -1,19 +1,35 @@
 // src/store/useTargetChoirStore.ts
 
 import { create } from 'zustand';
-import { registerTenantContextBridge } from '../api/tenantContextBridge';
 import type { Choir } from '../types/choir';
+import { registerTenantContextBridge } from '../api/tenantContextBridge';
+
+export type PlatformViewMode = 'platform' | 'tenant';
 
 interface TargetChoirState {
     readonly selectedChoir: Choir | null;
+    readonly viewMode: PlatformViewMode;
     selectChoir: (choir: Choir) => void;
+    enterChoir: (choir: Choir) => void;
+    returnToPlatform: () => void;
     clearSelection: () => void;
 }
 
 export const useTargetChoirStore = create<TargetChoirState>((set) => ({
     selectedChoir: null,
+    viewMode: 'platform',
     selectChoir: (choir) => set({ selectedChoir: choir }),
-    clearSelection: () => set({ selectedChoir: null })
+    enterChoir: (choir) => set({
+        selectedChoir: choir,
+        viewMode: 'tenant'
+    }),
+    returnToPlatform: () => set({ viewMode: 'platform' }),
+    clearSelection: () => set({
+        selectedChoir: null,
+        viewMode: 'platform'
+    })
 }));
 
-registerTenantContextBridge(() => useTargetChoirStore.getState().selectedChoir?.id ?? null);
+registerTenantContextBridge(
+    () => useTargetChoirStore.getState().selectedChoir?.id ?? null
+);

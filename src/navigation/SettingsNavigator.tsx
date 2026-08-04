@@ -13,6 +13,7 @@ import { AdminSettingsScreen } from '../screens/settings/AdminSettingsScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { EditProfileScreen } from '../screens/settings/profile/EditProfileScreen';
 import { ProfileScreen } from '../screens/settings/profile/ProfileScreen';
+import { PlatformProfileScreen } from '../screens/platform/PlatformProfileScreen';
 import { ManageThemeScreen } from '../screens/settings/themes/ManageThemeScreen';
 import { ThemeSelectionScreen } from '../screens/settings/themes/ThemeSelectionScreen';
 import { ThemesListScreen } from '../screens/settings/themes/ThemesListScreen';
@@ -34,9 +35,18 @@ export type SettingsStackParamList = {
     ManageThemeScreen: { readonly themeToEdit?: Theme } | undefined;
     AuditLogsScreen: { readonly scope?: AuditScope } | undefined;
     MediaDetailScreen: { readonly media: GalleryImage };
+    PlatformProfileScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
+
+
+const OwnThemeSelectionGuard = () => {
+    const role = useAuthStore((state) => state.user?.role);
+    return role === 'SUPER_ADMIN'
+        ? <AccessDeniedScreen message="La cuenta de plataforma no guarda temas personales de un coro." />
+        : <ThemeSelectionScreen />;
+};
 
 const SettingsManagementGuard = () => {
     const role = useAuthStore((state) => state.user?.role);
@@ -78,7 +88,8 @@ export const SettingsNavigator = () => {
             <Stack.Screen name="SettingsScreen" component={SettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="PerfilScreen" component={ProfileScreen} options={{ title: 'Mi perfil' }} />
             <Stack.Screen name="EditarPerfilScreen" component={EditProfileScreen} options={{ title: 'Editar perfil' }} />
-            <Stack.Screen name="ThemeSelectionScreen" component={ThemeSelectionScreen} options={{ title: 'Temas' }} />
+            <Stack.Screen name="ThemeSelectionScreen" component={OwnThemeSelectionGuard} options={{ title: 'Temas' }} />
+            <Stack.Screen name="PlatformProfileScreen" component={PlatformProfileScreen} options={{ title: 'Mi perfil de plataforma' }} />
 
             {showUserManagement && (
                 <>

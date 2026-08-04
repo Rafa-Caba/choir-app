@@ -40,3 +40,10 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Environment files
+.env.*
+!.env*.example
+
+# Local QA output
+/scripts/qa/.local/

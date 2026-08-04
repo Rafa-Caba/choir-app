@@ -13,6 +13,13 @@
       },
       "environment": "development"
     },
+    "development-simulator": {
+      "extends": "development",
+      "ios": {
+        "simulator": true
+      },
+      "environment": "development"
+    },
     "preview": {
       "distribution": "internal",
       "channel": "preview",
@@ -23,7 +30,8 @@
     },
     "production": {
       "channel": "production",
-      "environment": "production"
+      "environment": "production",
+      "autoIncrement": true
     },
     "production-apk": {
       "distribution": "internal",

@@ -1,6 +1,6 @@
 // src/screens/choir/ChoirsListScreen.tsx
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -30,8 +30,12 @@ export const ChoirsListScreen = () => {
     const navigation = useNavigation<NavigationProp<PlatformStackParamList>>();
     const colors = useTheme().currentTheme;
     const role = useAuthStore((state) => state.user?.role);
+    const preferredChoirId = useAuthStore(
+        (state) => state.user?.preferredChoirId ?? null
+    );
     const hasAccess = canManageChoirs(role);
     const selectChoir = useTargetChoirStore((state) => state.selectChoir);
+    const enterChoir = useTargetChoirStore((state) => state.enterChoir);
     const clearSelection = useTargetChoirStore((state) => state.clearSelection);
     const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
     const {
@@ -51,9 +55,48 @@ export const ChoirsListScreen = () => {
         }, [fetchChoirs, hasAccess])
     );
 
+
+    useEffect(() => {
+        const selectedChoirIsAvailable = selectedChoir
+            ? choirs.some(
+                (choir) => choir.id === selectedChoir.id && choir.isActive
+            )
+            : false;
+
+        if (selectedChoir && !selectedChoirIsAvailable) {
+            clearSelection();
+            return;
+        }
+
+        if (!selectedChoir && preferredChoirId) {
+            const preferredChoir = choirs.find(
+                (choir) => choir.id === preferredChoirId && choir.isActive
+            );
+
+            if (preferredChoir) {
+                selectChoir(preferredChoir);
+            }
+        }
+    }, [
+        choirs,
+        clearSelection,
+        preferredChoirId,
+        selectChoir,
+        selectedChoir
+    ]);
+
     if (!hasAccess) {
         return <AccessDeniedScreen showBackButton={false} />;
     }
+
+    const openChoirApp = (choir: Choir): void => {
+        if (!choir.isActive) {
+            Alert.alert('Coro inactivo', 'Activa el coro antes de entrar.');
+            return;
+        }
+
+        enterChoir(choir);
+    };
 
     const openChoirUsers = (choir: Choir): void => {
         if (!choir.isActive) {
@@ -151,6 +194,13 @@ export const ChoirsListScreen = () => {
                 <View style={styles.actionsRow}>
                     <TouchableOpacity
                         style={[styles.primaryAction, { backgroundColor: colors.buttonColor }]}
+                        onPress={() => openChoirApp(item)}
+                    >
+                        <Ionicons name="enter-outline" size={17} color={colors.buttonTextColor} />
+                        <Text style={[styles.primaryActionText, { color: colors.buttonTextColor }]}>Entrar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.primaryAction, { backgroundColor: colors.buttonColor }]}
                         onPress={() => openChoirUsers(item)}
                     >
                         <Ionicons name="people-outline" size={17} color={colors.buttonTextColor} />
@@ -194,13 +244,22 @@ export const ChoirsListScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-                style={[styles.globalAuditButton, { borderColor: colors.primaryColor }]}
-                onPress={() => navigation.navigate('AuditLogsScreen', { scope: 'global' })}
-            >
-                <Ionicons name="earth-outline" size={20} color={colors.primaryColor} />
-                <Text style={[styles.globalAuditText, { color: colors.primaryColor }]}>Ver auditoría global</Text>
-            </TouchableOpacity>
+            <View style={styles.toolbar}>
+                <TouchableOpacity
+                    style={[styles.toolbarButton, { borderColor: colors.primaryColor }]}
+                    onPress={() => navigation.navigate('AuditLogsScreen', { scope: 'global' })}
+                >
+                    <Ionicons name="earth-outline" size={20} color={colors.primaryColor} />
+                    <Text style={[styles.toolbarText, { color: colors.primaryColor }]}>Auditoría global</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.toolbarButton, { borderColor: colors.primaryColor }]}
+                    onPress={() => navigation.navigate('PlatformProfileScreen')}
+                >
+                    <Ionicons name="person-circle-outline" size={20} color={colors.primaryColor} />
+                    <Text style={[styles.toolbarText, { color: colors.primaryColor }]}>Mi perfil</Text>
+                </TouchableOpacity>
+            </View>
 
             <FlatList
                 data={choirs}
@@ -230,8 +289,9 @@ const styles = StyleSheet.create({
     title: { fontSize: 27, fontWeight: '900' },
     subtitle: { marginTop: 4, maxWidth: 300, fontSize: 13, lineHeight: 18 },
     addButton: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-    globalAuditButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginHorizontal: 20, marginTop: 16, marginBottom: 12, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
-    globalAuditText: { marginLeft: 8, fontWeight: '800' },
+    toolbar: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: 16, marginTop: 16, marginBottom: 12 },
+    toolbarButton: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginHorizontal: 4, marginBottom: 8 },
+    toolbarText: { marginLeft: 7, fontWeight: '800' },
     list: { paddingHorizontal: 16, paddingBottom: 28 },
     card: { borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 12 },
     mainRow: { flexDirection: 'row', alignItems: 'center' },
@@ -243,8 +303,8 @@ const styles = StyleSheet.create({
     statusPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
     statusText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
     selectedText: { marginLeft: 8, fontSize: 11, fontWeight: '800' },
-    actionsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
-    primaryAction: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginRight: 6 },
+    actionsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 14 },
+    primaryAction: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginRight: 6, marginBottom: 6 },
     primaryActionText: { marginLeft: 6, fontSize: 13, fontWeight: '800' },
     iconAction: { padding: 9 },
     emptyContainer: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },

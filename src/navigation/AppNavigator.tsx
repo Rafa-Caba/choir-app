@@ -20,6 +20,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuthStore } from '../store/useAuthStore';
 import { useChatStore } from '../store/useChatStore';
 import { useAppConfigStore } from '../store/useAppConfigStore';
+import { useTargetChoirStore } from '../store/useTargetChoirStore';
 import { ChangePasswordScreen } from '../screens/auth/ChangePasswordScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { LoadingScreen } from '../screens/LoadingScreen';
@@ -57,7 +58,15 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
     const user = useAuthStore((state) => state.user);
     const logout = useAuthStore((state) => state.logout);
     const connectionMode = useAuthStore((state) => state.connectionMode);
-    const rootLabel = user?.role === 'SUPER_ADMIN' ? 'Consola' : 'Inicio';
+    const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
+    const viewMode = useTargetChoirStore((state) => state.viewMode);
+    const returnToPlatform = useTargetChoirStore((state) => state.returnToPlatform);
+    const isPlatformTenantView = user?.role === 'SUPER_ADMIN' && viewMode === 'tenant';
+    const rootLabel = isPlatformTenantView
+        ? selectedChoir?.name ?? 'Coro'
+        : user?.role === 'SUPER_ADMIN'
+            ? 'Consola'
+            : 'Inicio';
     const connected = useChatStore((state) => state.connected);
     const colors = useTheme().currentTheme;
     const online = connectionMode === 'online' && connected;
@@ -94,6 +103,17 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
                     color={colors.textColor}
                     onPress={() => navigation.navigate('Root')}
                 />
+                {isPlatformTenantView && (
+                    <MenuItem
+                        icon="grid-outline"
+                        text="Volver a consola"
+                        color={colors.primaryColor}
+                        onPress={() => {
+                            returnToPlatform();
+                            navigation.navigate('Root');
+                        }}
+                    />
+                )}
                 <View style={[styles.separator, { backgroundColor: colors.borderColor }]} />
                 <MenuItem
                     icon="log-out-outline"
@@ -124,14 +144,30 @@ const HeaderWithLogo = ({ title, tintColor }: { readonly title: string; readonly
 
 const AuthenticatedRoot = () => {
     const role = useAuthStore((state) => state.user?.role);
-    return role === 'SUPER_ADMIN' ? <PlatformNavigator /> : <TabsNavigator />;
+    const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
+    const viewMode = useTargetChoirStore((state) => state.viewMode);
+    const shouldShowTenantApp = role === 'SUPER_ADMIN' &&
+        viewMode === 'tenant' &&
+        selectedChoir !== null;
+
+    if (role === 'SUPER_ADMIN' && !shouldShowTenantApp) {
+        return <PlatformNavigator />;
+    }
+
+    return <TabsNavigator />;
 };
 
 const AuthenticatedDrawer = () => {
     const width = useWindowDimensions().width;
     const colors = useTheme().currentTheme;
     const role = useAuthStore((state) => state.user?.role);
-    const rootTitle = role === 'SUPER_ADMIN' ? 'Consola' : 'Inicio';
+    const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
+    const viewMode = useTargetChoirStore((state) => state.viewMode);
+    const rootTitle = role === 'SUPER_ADMIN'
+        ? viewMode === 'tenant' && selectedChoir
+            ? selectedChoir.name
+            : 'Consola'
+        : 'Inicio';
 
     return (
         <Drawer.Navigator

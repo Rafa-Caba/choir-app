@@ -10,9 +10,11 @@
     "typecheck": "tsc --noEmit",
     "verify:phase-11-13": "npm run typecheck",
     "lint": "node scripts/lint-phase-14-16.mjs",
-    "test": "node scripts/phase-14-16.test.mjs",
+    "test": "node scripts/phase-14-16.test.mjs && node scripts/phase-17-18.test.mjs",
     "verify:phase-14-16": "npm run typecheck && npm run lint && npm test",
-    "verify:qa": "npm run verify:phase-14-16"
+    "verify:qa": "npm run verify:phase-17-18",
+    "verify:phase-17-18": "npm run typecheck && npm run lint && npm test",
+    "qa:phase-18": "bash scripts/qa/phase-18-testflight-preflight.sh"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",

@@ -22,17 +22,21 @@ const targets = [
     'src/screens/audit/AuditLogsScreen.tsx',
     'src/screens/choir/ChoirsListScreen.tsx',
     'src/screens/choir/ManageChoirScreen.tsx',
+    'src/screens/platform/PlatformProfileScreen.tsx',
     'src/screens/settings/SettingsScreen.tsx',
     'src/services/admin/users.ts',
     'src/services/audit.ts',
     'src/services/choirs.ts',
     'src/services/sessionCleanup.ts',
     'src/store/useAdminChoirsStore.ts',
+    'src/store/useAuthStore.ts',
+    'src/store/useChatStore.ts',
     'src/store/useAdminUsersStore.ts',
     'src/store/useAuditLogsStore.ts',
     'src/store/useTargetChoirStore.ts',
     'src/types/audit.ts',
-    'src/types/choir.ts'
+    'src/types/choir.ts',
+    'src/types/auth.ts'
 ];
 
 const prohibitedPatterns = [

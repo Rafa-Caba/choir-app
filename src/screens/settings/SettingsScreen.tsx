@@ -32,6 +32,22 @@ export const SettingsScreen = ({ navigation }: Props) => {
     const user = useAuthStore((state) => state.user);
     const logout = useAuthStore((state) => state.logout);
     const colors = useTheme().currentTheme;
+    const openProfile = (): void => {
+        if (user?.role === 'SUPER_ADMIN') {
+            navigation.navigate('PlatformProfileScreen');
+            return;
+        }
+
+        navigation.navigate('PerfilScreen');
+    };
+    const openEditProfile = (): void => {
+        if (user?.role === 'SUPER_ADMIN') {
+            navigation.navigate('PlatformProfileScreen');
+            return;
+        }
+
+        navigation.navigate('EditarPerfilScreen');
+    };
 
     const Item = ({ icon, text, onPress, destructive = false }: SettingsItemProps) => (
         <TouchableOpacity style={styles.item} activeOpacity={0.65} onPress={onPress}>
@@ -45,7 +61,7 @@ export const SettingsScreen = ({ navigation }: Props) => {
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
             <Text style={[styles.title, { color: colors.textColor }]}>Ajustes</Text>
 
-            <TouchableOpacity style={styles.profile} onPress={() => navigation.navigate('PerfilScreen')}>
+            <TouchableOpacity style={styles.profile} onPress={openProfile}>
                 <Image
                     source={{ uri: user?.cachedImageUrl ?? user?.imageUrl ?? 'https://via.placeholder.com/120' }}
                     style={[styles.avatar, { borderColor: colors.primaryColor }]}
@@ -57,9 +73,11 @@ export const SettingsScreen = ({ navigation }: Props) => {
             </TouchableOpacity>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
-                <Item icon="person-outline" text="Mi perfil" onPress={() => navigation.navigate('PerfilScreen')} />
-                <Item icon="create-outline" text="Editar perfil" onPress={() => navigation.navigate('EditarPerfilScreen')} />
-                <Item icon="color-palette-outline" text="Apariencia y temas" onPress={() => navigation.navigate('ThemeSelectionScreen')} />
+                <Item icon="person-outline" text="Mi perfil" onPress={openProfile} />
+                <Item icon="create-outline" text="Editar perfil" onPress={openEditProfile} />
+                {user?.role !== 'SUPER_ADMIN' && (
+                    <Item icon="color-palette-outline" text="Apariencia y temas" onPress={() => navigation.navigate('ThemeSelectionScreen')} />
+                )}
 
                 {(canManageUsers(user?.role) || canManageSettings(user?.role) || canViewAuditLogs(user?.role)) && (
                     <Text style={[styles.sectionTitle, { color: colors.secondaryTextColor }]}>Administración</Text>

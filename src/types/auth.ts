@@ -18,6 +18,7 @@ export interface User {
     readonly email: string;
     readonly role: UserRole;
     readonly choirId: string | null;
+    readonly preferredChoirId: string | null;
     readonly isActive: boolean;
     readonly mustChangePassword: boolean;
     readonly sessionVersion: number;
@@ -85,6 +86,7 @@ export interface UpdateProfileInput {
     readonly instrumentLabel?: string;
     readonly voice?: boolean;
     readonly bio?: string;
+    readonly preferredChoirId?: string | null;
 }
 
 export type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated';
