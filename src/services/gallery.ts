@@ -7,21 +7,11 @@ import type {
     GalleryFlags,
     GalleryImage
 } from '../types/gallery';
-import { appendLocalFile, getMultipartRequestConfig } from './multipart';
-
-const VIDEO_EXTENSIONS = ['mp4', 'mov', '3gp', 'm4v', 'webm'] as const;
-
-const getUploadMetadata = (uri: string): { readonly filename: string; readonly mimeType: string } => {
-    const cleanUri = uri.split('?')[0];
-    const filename = cleanUri.split('/').pop() ?? 'gallery-upload.jpg';
-    const extension = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
-    const isVideo = VIDEO_EXTENSIONS.some((item) => item === extension);
-
-    return {
-        filename,
-        mimeType: isVideo ? 'video/mp4' : extension === 'png' ? 'image/png' : 'image/jpeg'
-    };
-};
+import {
+    appendLocalFile,
+    createLocalUpload,
+    getMultipartRequestConfig
+} from './multipart';
 
 const createGalleryFormData = async (payload: CreateGalleryPayload): Promise<FormData> => {
     const formData = new FormData();
@@ -37,11 +27,11 @@ const createGalleryFormData = async (payload: CreateGalleryPayload): Promise<For
         imageRightMenu: false
     }));
 
-    const metadata = getUploadMetadata(payload.imageUri);
-    await appendLocalFile(formData, 'file', {
-        uri: payload.imageUri,
-        ...metadata
-    });
+    await appendLocalFile(
+        formData,
+        'file',
+        createLocalUpload(payload.imageUri, 'gallery-upload.jpg', 'image/jpeg')
+    );
     return formData;
 };
 

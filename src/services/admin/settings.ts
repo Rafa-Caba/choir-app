@@ -2,7 +2,11 @@
 
 import choirApi from '../../api/choirApi';
 import type { AppSettings, UpdateSettingsPayload } from '../../types/settings';
-import { appendLocalFile, getMultipartRequestConfig } from '../multipart';
+import {
+    appendLocalFile,
+    createLocalUpload,
+    getMultipartRequestConfig
+} from '../multipart';
 
 export const getSettings = async (): Promise<AppSettings> => {
     const response = await choirApi.get<AppSettings>('/settings');
@@ -17,11 +21,11 @@ export const updateSettings = async (
     formData.append('data', JSON.stringify(settings));
 
     if (logoUri && !logoUri.startsWith('http')) {
-        await appendLocalFile(formData, 'file', {
-            uri: logoUri,
-            filename: 'choir-logo.jpg',
-            mimeType: 'image/jpeg'
-        });
+        await appendLocalFile(
+            formData,
+            'file',
+            createLocalUpload(logoUri, 'choir-logo.jpg', 'image/jpeg')
+        );
     }
 
     const response = await choirApi.put<AppSettings>(

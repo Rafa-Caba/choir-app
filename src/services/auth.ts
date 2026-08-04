@@ -7,6 +7,7 @@ import choirApi, {
 } from '../api/choirApi';
 import {
     appendLocalFile,
+    createLocalUpload,
     getMultipartRequestConfig
 } from './multipart';
 import type {
@@ -110,15 +111,11 @@ export const updateProfile = async (
     formData.append('data', JSON.stringify(input));
 
     if (imageUri && !imageUri.startsWith('http')) {
-        const filename = imageUri.split('/').pop() ?? 'profile.jpg';
-        const extension = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
-        const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
-
-        await appendLocalFile(formData, 'file', {
-            uri: imageUri,
-            filename,
-            mimeType
-        });
+        await appendLocalFile(
+            formData,
+            'file',
+            createLocalUpload(imageUri, 'profile.jpg', 'image/jpeg')
+        );
     }
 
     const response = await choirApi.put<UserResponse>(

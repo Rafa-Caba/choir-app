@@ -177,15 +177,17 @@ export const PlatformProfileScreen = () => {
     return (
         <KeyboardAvoidingView
             style={[styles.container, { backgroundColor: colors.backgroundColor }]}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
             <ScrollView
                 contentContainerStyle={styles.content}
                 keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
             >
                 <Text style={[styles.sectionTitle, { color: colors.textColor }]}>Perfil de plataforma</Text>
-                <Text style={[styles.description, { color: colors.secondaryTextColor }]}> 
-                    Tu cuenta continúa siendo global. El coro predeterminado solo selecciona el contexto inicial de la consola y no cambia tus permisos.
+                <Text style={[styles.description, { color: colors.secondaryTextColor }]}>
+                    Tu cuenta continúa siendo global. El coro predeterminado solo selecciona el contexto inicial de la consola; no te agrega como miembro ni te muestra en el directorio del coro. Para aparecer en usuarios y chat, usa una cuenta ADMIN propia de ese coro.
                 </Text>
 
                 <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Nombre</Text>
@@ -217,6 +219,10 @@ export const PlatformProfileScreen = () => {
                     onChangeText={setBio}
                     multiline
                     textAlignVertical="top"
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="sentences"
+                    keyboardType="default"
                 />
 
                 <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Coro predeterminado</Text>

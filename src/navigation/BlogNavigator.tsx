@@ -9,11 +9,12 @@ import { useTheme } from '../context/ThemeContext';
 import { canManageContent } from '../auth/permissions';
 import { AccessDeniedScreen } from '../components/auth/AccessDeniedScreen';
 import { useAuthStore } from '../store/useAuthStore';
+import type { BlogPost } from '../types/blog';
 
 export type BlogStackParamList = {
     BlogList: undefined;
     BlogDetail: undefined;
-    CreateBlog: undefined;
+    CreateBlog: { readonly postToEdit?: BlogPost } | undefined;
 };
 
 const Stack = createNativeStackNavigator<BlogStackParamList>();

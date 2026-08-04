@@ -1,3 +1,5 @@
+// src/screens/settings/themes/ManageThemeScreen.tsx
+
 import React, { useState, useLayoutEffect, useCallback, useMemo } from 'react';
 import {
     View,
@@ -13,7 +15,9 @@ import {
     KeyboardAvoidingView,
     Modal,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { SettingsStackParamList } from '../../../navigation/SettingsNavigator';
 import { useThemeStore } from '../../../store/useThemeStore';
 import { useTheme } from '../../../context/ThemeContext';
 import ColorPicker, { Panel1, Preview, HueSlider } from 'reanimated-color-picker';
@@ -91,8 +95,8 @@ const HexColorInputField = React.memo(
 
             if (!normalized) {
                 Alert.alert(
-                    'Invalid color',
-                    'Please use a valid HEX color in the form #RRGGBB.'
+                    'Color inválido',
+                    'Usa un color HEX válido con el formato #RRGGBB.'
                 );
                 setInputValue(value);
                 return;
@@ -143,9 +147,9 @@ const HexColorInputField = React.memo(
 );
 
 export const ManageThemeScreen = () => {
-    const navigation = useNavigation();
-    const route = useRoute<any>();
-    const { themeToEdit } = route.params || {};
+    const navigation = useNavigation<NativeStackNavigationProp<SettingsStackParamList, 'ManageThemeScreen'>>();
+    const route = useRoute<RouteProp<SettingsStackParamList, 'ManageThemeScreen'>>();
+    const themeToEdit = route.params?.themeToEdit;
     const isEdit = !!themeToEdit;
 
     const { currentTheme } = useTheme();
@@ -174,7 +178,7 @@ export const ManageThemeScreen = () => {
     const [tempColor, setTempColor] = useState('');
 
     useLayoutEffect(() => {
-        navigation.setOptions({ title: isEdit ? 'Editar Tema' : 'Nuevo Tema' });
+        navigation.setOptions({ title: isEdit ? 'Editar tema' : 'Nuevo tema' });
     }, [navigation, isEdit]);
 
     const openPicker = useCallback(
@@ -213,7 +217,7 @@ export const ManageThemeScreen = () => {
 
     const handleSave = async () => {
         if (!name.trim()) {
-            Alert.alert('Error', 'Theme Name is required');
+            Alert.alert('Error', 'El nombre del tema es obligatorio');
             return;
         }
 
@@ -229,17 +233,17 @@ export const ManageThemeScreen = () => {
         setLoading(false);
 
         if (success) navigation.goBack();
-        else Alert.alert('Error', 'Failed to save theme');
+        else Alert.alert('Error', 'No fue posible guardar el tema');
     };
 
     const colorFields = useMemo(
         () =>
             [
-                { label: 'Primary (Main Brand)', key: 'primaryColor' as const },
-                { label: 'Accent (Highlights)', key: 'accentColor' as const },
-                { label: 'Background (Page)', key: 'backgroundColor' as const },
-                { label: 'Card Background', key: 'cardColor' as const },
-                { label: 'Navigation Bar', key: 'navColor' as const },
+                { label: 'Principal (marca)', key: 'primaryColor' as const },
+                { label: 'Acento (destacados)', key: 'accentColor' as const },
+                { label: 'Fondo (pantalla)', key: 'backgroundColor' as const },
+                { label: 'Fondo de tarjetas', key: 'cardColor' as const },
+                { label: 'Barra de navegación', key: 'navColor' as const },
             ] as const,
         []
     );
@@ -247,11 +251,11 @@ export const ManageThemeScreen = () => {
     const textButtonFields = useMemo(
         () =>
             [
-                { label: 'Main Text', key: 'textColor' as const },
-                { label: 'Secondary Text', key: 'secondaryTextColor' as const },
-                { label: 'Button Background', key: 'buttonColor' as const },
-                { label: 'Button Text', key: 'buttonTextColor' as const },
-                { label: 'Borders / Dividers', key: 'borderColor' as const },
+                { label: 'Texto principal', key: 'textColor' as const },
+                { label: 'Texto secundario', key: 'secondaryTextColor' as const },
+                { label: 'Fondo de botones', key: 'buttonColor' as const },
+                { label: 'Texto de botones', key: 'buttonTextColor' as const },
+                { label: 'Bordes y divisores', key: 'borderColor' as const },
             ] as const,
         []
     );
@@ -271,13 +275,15 @@ export const ManageThemeScreen = () => {
                 contentContainerStyle={{ padding: 20, paddingBottom: 50 }}
                 style={{ flex: 1 }}
                 keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
             >
                 <Text style={[styles.header, { color: colors.primaryColor }]}>
                     General
                 </Text>
 
                 <Text style={[styles.label, { color: colors.textColor }]}>
-                    Theme Name
+                    Nombre del tema
                 </Text>
                 <TextInput
                     style={[
@@ -286,13 +292,13 @@ export const ManageThemeScreen = () => {
                     ]}
                     value={name}
                     onChangeText={setName}
-                    placeholder="My Theme"
+                    placeholder="Mi tema"
                     placeholderTextColor={colors.secondaryTextColor}
                 />
 
                 <View style={styles.switchRow}>
                     <Text style={[styles.label, { color: colors.textColor }]}>
-                        Dark Mode?
+                        ¿Modo oscuro?
                     </Text>
                     <Switch
                         value={isDark}
@@ -307,7 +313,7 @@ export const ManageThemeScreen = () => {
                         { color: colors.primaryColor, marginTop: 20 },
                     ]}
                 >
-                    Core Colors
+                    Colores principales
                 </Text>
 
                 {colorFields.map(field => (
@@ -330,7 +336,7 @@ export const ManageThemeScreen = () => {
                         { color: colors.primaryColor, marginTop: 20 },
                     ]}
                 >
-                    Text & Buttons
+                    Texto y botones
                 </Text>
 
                 {textButtonFields.map(field => (
@@ -355,7 +361,7 @@ export const ManageThemeScreen = () => {
                     {loading ? (
                         <ActivityIndicator color="white" />
                     ) : (
-                        <Text style={styles.saveText}>Save Theme</Text>
+                        <Text style={styles.saveText}>Guardar tema</Text>
                     )}
                 </TouchableOpacity>
             </ScrollView>
@@ -379,13 +385,13 @@ export const ManageThemeScreen = () => {
                                 { color: colors.textColor },
                             ]}
                         >
-                            Pick a Color
+                            Seleccionar color
                         </Text>
 
                         <ColorPicker
                             style={{ width: '100%', gap: 20 }}
                             value={tempColor}
-                            onComplete={onColorSelect}
+                            onCompleteJS={onColorSelect}
                         >
                             <Preview style={styles.pickerPreview} />
                             <Panel1 style={styles.pickerPanel} />
@@ -398,7 +404,7 @@ export const ManageThemeScreen = () => {
                                 style={styles.closeBtn}
                             >
                                 <Text style={{ color: colors.secondaryTextColor }}>
-                                    Cancel
+                                    Cancelar
                                 </Text>
                             </TouchableOpacity>
                             <TouchableOpacity
@@ -414,7 +420,7 @@ export const ManageThemeScreen = () => {
                                         fontWeight: 'bold',
                                     }}
                                 >
-                                    Select
+                                    Seleccionar
                                 </Text>
                             </TouchableOpacity>
                         </View>

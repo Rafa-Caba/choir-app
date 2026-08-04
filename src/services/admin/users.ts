@@ -2,7 +2,11 @@
 
 import choirApi from '../../api/choirApi';
 import type { User } from '../../types/auth';
-import { appendLocalFile, getMultipartRequestConfig } from '../multipart';
+import {
+    appendLocalFile,
+    createLocalUpload,
+    getMultipartRequestConfig
+} from '../multipart';
 
 export type TenantManagedRole = 'VIEWER' | 'USER' | 'EDITOR' | 'ADMIN';
 
@@ -74,12 +78,11 @@ export const saveUser = async (
     }));
 
     if (imageUri && !imageUri.startsWith('http')) {
-        const filename = imageUri.split('/').pop() ?? 'profile.jpg';
-        await appendLocalFile(formData, 'file', {
-            uri: imageUri,
-            filename,
-            mimeType: filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'
-        });
+        await appendLocalFile(
+            formData,
+            'file',
+            createLocalUpload(imageUri, 'profile.jpg', 'image/jpeg')
+        );
     }
 
     const response = userId

@@ -1,6 +1,6 @@
 // src/types/song.ts
 
-import type { JsonValue } from './json';
+import type { TipTapNode } from './blog';
 
 export interface SongType {
     readonly id: string;
@@ -11,10 +11,7 @@ export interface SongType {
     readonly updatedAt?: string;
 }
 
-export interface SongContent {
-    readonly type: string;
-    readonly content?: readonly JsonValue[];
-}
+export type SongContent = TipTapNode;
 
 export interface Song {
     readonly id: string;

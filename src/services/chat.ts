@@ -9,25 +9,33 @@ import type {
     RawChatMessage
 } from '../types/chat';
 import { normalizeChatMessage } from '../utils/normalizeChatMessage';
-import { appendLocalFile, getMultipartRequestConfig } from './multipart';
+import {
+    appendLocalFile,
+    createLocalUpload,
+    getMultipartRequestConfig
+} from './multipart';
 
 export type ChatAttachmentType = 'image' | 'video' | 'audio' | 'file';
 
-const getAttachmentMetadata = (
-    uri: string,
+export interface ChatAttachment {
+    readonly uri: string;
+    readonly type: ChatAttachmentType;
+    readonly filename: string;
+    readonly mimeType: string;
+}
+
+const fallbackAttachmentMetadata = (
     type: ChatAttachmentType
 ): { readonly filename: string; readonly mimeType: string } => {
-    const existingName = uri.split('?')[0].split('/').pop();
-
     switch (type) {
         case 'image':
-            return { filename: existingName ?? 'chat-image.jpg', mimeType: 'image/jpeg' };
+            return { filename: 'chat-image.jpg', mimeType: 'image/jpeg' };
         case 'video':
-            return { filename: existingName ?? 'chat-video.mp4', mimeType: 'video/mp4' };
+            return { filename: 'chat-video.mp4', mimeType: 'video/mp4' };
         case 'audio':
-            return { filename: existingName ?? 'chat-audio.m4a', mimeType: 'audio/m4a' };
+            return { filename: 'chat-audio.m4a', mimeType: 'audio/mp4' };
         case 'file':
-            return { filename: existingName ?? 'chat-file.bin', mimeType: 'application/octet-stream' };
+            return { filename: 'chat-file.pdf', mimeType: 'application/pdf' };
     }
 };
 
@@ -39,16 +47,20 @@ export const getChatHistory = async (limit = 50): Promise<readonly RawChatMessag
 };
 
 export const uploadChatMedia = async (
-    uri: string,
-    type: ChatAttachmentType
+    attachment: ChatAttachment
 ): Promise<ChatUploadResponse> => {
     const formData = new FormData();
-    const metadata = getAttachmentMetadata(uri, type);
-    await appendLocalFile(formData, 'file', { uri, ...metadata });
+    const fallback = fallbackAttachmentMetadata(attachment.type);
+    const upload = createLocalUpload(
+        attachment.uri,
+        attachment.filename || fallback.filename,
+        attachment.mimeType || fallback.mimeType
+    );
+    await appendLocalFile(formData, 'file', upload);
 
-    const endpoint = type === 'image'
+    const endpoint = attachment.type === 'image'
         ? '/chat/upload-image'
-        : type === 'file'
+        : attachment.type === 'file'
             ? '/chat/upload-file'
             : '/chat/upload-media';
     const response = await choirApi.post<ChatUploadResponse>(

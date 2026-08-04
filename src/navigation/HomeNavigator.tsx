@@ -7,11 +7,12 @@ import { CreateAnnouncementScreen } from '../screens/CreateAnnouncementScreen';
 import { canManageContent } from '../auth/permissions';
 import { AccessDeniedScreen } from '../components/auth/AccessDeniedScreen';
 import { useAuthStore } from '../store/useAuthStore';
+import type { Announcement } from '../types/announcement';
 
 // Define what params each screen receives (undefined = no params)
 export type HomeStackParamList = {
     HomeScreen: undefined;
-    CreateAnnouncement: undefined;
+    CreateAnnouncement: { readonly announcement?: Announcement } | undefined;
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -30,9 +31,9 @@ export const HomeNavigator = () => {
             }}
         >
             <Stack.Screen name="HomeScreen" component={HomeScreen} />
-            <Stack.Screen 
-                name="CreateAnnouncement" 
-                component={CreateAnnouncementGuard} 
+            <Stack.Screen
+                name="CreateAnnouncement"
+                component={CreateAnnouncementGuard}
                 options={{ headerShown: true, title: 'Nuevo Aviso', headerTintColor: '#8B4BFF' }}
             />
         </Stack.Navigator>

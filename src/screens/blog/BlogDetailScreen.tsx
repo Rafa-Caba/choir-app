@@ -1,131 +1,181 @@
 // src/screens/blog/BlogDetailScreen.tsx
+
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Image, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { useBlogStore } from '../../store/useBlogStore';
-import { useAuthStore } from '../../store/useAuthStore';
-import { useTheme } from '../../context/ThemeContext';
-import { getPreviewFromRichText } from '../../utils/textUtils';
+import {
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MediaViewerModal } from '../../components/shared/MediaViewerModal';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useBlogStore } from '../../store/useBlogStore';
+import { getPreviewFromRichText } from '../../utils/textUtils';
 
 export const BlogDetailScreen = () => {
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
-    const { currentPost, likePost, commentOnPost } = useBlogStore();
-    const { user } = useAuthStore();
+    const colors = useTheme().currentTheme;
+    const user = useAuthStore((state) => state.user);
+    const currentPost = useBlogStore((state) => state.currentPost);
+    const likePost = useBlogStore((state) => state.likePost);
+    const commentOnPost = useBlogStore((state) => state.commentOnPost);
     const [comment, setComment] = useState('');
-    const [showImageModal, setShowImageModal] = useState(false);
-    const displayImageUrl = currentPost?.cachedImageUrl ?? currentPost?.imageUrl ?? null;
+    const [submittingComment, setSubmittingComment] = useState(false);
+    const [viewerVisible, setViewerVisible] = useState(false);
 
-    if (!currentPost) return (
-        <View style={[styles.center, { backgroundColor: colors.backgroundColor }]}>
-            <Text style={{ color: colors.textColor }}>No post selected</Text>
-        </View>
-    );
+    if (!currentPost) {
+        return (
+            <View style={[styles.center, { backgroundColor: colors.backgroundColor }]}>
+                <Text style={{ color: colors.textColor }}>Publicación no encontrada.</Text>
+            </View>
+        );
+    }
 
-    const authorName = currentPost.author?.name || 'Autor desconocido';
     const isLiked = user ? currentPost.likesUsers.includes(user.id) : false;
+    const mediaUrl = currentPost.cachedImageUrl ?? currentPost.imageUrl ?? null;
 
-    const handleComment = () => {
-        if (comment.trim()) {
-            commentOnPost(currentPost.id, comment);
+    const handleComment = async (): Promise<void> => {
+        const normalized = comment.trim();
+
+        if (!normalized || submittingComment) {
+            return;
+        }
+
+        setSubmittingComment(true);
+        try {
+            await commentOnPost(currentPost.id, normalized);
             setComment('');
+        } catch {
+            Alert.alert('Error', 'No fue posible publicar el comentario.');
+        } finally {
+            setSubmittingComment(false);
         }
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: colors.backgroundColor }}>
-            <MediaViewerModal
-                visible={showImageModal}
-                onClose={() => setShowImageModal(false)}
-                mediaUrl={displayImageUrl}
-                mediaType="image"
-            />
-
-            <ScrollView style={styles.container}>
-                {displayImageUrl && (
-                    <TouchableOpacity onPress={() => setShowImageModal(true)}>
-                        <Image source={{ uri: displayImageUrl }} style={styles.image} />
+        <KeyboardAvoidingView
+            style={[styles.container, { backgroundColor: colors.backgroundColor }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+            <ScrollView
+                style={styles.container}
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+            >
+                {mediaUrl && (
+                    <TouchableOpacity onPress={() => setViewerVisible(true)}>
+                        <Image source={{ uri: mediaUrl }} style={styles.image} />
                     </TouchableOpacity>
                 )}
 
-                <View style={styles.content}>
-                    <Text style={[styles.title, { color: colors.textColor }]}>
-                        {currentPost.title}
+                <Text style={[styles.title, { color: colors.textColor }]}>{currentPost.title}</Text>
+                <View style={styles.meta}>
+                    <Text style={[styles.author, { color: colors.primaryColor }]}>
+                        Por: {currentPost.author.name}
                     </Text>
-                    <View style={styles.meta}>
-                        <Text style={[styles.author, { color: colors.primaryColor }]}>
-                            By: {authorName}
+                    <Text style={[styles.date, { color: colors.secondaryTextColor }]}>
+                        {new Date(currentPost.createdAt).toLocaleDateString('es-MX')}
+                    </Text>
+                </View>
+
+                <Text style={[styles.body, { color: colors.textColor }]}>
+                    {getPreviewFromRichText(currentPost.content, 20_000)}
+                </Text>
+
+                <TouchableOpacity
+                    style={styles.likeButton}
+                    onPress={() => void likePost(currentPost.id)}
+                >
+                    <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={26} color="#E91E63" />
+                    <Text style={[styles.likeText, { color: colors.secondaryTextColor }]}>
+                        {currentPost.likes} {currentPost.likes === 1 ? 'Me gusta' : 'Me gusta'}
+                    </Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.commentHeader, { color: colors.textColor }]}>
+                    Comentarios ({currentPost.comments.length})
+                </Text>
+
+                {currentPost.comments.map((item, index) => (
+                    <View
+                        key={`${item.author}-${item.date}-${index}`}
+                        style={[styles.commentItem, { backgroundColor: colors.cardColor }]}
+                    >
+                        <Text style={[styles.commentAuthor, { color: colors.secondaryTextColor }]}>
+                            {item.author}
                         </Text>
-                        <Text style={[styles.date, { color: colors.secondaryTextColor }]}>
-                            {new Date(currentPost.createdAt).toLocaleDateString()}
+                        <Text style={[styles.commentText, { color: colors.textColor }]}>
+                            {getPreviewFromRichText(item.text)}
                         </Text>
                     </View>
-
-                    <Text style={[styles.body, { color: colors.textColor }]}>
-                        {getPreviewFromRichText(currentPost.content, 10000)}
-                    </Text>
-
-                    {/* Like Button */}
-                    <TouchableOpacity style={styles.likeBtn} onPress={() => likePost(currentPost.id)}>
-                        <Ionicons name={isLiked ? "heart" : "heart-outline"} size={24} color="#E91E63" />
-                        <Text style={[styles.likeText, { color: colors.secondaryTextColor }]}>
-                            {currentPost.likes} Likes
-                        </Text>
-                    </TouchableOpacity>
-
-                    {/* Comments */}
-                    <Text style={[styles.commentHeader, { color: colors.textColor }]}>
-                        Comments ({currentPost.comments.length})
-                    </Text>
-
-                    {currentPost.comments.map((c, i) => (
-                        <View key={i} style={[styles.commentItem, { backgroundColor: colors.cardColor }]}>
-                            <Text style={[styles.commentAuthor, { color: colors.secondaryTextColor }]}>
-                                {c.author}
-                            </Text>
-                            <Text style={[styles.commentText, { color: colors.textColor }]}>
-                                {getPreviewFromRichText(c.text)}
-                            </Text>
-                        </View>
-                    ))}
-                </View>
+                ))}
             </ScrollView>
 
-            {/* Comment Input */}
-            <View style={[styles.inputContainer, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
+            <View
+                style={[
+                    styles.inputContainer,
+                    { backgroundColor: colors.cardColor, borderColor: colors.borderColor }
+                ]}
+            >
                 <TextInput
-                    style={[styles.input, { backgroundColor: colors.backgroundColor, color: colors.textColor }]}
-                    placeholder="Write a comment..."
+                    style={[
+                        styles.input,
+                        { backgroundColor: colors.backgroundColor, color: colors.textColor }
+                    ]}
+                    placeholder="Escribe un comentario..."
                     placeholderTextColor={colors.secondaryTextColor}
                     value={comment}
                     onChangeText={setComment}
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="sentences"
+                    returnKeyType="send"
+                    onSubmitEditing={() => void handleComment()}
+                    editable={!submittingComment}
                 />
-                <TouchableOpacity onPress={handleComment}>
-                    <Ionicons name="send" size={24} color={colors.buttonTextColor} />
+                <TouchableOpacity
+                    onPress={() => void handleComment()}
+                    disabled={!comment.trim() || submittingComment}
+                >
+                    <Ionicons name="send" size={24} color={colors.primaryColor} />
                 </TouchableOpacity>
             </View>
-        </View>
+
+            <MediaViewerModal
+                visible={viewerVisible}
+                onClose={() => setViewerVisible(false)}
+                mediaUrl={mediaUrl}
+                mediaType="image"
+            />
+        </KeyboardAvoidingView>
     );
 };
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    scrollContent: { paddingBottom: 24 },
     image: { width: '100%', height: 250 },
-    content: { padding: 20, paddingBottom: 80 },
-    title: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
-    meta: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+    title: { fontSize: 28, fontWeight: '700', marginHorizontal: 20, marginTop: 20, marginBottom: 12 },
+    meta: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: 20, marginBottom: 18 },
     author: { fontWeight: '600' },
-    date: {},
-    body: { fontSize: 16, lineHeight: 24, marginBottom: 20 },
-    likeBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-    likeText: { marginLeft: 5, fontSize: 16 },
-    commentHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, marginTop: 10 },
-    commentItem: { padding: 10, borderRadius: 8, marginBottom: 10 },
-    commentAuthor: { fontWeight: 'bold', fontSize: 12, marginBottom: 2 },
-    commentText: { fontSize: 14 },
-    inputContainer: { flexDirection: 'row', padding: 15, borderTopWidth: 1, alignItems: 'center' },
-    input: { flex: 1, borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8, marginRight: 10 }
+    date: { fontSize: 14 },
+    body: { fontSize: 17, lineHeight: 25, marginHorizontal: 20, marginBottom: 24 },
+    likeButton: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginBottom: 24 },
+    likeText: { marginLeft: 7, fontSize: 16 },
+    commentHeader: { fontSize: 20, fontWeight: '700', marginHorizontal: 20, marginBottom: 12 },
+    commentItem: { padding: 12, borderRadius: 10, marginHorizontal: 20, marginBottom: 10 },
+    commentAuthor: { fontWeight: '700', fontSize: 12, marginBottom: 4 },
+    commentText: { fontSize: 15 },
+    inputContainer: { flexDirection: 'row', padding: 12, borderTopWidth: 1, alignItems: 'center' },
+    input: { flex: 1, borderRadius: 22, paddingHorizontal: 15, paddingVertical: 10, marginRight: 10 }
 });

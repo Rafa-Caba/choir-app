@@ -5,6 +5,8 @@ import {
     ActivityIndicator,
     Alert,
     Image,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -74,7 +76,10 @@ export const EditProfileScreen = () => {
             return;
         }
 
-        Alert.alert('Error', 'No fue posible actualizar el perfil.');
+        Alert.alert(
+            'No fue posible actualizar el perfil',
+            useAuthStore.getState().errorMessage ?? 'Verifica tu conexión e inténtalo nuevamente.'
+        );
     };
 
     const inputStyle = [
@@ -87,98 +92,90 @@ export const EditProfileScreen = () => {
     ];
 
     return (
-        <ScrollView
-            style={[
-                styles.container,
-                { backgroundColor: colors.backgroundColor }
-            ]}
+        <KeyboardAvoidingView
+            style={[styles.container, { backgroundColor: colors.backgroundColor }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-            <View style={styles.imageContainer}>
-                <TouchableOpacity onPress={pickImage}>
-                    <Image
-                        source={{
-                            uri: imageUri || 'https://via.placeholder.com/150'
-                        }}
-                        style={[
-                            styles.avatar,
-                            { borderColor: colors.primaryColor }
-                        ]}
-                    />
-                    <View
-                        style={[
-                            styles.editIconBadge,
-                            { backgroundColor: colors.buttonColor }
-                        ]}
-                    >
-                        <Ionicons
-                            name="camera"
-                            size={20}
-                            color={colors.buttonTextColor}
-                        />
-                    </View>
-                </TouchableOpacity>
-                <Text
-                    style={[
-                        styles.changePhotoText,
-                        { color: colors.primaryColor }
-                    ]}
-                >
-                    Cambiar foto
-                </Text>
-            </View>
-
-            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Nombre</Text>
-            <TextInput
-                style={inputStyle}
-                value={name}
-                onChangeText={setName}
-                placeholderTextColor={colors.secondaryTextColor}
-            />
-
-            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Instrumento</Text>
-            <TextInput
-                style={inputStyle}
-                value={instrumentLabel}
-                onChangeText={setInstrumentLabel}
-                placeholderTextColor={colors.secondaryTextColor}
-            />
-
-            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Biografía</Text>
-            <TextInput
-                style={[inputStyle, styles.bioInput]}
-                value={bio}
-                onChangeText={setBio}
-                multiline
-                placeholderTextColor={colors.secondaryTextColor}
-            />
-
-            <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.buttonColor }]}
-                onPress={handleSubmit}
-                disabled={loading}
+            <ScrollView
+                contentContainerStyle={styles.content}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
             >
-                {loading ? (
-                    <ActivityIndicator color={colors.buttonTextColor} />
-                ) : (
-                    <Text
-                        style={[
-                            styles.buttonText,
-                            { color: colors.buttonTextColor }
-                        ]}
-                    >
-                        Guardar cambios
+                <View style={styles.imageContainer}>
+                    <TouchableOpacity onPress={() => void pickImage()}>
+                        <Image
+                            source={{
+                                uri: imageUri || 'https://via.placeholder.com/150'
+                            }}
+                            style={[styles.avatar, { borderColor: colors.primaryColor }]}
+                        />
+                        <View style={[styles.editIconBadge, { backgroundColor: colors.buttonColor }]}>
+                            <Ionicons name="camera" size={20} color={colors.buttonTextColor} />
+                        </View>
+                    </TouchableOpacity>
+                    <Text style={[styles.changePhotoText, { color: colors.primaryColor }]}>
+                        Cambiar foto
                     </Text>
-                )}
-            </TouchableOpacity>
-        </ScrollView>
+                </View>
+
+                <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Nombre</Text>
+                <TextInput
+                    style={inputStyle}
+                    value={name}
+                    onChangeText={setName}
+                    placeholderTextColor={colors.secondaryTextColor}
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="words"
+                />
+
+                <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Instrumento</Text>
+                <TextInput
+                    style={inputStyle}
+                    value={instrumentLabel}
+                    onChangeText={setInstrumentLabel}
+                    placeholderTextColor={colors.secondaryTextColor}
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="words"
+                />
+
+                <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Biografía</Text>
+                <TextInput
+                    style={[inputStyle, styles.bioInput]}
+                    value={bio}
+                    onChangeText={setBio}
+                    multiline
+                    textAlignVertical="top"
+                    placeholderTextColor={colors.secondaryTextColor}
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="sentences"
+                    keyboardType="default"
+                />
+
+                <TouchableOpacity
+                    style={[styles.button, { backgroundColor: colors.buttonColor }]}
+                    onPress={() => void handleSubmit()}
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <ActivityIndicator color={colors.buttonTextColor} />
+                    ) : (
+                        <Text style={[styles.buttonText, { color: colors.buttonTextColor }]}>
+                            Guardar cambios
+                        </Text>
+                    )}
+                </TouchableOpacity>
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        padding: 20
-    },
+    container: { flex: 1 },
+    content: { padding: 20, paddingBottom: 140 },
     imageContainer: {
         alignItems: 'center',
         marginBottom: 20

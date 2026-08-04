@@ -2,7 +2,11 @@
 
 import choirApi from '../api/choirApi';
 import type { Announcement, CreateAnnouncementPayload } from '../types/announcement';
-import { appendLocalFile, getMultipartRequestConfig } from './multipart';
+import {
+    appendLocalFile,
+    createLocalUpload,
+    getMultipartRequestConfig
+} from './multipart';
 
 const createAnnouncementFormData = async (
     payload: Partial<CreateAnnouncementPayload>
@@ -15,11 +19,11 @@ const createAnnouncementFormData = async (
     }));
 
     if (payload.imageUri && !payload.imageUri.startsWith('http')) {
-        await appendLocalFile(formData, 'file', {
-            uri: payload.imageUri,
-            filename: 'announcement-cover.jpg',
-            mimeType: 'image/jpeg'
-        });
+        await appendLocalFile(
+            formData,
+            'file',
+            createLocalUpload(payload.imageUri, 'announcement-cover.jpg', 'image/jpeg')
+        );
     }
 
     return formData;

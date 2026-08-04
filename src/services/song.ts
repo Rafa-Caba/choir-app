@@ -2,7 +2,11 @@
 
 import choirApi from '../api/choirApi';
 import type { CreateSongPayload, Song, SongType } from '../types/song';
-import { appendLocalFile, getMultipartRequestConfig } from './multipart';
+import {
+    appendLocalFile,
+    createLocalUpload,
+    getMultipartRequestConfig
+} from './multipart';
 
 const createSongFormData = async (
     payload: Partial<CreateSongPayload>,
@@ -12,12 +16,11 @@ const createSongFormData = async (
     formData.append('data', JSON.stringify(payload));
 
     if (audioUri) {
-        const filename = audioUri.split('?')[0].split('/').pop() ?? 'song-audio.m4a';
-        await appendLocalFile(formData, 'file', {
-            uri: audioUri,
-            filename,
-            mimeType: 'audio/m4a'
-        });
+        await appendLocalFile(
+            formData,
+            'file',
+            createLocalUpload(audioUri, 'song-audio.m4a', 'audio/mp4')
+        );
     }
 
     return formData;

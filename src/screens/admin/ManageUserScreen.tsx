@@ -132,7 +132,10 @@ export const ManageUserScreen = () => {
         );
 
         if (!result) {
-            Alert.alert('Error', 'No fue posible guardar el usuario.');
+            Alert.alert(
+                'Error',
+                useAdminUsersStore.getState().errorMessage ?? 'No fue posible guardar el usuario.'
+            );
             return;
         }
 
@@ -164,12 +167,17 @@ export const ManageUserScreen = () => {
             style={[styles.flex, { backgroundColor: colors.backgroundColor }]}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
-            <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+            <ScrollView
+                contentContainerStyle={styles.container}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                automaticallyAdjustKeyboardInsets
+            >
                 <Text style={[styles.context, { color: colors.secondaryTextColor }]}>
                     Coro: {selectedChoir?.name ?? 'Tu coro'}
                 </Text>
 
-                <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
+                <TouchableOpacity onPress={() => void pickImage()} style={styles.avatarContainer}>
                     {imageUri ? (
                         <Image source={{ uri: imageUri }} style={[styles.avatar, { borderColor: colors.primaryColor }]} />
                     ) : (
@@ -183,7 +191,7 @@ export const ManageUserScreen = () => {
                 </TouchableOpacity>
 
                 <Text style={[styles.label, { color: colors.textColor }]}>Nombre</Text>
-                <TextInput style={inputStyle} value={name} onChangeText={setName} placeholder="Nombre completo" placeholderTextColor={colors.secondaryTextColor} />
+                <TextInput style={inputStyle} value={name} onChangeText={setName} placeholder="Nombre completo" placeholderTextColor={colors.secondaryTextColor} autoCorrect spellCheck autoCapitalize="words" />
 
                 <Text style={[styles.label, { color: colors.textColor }]}>Usuario</Text>
                 <TextInput style={inputStyle} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} placeholder="usuario" placeholderTextColor={colors.secondaryTextColor} />
@@ -218,10 +226,10 @@ export const ManageUserScreen = () => {
                 </View>
 
                 <Text style={[styles.label, { color: colors.textColor }]}>Instrumento</Text>
-                <TextInput style={inputStyle} value={instrumentLabel} onChangeText={setInstrumentLabel} placeholder="Ej. Guitarra, Voz" placeholderTextColor={colors.secondaryTextColor} />
+                <TextInput style={inputStyle} value={instrumentLabel} onChangeText={setInstrumentLabel} placeholder="Ej. Guitarra, Voz" placeholderTextColor={colors.secondaryTextColor} autoCorrect spellCheck autoCapitalize="words" />
 
                 <Text style={[styles.label, { color: colors.textColor }]}>Biografía</Text>
-                <TextInput style={[inputStyle, styles.textArea]} value={bio} onChangeText={setBio} multiline placeholder="Breve descripción" placeholderTextColor={colors.secondaryTextColor} />
+                <TextInput style={[inputStyle, styles.textArea]} value={bio} onChangeText={setBio} multiline placeholder="Breve descripción" placeholderTextColor={colors.secondaryTextColor} autoCorrect spellCheck autoCapitalize="sentences" />
 
                 <View style={[styles.switchRow, { borderColor: colors.borderColor, backgroundColor: colors.cardColor }]}>
                     <Text style={[styles.switchLabel, { color: colors.textColor }]}>Participa como voz</Text>
@@ -230,7 +238,7 @@ export const ManageUserScreen = () => {
 
                 <TouchableOpacity
                     style={[styles.saveButton, { backgroundColor: colors.buttonColor, opacity: loading ? 0.7 : 1 }]}
-                    onPress={submit}
+                    onPress={() => void submit()}
                     disabled={loading}
                 >
                     {loading ? (
@@ -246,7 +254,7 @@ export const ManageUserScreen = () => {
 
 const styles = StyleSheet.create({
     flex: { flex: 1 },
-    container: { padding: 20, paddingBottom: 42 },
+    container: { padding: 20, paddingBottom: 140 },
     context: { marginBottom: 14, fontSize: 13, fontWeight: '700' },
     avatarContainer: { alignSelf: 'center', marginBottom: 18 },
     avatar: { width: 112, height: 112, borderRadius: 56, borderWidth: 2 },

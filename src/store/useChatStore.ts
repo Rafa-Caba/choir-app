@@ -12,6 +12,7 @@ import {
     sendChatMessage,
     toggleReaction,
     uploadChatMedia,
+    type ChatAttachment,
     type ChatAttachmentType
 } from '../services/chat';
 import { syncCacheFirst } from '../services/sync';
@@ -44,14 +45,14 @@ interface ClientToServerEvents {
 
 type ChoirSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-interface Attachment {
-    readonly uri: string;
-    readonly type: ChatAttachmentType;
+interface ChatDirectoryResponse {
+    readonly users: readonly ChatUserSummary[];
 }
 
 interface ChatState {
     messages: ChatMessage[];
     connected: boolean;
+    connectionError: string | null;
     socket: ChoirSocket | null;
     replyingTo: ChatMessage | null;
     loading: boolean;
@@ -61,7 +62,7 @@ interface ChatState {
 
     connect: () => void;
     disconnect: () => void;
-    sendMessage: (textInput: string, attachment?: Attachment) => Promise<void>;
+    sendMessage: (textInput: string, attachment?: ChatAttachment) => Promise<void>;
     sendTyping: (isTyping: boolean) => void;
     reactToMessage: (messageId: string, emoji: string) => Promise<void>;
     loadHistory: () => Promise<void>;
@@ -177,12 +178,18 @@ const mapAttachmentType = (type: ChatAttachmentType): MessageType => {
     }
 };
 
+const disconnectSocket = (socket: ChoirSocket | null): void => {
+    socket?.removeAllListeners();
+    socket?.disconnect();
+};
+
 export const useChatStore = create<ChatState>((set, get) => ({
     messages: [],
     onlineUsers: [],
     allUsers: [],
     typingUsers: [],
     connected: false,
+    connectionError: null,
     socket: null,
     replyingTo: null,
     loading: false,
@@ -218,8 +225,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     },
 
     fetchDirectory: async () => {
-        const response = await choirApi.get<readonly ChatUserSummary[]>('/users/directory');
-        set({ allUsers: response.data });
+        const response = await choirApi.get<ChatDirectoryResponse>('/users/directory');
+        set({ allUsers: [...response.data.users] });
     },
 
     connect: () => {
@@ -237,18 +244,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
             return;
         }
 
+        disconnectSocket(existing);
+
         const socketAuth = user.role === 'SUPER_ADMIN'
             ? { accessToken: token, targetChoirId }
             : { accessToken: token };
         const socket: ChoirSocket = io(ENV.SOCKET_URL, {
             auth: socketAuth,
-            transports: ['websocket'],
+            transports: ['polling', 'websocket'],
             reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1_000,
+            reconnectionDelayMax: 10_000,
+            timeout: 12_000,
             forceNew: true
         });
 
-        socket.on('connect', () => set({ connected: true }));
-        socket.on('disconnect', () => set({ connected: false, onlineUsers: [] }));
+        socket.on('connect', () => set({
+            connected: true,
+            connectionError: null
+        }));
+        socket.on('connect_error', (error: Error) => set({
+            connected: false,
+            connectionError: error.message || 'No fue posible conectar el chat'
+        }));
+        socket.on('disconnect', (reason) => set({
+            connected: false,
+            connectionError: reason === 'io client disconnect'
+                ? null
+                : 'Conexión del chat interrumpida',
+            onlineUsers: []
+        }));
         socket.on('new-message', (raw) => {
             persistChatChanges([raw]).catch(() => undefined);
             const normalized = normalizeChatMessage(raw);
@@ -266,7 +292,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             set((state) => ({ messages: addOrReplaceMessage(state.messages, normalized) }));
         });
         socket.on('online-users', (users) => set({ onlineUsers: users }));
-        socket.on('user-typing', ({ username, isTyping }) => set((state) => ({
+        socket.on('user-typing', ({ username, isTyping }: SocketTypingEvent) => set((state) => ({
             typingUsers: isTyping
                 ? [...new Set([...state.typingUsers, username])]
                 : state.typingUsers.filter((item) => item !== username)
@@ -275,14 +301,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
             useAuthStore.getState().expireSession().catch(() => undefined);
         });
 
-        set({ socket });
+        set({
+            socket,
+            connected: false,
+            connectionError: null
+        });
     },
 
     disconnect: () => {
-        const socket = get().socket;
-        socket?.removeAllListeners();
-        socket?.disconnect();
-        set({ connected: false, socket: null, onlineUsers: [], typingUsers: [] });
+        disconnectSocket(get().socket);
+        set({
+            connected: false,
+            connectionError: null,
+            socket: null,
+            onlineUsers: [],
+            typingUsers: []
+        });
     },
 
     sendTyping: (isTyping) => {
@@ -305,7 +339,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         get().sendTyping(false);
         const upload = attachment
-            ? await uploadChatMedia(attachment.uri, attachment.type)
+            ? await uploadChatMedia(attachment)
             : null;
         const message = await sendChatMessage({
             content: trimmed,
@@ -327,6 +361,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set({
             messages: [],
             connected: false,
+            connectionError: null,
             socket: null,
             replyingTo: null,
             loading: false,

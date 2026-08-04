@@ -6,11 +6,11 @@ import type {
     CreateChoirPayload,
     PaginatedChoirResponse
 } from '../types/choir';
-import { appendLocalFile, getMultipartRequestConfig } from './multipart';
-
-const getImageMimeType = (filename: string): string => {
-    return filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-};
+import {
+    appendLocalFile,
+    createLocalUpload,
+    getMultipartRequestConfig
+} from './multipart';
 
 const buildChoirFormData = async (
     payload: CreateChoirPayload,
@@ -29,12 +29,11 @@ const buildChoirFormData = async (
     }
 
     if (imageUri && !imageUri.startsWith('http')) {
-        const filename = imageUri.split('/').pop() ?? 'choir-logo.jpg';
-        await appendLocalFile(formData, 'file', {
-            uri: imageUri,
-            filename,
-            mimeType: getImageMimeType(filename)
-        });
+        await appendLocalFile(
+            formData,
+            'file',
+            createLocalUpload(imageUri, 'choir-logo.jpg', 'image/jpeg')
+        );
     }
 
     return formData;

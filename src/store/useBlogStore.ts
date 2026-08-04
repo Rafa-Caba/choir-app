@@ -8,6 +8,7 @@ import {
     togglePostLike,
     updatePost
 } from '../services/blog';
+import { getApiErrorMessage } from '../services/auth';
 import { CACHE_TTL_MS } from '../config/cachePolicy';
 import { syncCacheFirst } from '../services/sync';
 import { cacheRemoteMedia } from '../storage/mediaCache';
@@ -18,6 +19,7 @@ interface BlogState {
     posts: BlogPost[];
     currentPost: BlogPost | null;
     loading: boolean;
+    errorMessage: string | null;
     fetchPosts: () => Promise<void>;
     selectPost: (post: BlogPost) => void;
     likePost: (id: string) => Promise<void>;
@@ -41,15 +43,26 @@ const hydratePosts = async (posts: readonly BlogPost[]): Promise<BlogPost[]> => 
     })));
 };
 
+const replacePost = (
+    posts: readonly BlogPost[],
+    incoming: BlogPost
+): BlogPost[] => {
+    const exists = posts.some((post) => post.id === incoming.id);
+    return exists
+        ? posts.map((post) => post.id === incoming.id ? incoming : post)
+        : [incoming, ...posts];
+};
+
 export const useBlogStore = create<BlogState>((set, get) => ({
     posts: [],
     currentPost: null,
     loading: false,
+    errorMessage: null,
 
     fetchPosts: async () => {
         const context = useAuthStore.getState().getTenantContext();
         if (!context) return;
-        set({ loading: true });
+        set({ loading: true, errorMessage: null });
 
         try {
             const result = await syncCacheFirst<readonly BlogPost[]>({
@@ -66,6 +79,9 @@ export const useBlogStore = create<BlogState>((set, get) => ({
                     ? hydrated.find((post) => post.id === state.currentPost?.id) ?? null
                     : null
             }));
+        } catch (error) {
+            set({ errorMessage: getApiErrorMessage(error as object) });
+            throw error;
         } finally {
             set({ loading: false });
         }
@@ -90,21 +106,30 @@ export const useBlogStore = create<BlogState>((set, get) => ({
             posts: state.posts.map(update),
             currentPost: state.currentPost ? update(state.currentPost) : null
         }));
-        await get().fetchPosts();
     },
 
     commentOnPost: async (id, text) => {
-        await commentOnPost(id, text);
-        await get().fetchPosts();
+        const comment = await commentOnPost(id, text);
+        const update = (post: BlogPost): BlogPost => post.id === id
+            ? { ...post, comments: [...post.comments, comment] }
+            : post;
+
+        set((state) => ({
+            posts: state.posts.map(update),
+            currentPost: state.currentPost ? update(state.currentPost) : null
+        }));
     },
 
     addPost: async (payload) => {
-        set({ loading: true });
+        set({ loading: true, errorMessage: null });
         try {
-            await createPost(payload);
-            await get().fetchPosts();
+            const created = await createPost(payload);
+            const [hydrated] = await hydratePosts([created]);
+            set((state) => ({ posts: replacePost(state.posts, hydrated) }));
+            get().fetchPosts().catch(() => undefined);
             return true;
-        } catch {
+        } catch (error) {
+            set({ errorMessage: getApiErrorMessage(error as object) });
             return false;
         } finally {
             set({ loading: false });
@@ -112,12 +137,18 @@ export const useBlogStore = create<BlogState>((set, get) => ({
     },
 
     updatePost: async (id, payload) => {
-        set({ loading: true });
+        set({ loading: true, errorMessage: null });
         try {
-            await updatePost(id, payload);
-            await get().fetchPosts();
+            const updated = await updatePost(id, payload);
+            const [hydrated] = await hydratePosts([updated]);
+            set((state) => ({
+                posts: replacePost(state.posts, hydrated),
+                currentPost: state.currentPost?.id === id ? hydrated : state.currentPost
+            }));
+            get().fetchPosts().catch(() => undefined);
             return true;
-        } catch {
+        } catch (error) {
+            set({ errorMessage: getApiErrorMessage(error as object) });
             return false;
         } finally {
             set({ loading: false });
@@ -126,8 +157,16 @@ export const useBlogStore = create<BlogState>((set, get) => ({
 
     deletePost: async (id) => {
         await deletePost(id);
-        await get().fetchPosts();
+        set((state) => ({
+            posts: state.posts.filter((post) => post.id !== id),
+            currentPost: state.currentPost?.id === id ? null : state.currentPost
+        }));
     },
 
-    reset: () => set({ posts: [], currentPost: null, loading: false })
+    reset: () => set({
+        posts: [],
+        currentPost: null,
+        loading: false,
+        errorMessage: null
+    })
 }));

@@ -5,6 +5,8 @@ import {
     ActivityIndicator,
     Alert,
     Image,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Switch,
@@ -20,6 +22,7 @@ import { canManageChoirs } from '../../auth/permissions';
 import { AccessDeniedScreen } from '../../components/auth/AccessDeniedScreen';
 import { useTheme } from '../../context/ThemeContext';
 import type { PlatformStackParamList } from '../../navigation/PlatformNavigator';
+import { getApiErrorMessage } from '../../services/auth';
 import { useAdminChoirsStore } from '../../store/useAdminChoirsStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTargetChoirStore } from '../../store/useTargetChoirStore';
@@ -142,7 +145,7 @@ export const ManageChoirScreen = ({ navigation, route }: Props) => {
         } catch (error) {
             Alert.alert(
                 'No fue posible guardar el coro',
-                error instanceof Error ? error.message : 'Revisa los datos e intenta nuevamente.'
+                getApiErrorMessage(error as object)
             );
         } finally {
             setSaving(false);
@@ -158,86 +161,103 @@ export const ManageChoirScreen = ({ navigation, route }: Props) => {
     }
 
     return (
-        <ScrollView
+        <KeyboardAvoidingView
             style={[styles.container, { backgroundColor: colors.backgroundColor }]}
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled"
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
-            <View style={[styles.card, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
-                <Text style={[styles.title, { color: colors.textColor }]}>{headerTitle}</Text>
+            <ScrollView
+                style={styles.container}
+                contentContainerStyle={styles.content}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                automaticallyAdjustKeyboardInsets
+            >
+                <View style={[styles.card, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
+                    <Text style={[styles.title, { color: colors.textColor }]}>{headerTitle}</Text>
 
-                <Image
-                    source={{ uri: imageUri || 'https://via.placeholder.com/150?text=Coro' }}
-                    style={[styles.logo, { borderColor: colors.primaryColor }]}
-                />
-                <TouchableOpacity
-                    onPress={pickImage}
-                    style={[styles.imageButton, { backgroundColor: colors.buttonColor }]}
-                >
-                    <Ionicons name="image-outline" size={18} color={colors.buttonTextColor} />
-                    <Text style={[styles.imageButtonText, { color: colors.buttonTextColor }]}>Seleccionar logo</Text>
-                </TouchableOpacity>
+                    <Image
+                        source={{ uri: imageUri || 'https://via.placeholder.com/150?text=Coro' }}
+                        style={[styles.logo, { borderColor: colors.primaryColor }]}
+                    />
+                    <TouchableOpacity
+                        onPress={() => void pickImage()}
+                        style={[styles.imageButton, { backgroundColor: colors.buttonColor }]}
+                    >
+                        <Ionicons name="image-outline" size={18} color={colors.buttonTextColor} />
+                        <Text style={[styles.imageButtonText, { color: colors.buttonTextColor }]}>Seleccionar logo</Text>
+                    </TouchableOpacity>
 
-                <Text style={[styles.label, { color: colors.textColor }]}>Nombre</Text>
-                <TextInput
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="Nombre del coro"
-                    placeholderTextColor={colors.secondaryTextColor}
-                    style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor }]}
-                />
+                    <Text style={[styles.label, { color: colors.textColor }]}>Nombre</Text>
+                    <TextInput
+                        value={name}
+                        onChangeText={setName}
+                        placeholder="Nombre del coro"
+                        placeholderTextColor={colors.secondaryTextColor}
+                        autoCorrect
+                        spellCheck
+                        autoCapitalize="words"
+                        returnKeyType="next"
+                        style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor }]}
+                    />
 
-                <Text style={[styles.label, { color: colors.textColor }]}>Código de acceso</Text>
-                <TextInput
-                    value={code}
-                    onChangeText={setCode}
-                    placeholder="ej. coro-centro"
-                    placeholderTextColor={colors.secondaryTextColor}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor }]}
-                />
+                    <Text style={[styles.label, { color: colors.textColor }]}>Código de acceso</Text>
+                    <TextInput
+                        value={code}
+                        onChangeText={setCode}
+                        placeholder="ej. coro-centro"
+                        placeholderTextColor={colors.secondaryTextColor}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        spellCheck={false}
+                        returnKeyType="next"
+                        style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor }]}
+                    />
 
-                <Text style={[styles.label, { color: colors.textColor }]}>Descripción</Text>
-                <TextInput
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder="Breve descripción del coro"
-                    placeholderTextColor={colors.secondaryTextColor}
-                    multiline
-                    style={[styles.input, styles.textArea, { color: colors.textColor, borderColor: colors.borderColor }]}
-                />
+                    <Text style={[styles.label, { color: colors.textColor }]}>Descripción</Text>
+                    <TextInput
+                        value={description}
+                        onChangeText={setDescription}
+                        placeholder="Breve descripción del coro"
+                        placeholderTextColor={colors.secondaryTextColor}
+                        multiline
+                        autoCorrect
+                        spellCheck
+                        autoCapitalize="sentences"
+                        style={[styles.input, styles.textArea, { color: colors.textColor, borderColor: colors.borderColor }]}
+                    />
 
-                <View style={[styles.switchRow, { borderColor: colors.borderColor }]}>
-                    <View style={styles.switchText}>
-                        <Text style={[styles.switchTitle, { color: colors.textColor }]}>Coro activo</Text>
-                        <Text style={[styles.switchDescription, { color: colors.secondaryTextColor }]}>Los usuarios solo pueden iniciar sesión cuando el coro está activo.</Text>
+                    <View style={[styles.switchRow, { borderColor: colors.borderColor }]}>
+                        <View style={styles.switchText}>
+                            <Text style={[styles.switchTitle, { color: colors.textColor }]}>Coro activo</Text>
+                            <Text style={[styles.switchDescription, { color: colors.secondaryTextColor }]}>Los usuarios solo pueden iniciar sesión cuando el coro está activo.</Text>
+                        </View>
+                        <Switch value={isActive} onValueChange={setIsActive} />
                     </View>
-                    <Switch value={isActive} onValueChange={setIsActive} />
-                </View>
 
-                <TouchableOpacity
-                    onPress={save}
-                    disabled={saving}
-                    style={[styles.saveButton, { backgroundColor: colors.buttonColor, opacity: saving ? 0.7 : 1 }]}
-                >
-                    {saving ? (
-                        <ActivityIndicator color={colors.buttonTextColor} />
-                    ) : (
-                        <>
-                            <Ionicons name="save-outline" size={19} color={colors.buttonTextColor} />
-                            <Text style={[styles.saveText, { color: colors.buttonTextColor }]}>Guardar coro</Text>
-                        </>
-                    )}
-                </TouchableOpacity>
-            </View>
-        </ScrollView>
+                    <TouchableOpacity
+                        onPress={() => void save()}
+                        disabled={saving}
+                        style={[styles.saveButton, { backgroundColor: colors.buttonColor, opacity: saving ? 0.7 : 1 }]}
+                    >
+                        {saving ? (
+                            <ActivityIndicator color={colors.buttonTextColor} />
+                        ) : (
+                            <>
+                                <Ionicons name="save-outline" size={19} color={colors.buttonTextColor} />
+                                <Text style={[styles.saveText, { color: colors.buttonTextColor }]}>Guardar coro</Text>
+                            </>
+                        )}
+                    </TouchableOpacity>
+                </View>
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 };
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    content: { padding: 18, paddingBottom: 40 },
+    content: { padding: 18, paddingBottom: 140 },
     loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     card: { borderWidth: 1, borderRadius: 16, padding: 18 },
     title: { fontSize: 24, fontWeight: '900', marginBottom: 18 },

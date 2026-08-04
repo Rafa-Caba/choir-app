@@ -10,12 +10,14 @@ import {
     type AdminUserInput,
     type SaveUserResult
 } from '../services/admin/users';
+import { getApiErrorMessage } from '../services/auth';
 import type { User } from '../types/auth';
 
 interface AdminUsersState {
     readonly users: readonly User[];
     readonly loading: boolean;
     readonly refreshing: boolean;
+    readonly errorMessage: string | null;
     readonly page: number;
     readonly hasMore: boolean;
     fetchUsers: (refresh?: boolean) => Promise<void>;
@@ -30,6 +32,7 @@ const initialState = {
     users: [] as readonly User[],
     loading: false,
     refreshing: false,
+    errorMessage: null,
     page: 0,
     hasMore: true
 };
@@ -45,7 +48,7 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
         }
 
         const nextPage = refresh ? 1 : state.page + 1;
-        set({ loading: !refresh, refreshing: refresh });
+        set({ loading: !refresh, refreshing: refresh, errorMessage: null });
 
         try {
             const response = await getAllUsers(nextPage, 10);
@@ -67,7 +70,7 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
     },
 
     saveUserAction: async (data, imageUri, id) => {
-        set({ loading: true });
+        set({ loading: true, errorMessage: null });
 
         try {
             const result = await saveUser(data, imageUri, id);
@@ -81,7 +84,8 @@ export const useAdminUsersStore = create<AdminUsersState>((set, get) => ({
                 };
             });
             return result;
-        } catch {
+        } catch (error) {
+            set({ errorMessage: getApiErrorMessage(error as object) });
             return null;
         } finally {
             set({ loading: false });

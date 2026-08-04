@@ -2,7 +2,11 @@
 
 import choirApi from '../api/choirApi';
 import type { BlogComment, BlogPost, CreateBlogPayload } from '../types/blog';
-import { appendLocalFile, getMultipartRequestConfig } from './multipart';
+import {
+    appendLocalFile,
+    createLocalUpload,
+    getMultipartRequestConfig
+} from './multipart';
 
 interface LikeResponse {
     readonly likes: number;
@@ -20,11 +24,11 @@ const createBlogFormData = async (
     }));
 
     if (payload.imageUri && !payload.imageUri.startsWith('http')) {
-        await appendLocalFile(formData, 'file', {
-            uri: payload.imageUri,
-            filename: 'blog-cover.jpg',
-            mimeType: 'image/jpeg'
-        });
+        await appendLocalFile(
+            formData,
+            'file',
+            createLocalUpload(payload.imageUri, 'blog-cover.jpg', 'image/jpeg')
+        );
     }
 
     return formData;

@@ -1,11 +1,6 @@
 // src/types/announcement.ts
 
-import type { JsonValue } from './json';
-
-export interface TipTapContent {
-    readonly type: string;
-    readonly content?: readonly JsonValue[];
-}
+import type { TipTapNode } from './blog';
 
 export interface AnnouncementAuthor {
     readonly id: string;
@@ -16,7 +11,7 @@ export interface AnnouncementAuthor {
 export interface Announcement {
     readonly id: string;
     readonly title: string;
-    readonly content: TipTapContent;
+    readonly content: TipTapNode;
     readonly imageUrl?: string;
     readonly imagePublicId?: string;
     readonly cachedImageUrl?: string | null;
@@ -28,7 +23,7 @@ export interface Announcement {
 
 export interface CreateAnnouncementPayload {
     readonly title: string;
-    readonly content: TipTapContent;
+    readonly content: TipTapNode;
     readonly imageUri?: string;
     readonly isPublic: boolean;
 }
