@@ -225,6 +225,6 @@ const styles = StyleSheet.create({
     menuText: { fontSize: 16, marginLeft: 10 },
     separator: { height: 1, marginVertical: 10 },
     headerTitle: { flexDirection: 'row', alignItems: 'center' },
-    headerLogo: { width: 30, height: 30, borderRadius: 8, marginRight: 10 },
+    headerLogo: { width: 35, height: 35, borderRadius: 50, marginRight: 10 },
     headerText: { fontSize: 18, fontWeight: '700' }
 });
