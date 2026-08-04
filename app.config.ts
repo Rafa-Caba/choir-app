@@ -9,6 +9,7 @@ const readOptionalEnvironmentValue = (name: string): string | undefined => {
 
 const easBuildProfile = readOptionalEnvironmentValue('EAS_BUILD_PROFILE');
 const iosBundleIdentifier = readOptionalEnvironmentValue('IOS_BUNDLE_IDENTIFIER');
+const updateChannel = readOptionalEnvironmentValue('EXPO_UPDATE_CHANNEL');
 
 if (easBuildProfile && !iosBundleIdentifier) {
     throw new Error(
@@ -30,7 +31,14 @@ export default {
             policy: 'appVersion'
         },
         updates: {
-            url: 'https://u.expo.dev/453ab38a-8f9e-4c53-8ac8-9ed975e6415a'
+            url: 'https://u.expo.dev/453ab38a-8f9e-4c53-8ac8-9ed975e6415a',
+            ...(updateChannel
+                ? {
+                    requestHeaders: {
+                        'expo-channel-name': updateChannel
+                    }
+                }
+                : {})
         },
         splash: {
             image: './assets/splash-icon.png',
@@ -48,7 +56,7 @@ export default {
             }
         },
         android: {
-            package: 'com.rafacaba.choirapp',
+            package: 'com.rafaelcaba.choirsapp',
             adaptiveIcon: {
                 foregroundImage: './assets/adaptive-icon.png',
                 backgroundColor: '#ffffff'
