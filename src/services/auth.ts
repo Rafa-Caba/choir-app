@@ -1,7 +1,10 @@
 // src/services/auth.ts
 
 import axios from 'axios';
-import choirApi, { API_BASE_URL } from '../api/choirApi';
+import choirApi, {
+    API_BASE_URL,
+    API_REQUEST_TIMEOUT_MS
+} from '../api/choirApi';
 import {
     appendLocalFile,
     getMultipartRequestConfig
@@ -58,7 +61,8 @@ const submitLogout = async (
         {
             headers: {
                 Authorization: `Bearer ${accessToken}`
-            }
+            },
+            timeout: API_REQUEST_TIMEOUT_MS
         }
     );
 };
@@ -78,7 +82,8 @@ export const logoutUser = async (input: LogoutSessionInput): Promise<void> => {
 
         const refreshed = await axios.post<AuthSessionResponse>(
             `${API_BASE_URL}/auth/refresh`,
-            { refreshToken: input.refreshToken }
+            { refreshToken: input.refreshToken },
+            { timeout: API_REQUEST_TIMEOUT_MS }
         );
         await submitLogout(refreshed.data.accessToken, {
             refreshToken: refreshed.data.refreshToken,

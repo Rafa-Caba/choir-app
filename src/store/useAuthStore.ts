@@ -42,6 +42,43 @@ import type {
 import type { TenantStorageContext } from '../types/sync';
 
 const OFFLINE_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const AUTH_STORAGE_TIMEOUT_MS = 8000;
+
+const withTimeout = async <T>(
+    operation: Promise<T>,
+    timeoutMs: number,
+    message: string
+): Promise<T> => {
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<never>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error(message)), timeoutMs);
+    });
+
+    try {
+        return await Promise.race([operation, timeout]);
+    } finally {
+        if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+        }
+    }
+};
+
+const clearSessionDataSafely = async (
+    context: TenantStorageContext | null
+): Promise<void> => {
+    await Promise.allSettled([
+        withTimeout(
+            clearSecureSession(),
+            AUTH_STORAGE_TIMEOUT_MS,
+            'Secure session cleanup timed out'
+        ),
+        withTimeout(
+            clearLocalSessionData(context),
+            AUTH_STORAGE_TIMEOUT_MS,
+            'Local session cleanup timed out'
+        )
+    ]);
+};
 
 interface AuthState {
     token: string | null;
@@ -284,8 +321,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         await Promise.allSettled([
             serverLogout(),
-            clearSecureSession(),
-            clearLocalSessionData(context)
+            clearSessionDataSafely(context)
         ]);
     },
 
@@ -305,104 +341,143 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             loading: false
         });
 
-        await Promise.allSettled([
-            clearSecureSession(),
-            clearLocalSessionData(context)
-        ]);
+        await clearSessionDataSafely(context);
     },
 
     checkAuth: async () => {
-        set({ status: 'checking', loading: true });
-        await clearLegacyStorage();
-
-        const [secureSession, persisted, lastChoirCode] = await Promise.all([
-            loadSecureSession(),
-            loadPersistedSessionContext(),
-            loadLastChoirCode()
-        ]);
-
-        set({ lastChoirCode });
-
-        if (!secureSession) {
-            const staleContext = persisted?.metadata.choirId
-                ? {
-                    choirId: persisted.metadata.choirId,
-                    userId: persisted.metadata.userId
-                }
-                : null;
-            await clearLocalSessionData(staleContext);
-            set({
-                status: 'unauthenticated',
-                connectionMode: 'none',
-                loading: false
-            });
-            return;
-        }
-
         set({
-            token: secureSession.accessToken,
-            refreshToken: secureSession.refreshToken,
-            sessionId: secureSession.sessionId
+            status: 'checking',
+            loading: true,
+            errorMessage: null
         });
 
         try {
-            const currentSession = await getCurrentSession();
-            let profile = currentSession.user;
-
-            if (!currentSession.requiresPasswordChange) {
-                try {
-                    profile = await getUserProfile();
-                } catch {
-                    profile = currentSession.user;
-                }
-            }
-
-            const sessionResponse: AuthSessionResponse = {
-                accessToken: get().token ?? secureSession.accessToken,
-                refreshToken: get().refreshToken ?? secureSession.refreshToken,
-                sessionId: get().sessionId ?? secureSession.sessionId,
-                user: profile,
-                choir: currentSession.choir,
-                requiresPasswordChange: currentSession.requiresPasswordChange
-            };
-            await get().applySession(sessionResponse, 'online');
-        } catch (error) {
-            const isAuthorizationFailure = axios.isAxiosError(error) &&
-                (error.response?.status === 401 || error.response?.status === 403);
-            const persistedAge = persisted
-                ? Date.now() - Date.parse(persisted.metadata.validatedAt)
-                : Number.POSITIVE_INFINITY;
-            const canRestoreOffline = Boolean(
-                persisted &&
-                persisted.metadata.userId === secureSession.userId &&
-                persistedAge <= OFFLINE_SESSION_MAX_AGE_MS &&
-                !isAuthorizationFailure
+            await withTimeout(
+                clearLegacyStorage(),
+                AUTH_STORAGE_TIMEOUT_MS,
+                'Legacy storage cleanup timed out'
             );
 
-            if (canRestoreOffline && persisted) {
+            const [secureSession, persisted, lastChoirCode] = await withTimeout(
+                Promise.all([
+                    loadSecureSession(),
+                    loadPersistedSessionContext(),
+                    loadLastChoirCode()
+                ]),
+                AUTH_STORAGE_TIMEOUT_MS,
+                'Session storage loading timed out'
+            );
+
+            set({ lastChoirCode });
+
+            if (!secureSession) {
+                const staleContext = persisted?.metadata.choirId
+                    ? {
+                        choirId: persisted.metadata.choirId,
+                        userId: persisted.metadata.userId
+                    }
+                    : null;
+
+                await Promise.allSettled([
+                    withTimeout(
+                        clearLocalSessionData(staleContext),
+                        AUTH_STORAGE_TIMEOUT_MS,
+                        'Stale session cleanup timed out'
+                    )
+                ]);
+
                 set({
-                    token: secureSession.accessToken,
-                    refreshToken: secureSession.refreshToken,
-                    sessionId: secureSession.sessionId,
-                    user: persisted.user,
-                    choir: persisted.choir,
-                    requiresPasswordChange: persisted.requiresPasswordChange,
-                    status: 'authenticated',
-                    connectionMode: 'offline',
-                    loading: false,
-                    errorMessage: null
+                    status: 'unauthenticated',
+                    connectionMode: 'none',
+                    loading: false
                 });
                 return;
             }
 
-            const failedContext = persisted?.metadata.choirId
-                ? {
-                    choirId: persisted.metadata.choirId,
-                    userId: persisted.metadata.userId
+            set({
+                token: secureSession.accessToken,
+                refreshToken: secureSession.refreshToken,
+                sessionId: secureSession.sessionId
+            });
+
+            try {
+                const currentSession = await getCurrentSession();
+                let profile = currentSession.user;
+
+                if (!currentSession.requiresPasswordChange) {
+                    try {
+                        profile = await getUserProfile();
+                    } catch {
+                        profile = currentSession.user;
+                    }
                 }
-                : null;
-            await clearSecureSession();
-            await clearLocalSessionData(failedContext);
+
+                const sessionResponse: AuthSessionResponse = {
+                    accessToken: get().token ?? secureSession.accessToken,
+                    refreshToken: get().refreshToken ?? secureSession.refreshToken,
+                    sessionId: get().sessionId ?? secureSession.sessionId,
+                    user: profile,
+                    choir: currentSession.choir,
+                    requiresPasswordChange: currentSession.requiresPasswordChange
+                };
+                await get().applySession(sessionResponse, 'online');
+            } catch (error) {
+                const isAuthorizationFailure = axios.isAxiosError(error) &&
+                    (error.response?.status === 401 || error.response?.status === 403);
+                const persistedAge = persisted
+                    ? Date.now() - Date.parse(persisted.metadata.validatedAt)
+                    : Number.POSITIVE_INFINITY;
+                const canRestoreOffline = Boolean(
+                    persisted &&
+                    persisted.metadata.userId === secureSession.userId &&
+                    persistedAge <= OFFLINE_SESSION_MAX_AGE_MS &&
+                    !isAuthorizationFailure
+                );
+
+                if (canRestoreOffline && persisted) {
+                    set({
+                        token: secureSession.accessToken,
+                        refreshToken: secureSession.refreshToken,
+                        sessionId: secureSession.sessionId,
+                        user: persisted.user,
+                        choir: persisted.choir,
+                        requiresPasswordChange: persisted.requiresPasswordChange,
+                        status: 'authenticated',
+                        connectionMode: 'offline',
+                        loading: false,
+                        errorMessage: null
+                    });
+                    return;
+                }
+
+                const failedContext = persisted?.metadata.choirId
+                    ? {
+                        choirId: persisted.metadata.choirId,
+                        userId: persisted.metadata.userId
+                    }
+                    : null;
+                await clearSessionDataSafely(failedContext);
+
+                const apiUnavailable = axios.isAxiosError(error) &&
+                    (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK');
+
+                set({
+                    token: null,
+                    refreshToken: null,
+                    sessionId: null,
+                    user: null,
+                    choir: null,
+                    requiresPasswordChange: false,
+                    status: 'unauthenticated',
+                    connectionMode: 'none',
+                    errorMessage: apiUnavailable
+                        ? 'No fue posible contactar al API para validar la sesión. Verifica que el servidor esté activo.'
+                        : 'Tu sesión ya no es válida. Inicia sesión nuevamente.',
+                    loading: false
+                });
+            }
+        } catch {
+            await clearSessionDataSafely(null);
             set({
                 token: null,
                 refreshToken: null,
@@ -412,7 +487,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 requiresPasswordChange: false,
                 status: 'unauthenticated',
                 connectionMode: 'none',
-                errorMessage: 'Tu sesión ya no es válida. Inicia sesión nuevamente.',
+                errorMessage: 'No fue posible restaurar la sesión local. Inicia sesión nuevamente.',
                 loading: false
             });
         }
