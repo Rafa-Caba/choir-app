@@ -32,7 +32,10 @@ interface SongsState {
 
 const hydrateSongs = async (songs: readonly Song[]): Promise<Song[]> => {
     const context = useAuthStore.getState().getTenantContext();
-    if (!context) return [...songs];
+
+    if (!context) {
+        return [...songs];
+    }
 
     return Promise.all(songs.map(async (song) => ({
         ...song,
@@ -40,15 +43,62 @@ const hydrateSongs = async (songs: readonly Song[]): Promise<Song[]> => {
     })));
 };
 
-export const useSongsStore = create<SongsState>((set, get) => ({
-    songs: [],
-    songTypes: [],
-    loading: false,
+const sortSongs = (songs: readonly Song[]): Song[] => {
+    return [...songs].sort((left, right) => left.title.localeCompare(right.title));
+};
 
-    fetchData: async () => {
+const sortSongTypes = (types: readonly SongType[]): SongType[] => {
+    return [...types].sort((left, right) => {
+        const orderDifference = left.order - right.order;
+        return orderDifference !== 0
+            ? orderDifference
+            : left.name.localeCompare(right.name);
+    });
+};
+
+const upsertSong = (songs: readonly Song[], incoming: Song): Song[] => {
+    const existing = songs.find((song) => song.id === incoming.id);
+    const merged = existing
+        ? {
+            ...existing,
+            ...incoming,
+            cachedAudioUrl: incoming.cachedAudioUrl ?? (
+                existing.audioUrl === incoming.audioUrl
+                    ? existing.cachedAudioUrl
+                    : null
+            )
+        }
+        : incoming;
+    const next = existing
+        ? songs.map((song) => song.id === incoming.id ? merged : song)
+        : [merged, ...songs];
+
+    return sortSongs(next);
+};
+
+const upsertSongType = (
+    types: readonly SongType[],
+    incoming: SongType
+): SongType[] => {
+    const exists = types.some((type) => type.id === incoming.id);
+    const next = exists
+        ? types.map((type) => type.id === incoming.id ? incoming : type)
+        : [...types, incoming];
+
+    return sortSongTypes(next);
+};
+
+export const useSongsStore = create<SongsState>((set, get) => {
+    const syncData = async (showLoading: boolean): Promise<void> => {
         const context = useAuthStore.getState().getTenantContext();
-        if (!context) return;
-        set({ loading: true });
+
+        if (!context) {
+            return;
+        }
+
+        if (showLoading) {
+            set({ loading: true });
+        }
 
         try {
             const [songsResult, typesResult] = await Promise.all([
@@ -57,101 +107,162 @@ export const useSongsStore = create<SongsState>((set, get) => ({
                     resource: 'songs',
                     path: '/songs',
                     ttlMs: CACHE_TTL_MS.songs,
-                    onData: (data) => set({ songs: [...data] })
+                    onData: (data) => set({ songs: sortSongs(data) })
                 }),
                 syncCacheFirst<readonly SongType[]>({
                     context,
                     resource: 'song-types',
                     path: '/song-types',
                     ttlMs: CACHE_TTL_MS.songTypes,
-                    onData: (data) => set({ songTypes: [...data] })
+                    onData: (data) => set({ songTypes: sortSongTypes(data) })
                 })
             ]);
+
+            const rawSongs = sortSongs(songsResult.data);
             set({
-                songs: await hydrateSongs(songsResult.data),
-                songTypes: [...typesResult.data]
+                songs: rawSongs,
+                songTypes: sortSongTypes(typesResult.data)
             });
+
+            hydrateSongs(rawSongs)
+                .then((hydrated) => set((state) => ({
+                    songs: hydrated.reduce<Song[]>(
+                        (current, song) => upsertSong(current, song),
+                        state.songs
+                    )
+                })))
+                .catch(() => undefined);
         } finally {
-            set({ loading: false });
+            if (showLoading) {
+                set({ loading: false });
+            }
         }
-    },
+    };
 
-    addSong: async (payload, audioUri) => {
-        set({ loading: true });
-        try {
-            await createSong(payload, audioUri);
-            await get().fetchData();
-            return true;
-        } catch {
-            return false;
-        } finally {
-            set({ loading: false });
-        }
-    },
+    const refreshInBackground = (): void => {
+        syncData(false).catch(() => undefined);
+    };
 
-    editSong: async (id, payload, audioUri) => {
-        set({ loading: true });
-        try {
-            await updateSong(id, payload, audioUri);
-            await get().fetchData();
-            return true;
-        } catch {
-            return false;
-        } finally {
-            set({ loading: false });
-        }
-    },
+    const hydrateSongInBackground = (song: Song): void => {
+        hydrateSongs([song])
+            .then(([hydrated]) => set((state) => ({
+                songs: upsertSong(state.songs, hydrated)
+            })))
+            .catch(() => undefined);
+    };
 
-    removeSong: async (id) => {
-        try {
-            await deleteSong(id);
-            await get().fetchData();
-            return true;
-        } catch {
-            return false;
-        }
-    },
+    return {
+        songs: [],
+        songTypes: [],
+        loading: false,
 
-    getSongsByType: (typeId) => {
-        if (!typeId) return get().songs;
-        return get().songs.filter((song) => song.songTypeId === typeId);
-    },
+        fetchData: () => syncData(true),
 
-    addType: async (name, order, parentId, isParent) => {
-        set({ loading: true });
-        try {
-            await createSongType(name, order, parentId ?? undefined, isParent);
-            await get().fetchData();
-            return true;
-        } catch {
-            return false;
-        } finally {
-            set({ loading: false });
-        }
-    },
+        addSong: async (payload, audioUri) => {
+            set({ loading: true });
 
-    editType: async (id, name, order, isParent) => {
-        set({ loading: true });
-        try {
-            await updateSongType(id, name, order, isParent);
-            await get().fetchData();
-            return true;
-        } catch {
-            return false;
-        } finally {
-            set({ loading: false });
-        }
-    },
+            try {
+                const created = await createSong(payload, audioUri);
+                set((state) => ({ songs: upsertSong(state.songs, created) }));
+                hydrateSongInBackground(created);
+                refreshInBackground();
+                return true;
+            } catch {
+                return false;
+            } finally {
+                set({ loading: false });
+            }
+        },
 
-    removeType: async (id) => {
-        try {
-            await deleteSongType(id);
-            await get().fetchData();
-            return true;
-        } catch {
-            return false;
-        }
-    },
+        editSong: async (id, payload, audioUri) => {
+            set({ loading: true });
 
-    reset: () => set({ songs: [], songTypes: [], loading: false })
-}));
+            try {
+                const updated = await updateSong(id, payload, audioUri);
+                set((state) => ({ songs: upsertSong(state.songs, updated) }));
+                hydrateSongInBackground(updated);
+                refreshInBackground();
+                return true;
+            } catch {
+                return false;
+            } finally {
+                set({ loading: false });
+            }
+        },
+
+        removeSong: async (id) => {
+            try {
+                await deleteSong(id);
+                set((state) => ({
+                    songs: state.songs.filter((song) => song.id !== id)
+                }));
+                refreshInBackground();
+                return true;
+            } catch {
+                return false;
+            }
+        },
+
+        getSongsByType: (typeId) => {
+            if (!typeId) {
+                return get().songs;
+            }
+
+            return get().songs.filter((song) => song.songTypeId === typeId);
+        },
+
+        addType: async (name, order, parentId, isParent) => {
+            set({ loading: true });
+
+            try {
+                const created = await createSongType(
+                    name,
+                    order,
+                    parentId ?? undefined,
+                    isParent
+                );
+                set((state) => ({
+                    songTypes: upsertSongType(state.songTypes, created)
+                }));
+                refreshInBackground();
+                return true;
+            } catch {
+                return false;
+            } finally {
+                set({ loading: false });
+            }
+        },
+
+        editType: async (id, name, order, isParent) => {
+            set({ loading: true });
+
+            try {
+                const updated = await updateSongType(id, name, order, isParent);
+                set((state) => ({
+                    songTypes: upsertSongType(state.songTypes, updated)
+                }));
+                refreshInBackground();
+                return true;
+            } catch {
+                return false;
+            } finally {
+                set({ loading: false });
+            }
+        },
+
+        removeType: async (id) => {
+            try {
+                await deleteSongType(id);
+                set((state) => ({
+                    songTypes: state.songTypes.filter((type) => type.id !== id)
+                }));
+                refreshInBackground();
+                return true;
+            } catch {
+                return false;
+            }
+        },
+
+        reset: () => set({ songs: [], songTypes: [], loading: false })
+    };
+});

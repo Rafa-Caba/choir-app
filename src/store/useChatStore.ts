@@ -56,6 +56,9 @@ interface ChatState {
     socket: ChoirSocket | null;
     replyingTo: ChatMessage | null;
     loading: boolean;
+    directoryLoading: boolean;
+    directoryLoaded: boolean;
+    directoryError: string | null;
     onlineUsers: readonly SocketPresenceUser[];
     allUsers: readonly ChatUserSummary[];
     typingUsers: readonly string[];
@@ -66,10 +69,12 @@ interface ChatState {
     sendTyping: (isTyping: boolean) => void;
     reactToMessage: (messageId: string, emoji: string) => Promise<void>;
     loadHistory: () => Promise<void>;
-    fetchDirectory: () => Promise<void>;
+    fetchDirectory: (force?: boolean) => Promise<void>;
     setReplyingTo: (message: ChatMessage | null) => void;
     reset: () => void;
 }
+
+const DIRECTORY_TIMEOUT_MS = 5_000;
 
 const getMessageMediaUrl = (message: ChatMessage): string | null => {
     return message.imageUrl ?? message.audioUrl ?? message.fileUrl ?? null;
@@ -99,6 +104,16 @@ const addOrReplaceMessage = (
     }
 
     return messages.map((message) => message.id === incoming.id ? incoming : message);
+};
+
+const mergeHydratedMessages = (
+    messages: readonly ChatMessage[],
+    hydratedMessages: readonly ChatMessage[]
+): ChatMessage[] => {
+    return hydratedMessages.reduce<ChatMessage[]>(
+        (current, incoming) => addOrReplaceMessage(current, incoming),
+        [...messages]
+    );
 };
 
 const getRawMessageId = (message: RawChatMessage): string => message.id ?? message._id ?? '';
@@ -183,6 +198,20 @@ const disconnectSocket = (socket: ChoirSocket | null): void => {
     socket?.disconnect();
 };
 
+const resolveConnectionError = (message: string): string => {
+    const normalized = message.toLowerCase();
+
+    if (normalized.includes('timeout')) {
+        return 'Tiempo de conexión agotado';
+    }
+
+    if (normalized.includes('bad request')) {
+        return 'No fue posible abrir el canal en tiempo real';
+    }
+
+    return 'No fue posible conectar el chat';
+};
+
 export const useChatStore = create<ChatState>((set, get) => ({
     messages: [],
     onlineUsers: [],
@@ -193,6 +222,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     socket: null,
     replyingTo: null,
     loading: false,
+    directoryLoading: false,
+    directoryLoaded: false,
+    directoryError: null,
 
     setReplyingTo: (message) => set({ replyingTo: message }),
 
@@ -217,16 +249,44 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     set({ messages: data.map(normalizeChatMessage) });
                 }
             });
-            const hydrated = await hydrateMedia(result.data.map(normalizeChatMessage));
-            set({ messages: hydrated });
+            const normalized = result.data.map(normalizeChatMessage);
+            set({ messages: normalized });
+
+            hydrateMedia(normalized)
+                .then((hydrated) => set((state) => ({
+                    messages: mergeHydratedMessages(state.messages, hydrated)
+                })))
+                .catch(() => undefined);
         } finally {
             set({ loading: false });
         }
     },
 
-    fetchDirectory: async () => {
-        const response = await choirApi.get<ChatDirectoryResponse>('/users/directory');
-        set({ allUsers: [...response.data.users] });
+    fetchDirectory: async (force = false) => {
+        const state = get();
+
+        if (state.directoryLoading || (state.directoryLoaded && !force)) {
+            return;
+        }
+
+        set({ directoryLoading: true, directoryError: null });
+
+        try {
+            const response = await choirApi.get<ChatDirectoryResponse>('/users/directory', {
+                timeout: DIRECTORY_TIMEOUT_MS
+            });
+            set({
+                allUsers: [...response.data.users],
+                directoryLoaded: true,
+                directoryError: null
+            });
+        } catch {
+            set({
+                directoryError: 'No fue posible cargar los miembros. Intenta nuevamente.'
+            });
+        } finally {
+            set({ directoryLoading: false });
+        }
     },
 
     connect: () => {
@@ -239,6 +299,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             !user ||
             requiresPasswordChange ||
             existing?.connected ||
+            existing?.active ||
             (user.role === 'SUPER_ADMIN' && !targetChoirId)
         ) {
             return;
@@ -251,14 +312,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
             : { accessToken: token };
         const socket: ChoirSocket = io(ENV.SOCKET_URL, {
             auth: socketAuth,
-            transports: ['websocket', 'polling'],
-            tryAllTransports: true,
-            rememberUpgrade: true,
+            transports: ['websocket'],
+            upgrade: false,
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 1_000,
             reconnectionDelayMax: 10_000,
-            timeout: 12_000,
+            timeout: 10_000,
             forceNew: true
         });
 
@@ -268,7 +328,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }));
         socket.on('connect_error', (error: Error) => set({
             connected: false,
-            connectionError: error.message || 'No fue posible conectar el chat'
+            connectionError: resolveConnectionError(error.message)
         }));
         socket.on('disconnect', (reason, details) => {
             const disconnectDetails = details
@@ -283,24 +343,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
             });
 
             set({
-                connected: false
+                connected: false,
+                connectionError: reason === 'io client disconnect'
+                    ? null
+                    : 'Reconectando chat...'
             });
         });
         socket.on('new-message', (raw) => {
-            persistChatChanges([raw]).catch(() => undefined);
             const normalized = normalizeChatMessage(raw);
+            set((state) => ({
+                messages: addOrReplaceMessage(state.messages, normalized)
+            }));
+            persistChatChanges([raw]).catch(() => undefined);
             hydrateMedia([normalized])
                 .then(([hydrated]) => set((state) => ({
                     messages: addOrReplaceMessage(state.messages, hydrated)
                 })))
-                .catch(() => set((state) => ({
-                    messages: addOrReplaceMessage(state.messages, normalized)
-                })));
+                .catch(() => undefined);
         });
         socket.on('message-updated', (raw) => {
-            persistChatChanges([raw]).catch(() => undefined);
             const normalized = normalizeChatMessage(raw);
             set((state) => ({ messages: addOrReplaceMessage(state.messages, normalized) }));
+            persistChatChanges([raw]).catch(() => undefined);
         });
         socket.on('online-users', (users) => set({ onlineUsers: users }));
         socket.on('user-typing', ({ username, isTyping }: SocketTypingEvent) => set((state) => ({
@@ -315,7 +379,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set({
             socket,
             connected: false,
-            connectionError: null
+            connectionError: 'Conectando...'
         });
     },
 
@@ -331,13 +395,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     },
 
     sendTyping: (isTyping) => {
-        get().socket?.emit('typing', isTyping);
+        const socket = get().socket;
+
+        if (socket?.connected) {
+            socket.emit('typing', isTyping);
+        }
     },
 
     reactToMessage: async (messageId, emoji) => {
         const updated = await toggleReaction(messageId, emoji);
-        await persistChatChanges([toRawChatMessage(updated)]);
         set((state) => ({ messages: addOrReplaceMessage(state.messages, updated) }));
+        persistChatChanges([toRawChatMessage(updated)]).catch(() => undefined);
     },
 
     sendMessage: async (textInput, attachment) => {
@@ -358,13 +426,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
             mediaAssetId: upload?.assetId,
             replyTo: replyingTo?.id
         });
-        await persistChatChanges([toRawChatMessage(message)]);
-        const [hydrated] = await hydrateMedia([message]);
 
         set((state) => ({
-            messages: addOrReplaceMessage(state.messages, hydrated),
+            messages: addOrReplaceMessage(state.messages, message),
             replyingTo: null
         }));
+        persistChatChanges([toRawChatMessage(message)]).catch(() => undefined);
+
+        if (getMessageMediaUrl(message)) {
+            hydrateMedia([message])
+                .then(([hydrated]) => set((state) => ({
+                    messages: addOrReplaceMessage(state.messages, hydrated)
+                })))
+                .catch(() => undefined);
+        }
     },
 
     reset: () => {
@@ -376,6 +451,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
             socket: null,
             replyingTo: null,
             loading: false,
+            directoryLoading: false,
+            directoryLoaded: false,
+            directoryError: null,
             onlineUsers: [],
             allUsers: [],
             typingUsers: []

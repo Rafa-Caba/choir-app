@@ -4,7 +4,8 @@ import axios from 'axios';
 import choirApi from '../api/choirApi';
 import type { CreateThemePayload, Theme } from '../types/theme';
 
-const THEME_UPDATE_RETRY_DELAY_MS = 500;
+const THEME_MUTATION_TIMEOUT_MS = 6_000;
+const THEME_UPDATE_RETRY_DELAY_MS = 250;
 
 const delay = async (milliseconds: number): Promise<void> => {
     await new Promise<void>((resolve) => {
@@ -28,7 +29,9 @@ export const getAllThemes = async (): Promise<readonly Theme[]> => {
 };
 
 export const createTheme = async (payload: CreateThemePayload): Promise<Theme> => {
-    const response = await choirApi.post<Theme>('/themes', payload);
+    const response = await choirApi.post<Theme>('/themes', payload, {
+        timeout: THEME_MUTATION_TIMEOUT_MS
+    });
     return response.data;
 };
 
@@ -37,7 +40,9 @@ export const updateTheme = async (
     payload: Partial<CreateThemePayload>
 ): Promise<Theme> => {
     try {
-        const response = await choirApi.put<Theme>(`/themes/${id}`, payload);
+        const response = await choirApi.put<Theme>(`/themes/${id}`, payload, {
+            timeout: THEME_MUTATION_TIMEOUT_MS
+        });
         return response.data;
     } catch (error) {
         if (!(error instanceof Error) || !isTransientRequestFailure(error)) {
@@ -45,7 +50,9 @@ export const updateTheme = async (
         }
 
         await delay(THEME_UPDATE_RETRY_DELAY_MS);
-        const retryResponse = await choirApi.put<Theme>(`/themes/${id}`, payload);
+        const retryResponse = await choirApi.put<Theme>(`/themes/${id}`, payload, {
+            timeout: THEME_MUTATION_TIMEOUT_MS
+        });
         return retryResponse.data;
     }
 };

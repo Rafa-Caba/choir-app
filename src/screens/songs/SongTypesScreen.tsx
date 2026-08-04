@@ -1,128 +1,212 @@
-import React, { useEffect, useState, useMemo } from 'react';
+// src/screens/songs/SongTypesScreen.tsx
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, FlatList, TouchableOpacity, StyleSheet, Modal,
-    TextInput, Alert, Switch, Platform
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import type { SongsStackParamList } from '../../navigation/SongsNavigator';
 import { useSongsStore } from '../../store/useSongsStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import type { SongType } from '../../types/song';
 
-const sortSongTypes = (a: SongType, b: SongType) => {
-    const orderA = typeof a.order === 'number' ? a.order : 99;
-    const orderB = typeof b.order === 'number' ? b.order : 99;
+type SongTypesNavigation = NativeStackNavigationProp<SongsStackParamList, 'SongTypes'>;
 
-    if (orderA !== orderB) return orderA - orderB;
+const sortSongTypes = (left: SongType, right: SongType): number => {
+    const orderDifference = left.order - right.order;
 
-    const nameA = (a.name || '').toLowerCase();
-    const nameB = (b.name || '').toLowerCase();
+    if (orderDifference !== 0) {
+        return orderDifference;
+    }
 
-    if (nameA < nameB) return -1;
-    if (nameA > nameB) return 1;
-    return 0;
+    return left.name.localeCompare(right.name);
 };
 
 export const SongTypesScreen = () => {
-    const navigation = useNavigation<any>();
-
-    const { songTypes, fetchData, loading, addType, editType, removeType } = useSongsStore();
-    const { user } = useAuthStore();
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
+    const navigation = useNavigation<SongTypesNavigation>();
+    const nameInputRef = useRef<TextInput>(null);
+    const orderInputRef = useRef<TextInput>(null);
+    const songTypes = useSongsStore((state) => state.songTypes);
+    const fetchData = useSongsStore((state) => state.fetchData);
+    const loading = useSongsStore((state) => state.loading);
+    const addType = useSongsStore((state) => state.addType);
+    const editType = useSongsStore((state) => state.editType);
+    const removeType = useSongsStore((state) => state.removeType);
+    const user = useAuthStore((state) => state.user);
+    const colors = useTheme().currentTheme;
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'EDITOR';
-
     const [currentParentId, setCurrentParentId] = useState<string | null>(null);
-
     const [modalVisible, setModalVisible] = useState(false);
     const [editingType, setEditingType] = useState<SongType | null>(null);
     const [typeName, setTypeName] = useState('');
     const [typeOrder, setTypeOrder] = useState('');
     const [isParent, setIsParent] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
 
     useEffect(() => {
-        fetchData();
+        fetchData().catch(() => undefined);
+    }, [fetchData]);
+
+    useEffect(() => {
+        const showSubscription = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            () => setKeyboardVisible(true)
+        );
+        const hideSubscription = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => setKeyboardVisible(false)
+        );
+
+        return () => {
+            showSubscription.remove();
+            hideSubscription.remove();
+        };
     }, []);
 
     const displayedTypes = useMemo(() => {
-        const filtered = songTypes.filter(t => {
-            if (currentParentId) return t.parentId === currentParentId;
-            return !t.parentId;
-        });
-
-        return [...filtered].sort(sortSongTypes);
+        return songTypes
+            .filter((type) => currentParentId
+                ? type.parentId === currentParentId
+                : !type.parentId)
+            .sort(sortSongTypes);
     }, [songTypes, currentParentId]);
 
     const parentName = currentParentId
-        ? songTypes.find(t => t.id === currentParentId)?.name
+        ? songTypes.find((type) => type.id === currentParentId)?.name ?? 'Categorías'
         : 'Categorías';
 
-    const openModal = (type?: SongType) => {
+    const closeModal = (): void => {
+        if (saving) {
+            return;
+        }
+
+        Keyboard.dismiss();
+        setModalVisible(false);
+    };
+
+    const openModal = (type?: SongType): void => {
         if (type) {
             setEditingType(type);
             setTypeName(type.name);
-            setTypeOrder(type.order ? type.order.toString() : '99');
-            setIsParent(type.isParent || false);
+            setTypeOrder(String(type.order || 99));
+            setIsParent(type.isParent);
         } else {
             setEditingType(null);
             setTypeName('');
             setTypeOrder('');
             setIsParent(false);
         }
+
         setModalVisible(true);
+        setTimeout(() => nameInputRef.current?.focus(), 180);
     };
 
-    const handleSave = async () => {
-        if (!typeName.trim()) {
-            Alert.alert("Error", "El nombre es requerido");
+    const handleOrderChange = (value: string): void => {
+        setTypeOrder(value.replace(/\D/gu, '').slice(0, 2));
+    };
+
+    const handleSave = async (): Promise<void> => {
+        const normalizedName = typeName.trim();
+        const parsedOrder = Number.parseInt(typeOrder, 10);
+
+        if (!normalizedName) {
+            Alert.alert('Error', 'El nombre es requerido.');
             return;
         }
-        const order = parseInt(typeOrder) || 99;
 
-        let success;
-        if (editingType) {
-            success = await editType(editingType.id, typeName, order, isParent);
-        } else {
-            const newParentId = currentParentId;
-            const newIsParent = currentParentId ? false : isParent;
-
-            success = await addType(typeName, order, newParentId, newIsParent);
+        if (!Number.isInteger(parsedOrder) || parsedOrder < 1 || parsedOrder > 99) {
+            Alert.alert('Error', 'El orden debe ser un número entre 1 y 99.');
+            return;
         }
 
-        if (success) setModalVisible(false);
+        Keyboard.dismiss();
+        setSaving(true);
+
+        try {
+            const success = editingType
+                ? await editType(editingType.id, normalizedName, parsedOrder, isParent)
+                : await addType(
+                    normalizedName,
+                    parsedOrder,
+                    currentParentId,
+                    currentParentId ? false : isParent
+                );
+
+            if (!success) {
+                Alert.alert('Error', 'No fue posible guardar la categoría.');
+                return;
+            }
+
+            setModalVisible(false);
+        } finally {
+            setSaving(false);
+        }
     };
 
-    const handleDelete = (item: SongType) => {
+    const handleDelete = (item: SongType): void => {
         if (Platform.OS === 'web') {
-            if (window.confirm(`Eliminar Categoría "${item.name}"?`)) removeType(item.id);
-        } else {
-            Alert.alert(
-                "Eliminar Categoría",
-                `Are you sure you want to delete "${item.name}"?`,
-                [
-                    { text: "Cancelar", style: "cancel" },
-                    { text: "Eliminar", style: "destructive", onPress: () => removeType(item.id) }
-                ]
-            );
+            const confirmed = window.confirm(`¿Eliminar la categoría "${item.name}"?`);
+
+            if (confirmed) {
+                removeType(item.id).catch(() => undefined);
+            }
+
+            return;
         }
+
+        Alert.alert(
+            'Eliminar categoría',
+            `¿Deseas eliminar "${item.name}"?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: () => {
+                        removeType(item.id).catch(() => undefined);
+                    }
+                }
+            ]
+        );
     };
 
-    const handleItemPress = (item: SongType) => {
+    const handleItemPress = (item: SongType): void => {
         if (item.isParent) {
             setCurrentParentId(item.id);
-        } else {
-            navigation.navigate('SongsListScreen', { typeId: item.id, typeName: item.name });
+            return;
         }
+
+        navigation.navigate('SongsListScreen', {
+            typeId: item.id,
+            typeName: item.name
+        });
     };
 
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-
             <View style={styles.headerRow}>
                 {currentParentId && (
-                    <TouchableOpacity onPress={() => setCurrentParentId(null)} style={{ marginRight: 10 }}>
+                    <TouchableOpacity
+                        onPress={() => setCurrentParentId(null)}
+                        style={styles.backButton}
+                    >
                         <Ionicons name="arrow-back" size={24} color={colors.textColor} />
                     </TouchableOpacity>
                 )}
@@ -135,9 +219,10 @@ export const SongTypesScreen = () => {
                 <TouchableOpacity
                     style={[styles.addButton, { backgroundColor: colors.buttonColor }]}
                     onPress={() => openModal()}
+                    activeOpacity={0.75}
                 >
                     <Text style={[styles.addButtonText, { color: colors.buttonTextColor }]}>
-                        + {currentParentId ? 'Sub-Categoría' : 'Categoría'}
+                        + {currentParentId ? 'Subcategoría' : 'Categoría'}
                     </Text>
                 </TouchableOpacity>
             )}
@@ -146,16 +231,22 @@ export const SongTypesScreen = () => {
                 data={displayedTypes}
                 keyExtractor={(item) => item.id}
                 refreshing={loading}
-                onRefresh={fetchData}
+                onRefresh={() => void fetchData()}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
                     <View style={[styles.card, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
                         <TouchableOpacity
-                            style={{ flex: 1 }}
+                            style={styles.cardMain}
                             onPress={() => handleItemPress(item)}
                         >
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <View style={styles.cardTitleRow}>
                                 {item.isParent && (
-                                    <Ionicons name="folder-open" size={20} color={colors.primaryColor} style={{ marginRight: 10 }} />
+                                    <Ionicons
+                                        name="folder-open"
+                                        size={20}
+                                        color={colors.primaryColor}
+                                        style={styles.folderIcon}
+                                    />
                                 )}
                                 <Text style={[styles.orderBadge, { color: colors.secondaryTextColor }]}>
                                     {item.order}
@@ -166,7 +257,7 @@ export const SongTypesScreen = () => {
 
                         {isAdmin && (
                             <View style={styles.actions}>
-                                <TouchableOpacity onPress={() => openModal(item)} style={{ marginRight: 15 }}>
+                                <TouchableOpacity onPress={() => openModal(item)} style={styles.editButton}>
                                     <Ionicons name="pencil" size={20} color={colors.primaryColor} />
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => handleDelete(item)}>
@@ -176,57 +267,135 @@ export const SongTypesScreen = () => {
                         )}
                     </View>
                 )}
-                ListEmptyComponent={
-                    <Text style={{ textAlign: 'center', marginTop: 20, color: colors.secondaryTextColor }}>
-                        No Categoría encontradas.
+                ListEmptyComponent={(
+                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
+                        No se encontraron categorías.
                     </Text>
-                }
+                )}
             />
 
-            {/* Manage Type Modal */}
-            <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
-                        <Text style={[styles.modalTitle, { color: colors.textColor }]}>
-                            {editingType ? 'Editar Categoría' : 'Nueva Categoría'}
-                        </Text>
+            <Modal
+                visible={modalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={closeModal}
+            >
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={0}
+                >
+                    <ScrollView
+                        contentContainerStyle={styles.modalScrollContent}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
+                            <Text style={[styles.modalTitle, { color: colors.textColor }]}>
+                                {editingType ? 'Editar categoría' : 'Nueva categoría'}
+                            </Text>
 
-                        <Text style={{ color: colors.secondaryTextColor, marginBottom: 5 }}>Nombre:</Text>
-                        <TextInput
-                            style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor, backgroundColor: colors.backgroundColor }]}
-                            value={typeName} onChangeText={setTypeName}
-                            placeholder="e.g. Misa" placeholderTextColor={colors.secondaryTextColor}
-                        />
+                            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Nombre</Text>
+                            <TextInput
+                                ref={nameInputRef}
+                                style={[
+                                    styles.input,
+                                    {
+                                        color: colors.textColor,
+                                        borderColor: colors.borderColor,
+                                        backgroundColor: colors.backgroundColor
+                                    }
+                                ]}
+                                value={typeName}
+                                onChangeText={setTypeName}
+                                placeholder="Ej. Misa Ero Cras"
+                                placeholderTextColor={colors.secondaryTextColor}
+                                autoCorrect
+                                spellCheck
+                                autoCapitalize="words"
+                                returnKeyType="next"
+                                onSubmitEditing={() => orderInputRef.current?.focus()}
+                                editable={!saving}
+                            />
 
-                        <Text style={{ color: colors.secondaryTextColor, marginBottom: 5 }}>Order (1-99):</Text>
-                        <TextInput
-                            style={[styles.input, { color: colors.textColor, borderColor: colors.borderColor, backgroundColor: colors.backgroundColor }]}
-                            value={typeOrder} onChangeText={setTypeOrder} keyboardType="numeric"
-                            placeholder="99" placeholderTextColor={colors.secondaryTextColor}
-                        />
+                            <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Orden (1-99)</Text>
+                            <TextInput
+                                ref={orderInputRef}
+                                style={[
+                                    styles.input,
+                                    {
+                                        color: colors.textColor,
+                                        borderColor: colors.borderColor,
+                                        backgroundColor: colors.backgroundColor
+                                    }
+                                ]}
+                                value={typeOrder}
+                                onChangeText={handleOrderChange}
+                                keyboardType="number-pad"
+                                placeholder="99"
+                                placeholderTextColor={colors.secondaryTextColor}
+                                maxLength={2}
+                                editable={!saving}
+                            />
 
-                        {!currentParentId && !editingType && (
-                            <View style={styles.switchRow}>
-                                <Text style={{ color: colors.textColor, flex: 1 }}>Es esta una Carpeta (e.g. Misa)?</Text>
-                                <Switch
-                                    value={isParent}
-                                    onValueChange={setIsParent}
-                                    trackColor={{ false: "#767577", true: colors.primaryColor }}
-                                    thumbColor={isParent ? colors.buttonTextColor : "#f4f3f4"}
-                                />
+                            {keyboardVisible && (
+                                <TouchableOpacity
+                                    style={styles.dismissKeyboardButton}
+                                    onPress={Keyboard.dismiss}
+                                >
+                                    <Ionicons name="chevron-down" size={18} color={colors.primaryColor} />
+                                    <Text style={[styles.dismissKeyboardText, { color: colors.primaryColor }]}>
+                                        Ocultar teclado
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+
+                            {!currentParentId && !editingType && (
+                                <View style={styles.switchRow}>
+                                    <Text style={[styles.switchLabel, { color: colors.textColor }]}>
+                                        ¿Es una carpeta principal, como una misa?
+                                    </Text>
+                                    <Switch
+                                        value={isParent}
+                                        onValueChange={setIsParent}
+                                        trackColor={{ false: '#767577', true: colors.primaryColor }}
+                                        thumbColor={isParent ? colors.buttonTextColor : '#f4f3f4'}
+                                        disabled={saving}
+                                    />
+                                </View>
+                            )}
+
+                            <View style={styles.modalButtons}>
+                                <TouchableOpacity
+                                    onPress={closeModal}
+                                    style={styles.cancelBtn}
+                                    disabled={saving}
+                                >
+                                    <Text style={{ color: colors.secondaryTextColor }}>Cancelar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => void handleSave()}
+                                    style={[
+                                        styles.saveBtn,
+                                        { backgroundColor: colors.buttonColor },
+                                        saving && styles.disabledButton
+                                    ]}
+                                    disabled={saving}
+                                    activeOpacity={0.75}
+                                >
+                                    {saving ? (
+                                        <ActivityIndicator color={colors.buttonTextColor} />
+                                    ) : (
+                                        <Text style={{ color: colors.buttonTextColor, fontWeight: 'bold' }}>
+                                            Guardar
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
                             </View>
-                        )}
-
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}>
-                                <Text style={{ color: colors.secondaryTextColor }}>Cancelar</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.buttonColor }]}>
-                                <Text style={{ color: colors.buttonTextColor, fontWeight: 'bold' }}>Guardar</Text>
-                            </TouchableOpacity>
                         </View>
-                    </View>
-                </View>
+                    </ScrollView>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );
@@ -236,22 +405,68 @@ const styles = StyleSheet.create({
     container: { flex: 1, paddingHorizontal: 20, marginTop: 10 },
     headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, marginTop: 10 },
     headerTitle: { fontSize: 20, fontWeight: 'bold' },
+    backButton: { marginRight: 10 },
     addButton: { padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 20 },
     addButtonText: { fontWeight: 'bold', fontSize: 16 },
     card: {
-        padding: 20, marginBottom: 10, borderRadius: 12, borderWidth: 1,
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'
+        padding: 20,
+        marginBottom: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center'
     },
+    cardMain: { flex: 1 },
+    cardTitleRow: { flexDirection: 'row', alignItems: 'center' },
     cardTitle: { fontSize: 18, fontWeight: '600' },
     orderBadge: { fontSize: 12, marginRight: 10, width: 25 },
+    folderIcon: { marginRight: 10 },
     actions: { flexDirection: 'row' },
-
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-    modalContent: { borderRadius: 15, padding: 20, elevation: 5, width: '100%', maxWidth: 400, alignSelf: 'center' },
+    editButton: { marginRight: 15 },
+    emptyText: { textAlign: 'center', marginTop: 20 },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center'
+    },
+    modalScrollContent: {
+        flexGrow: 1,
+        justifyContent: 'center',
+        padding: 20
+    },
+    modalContent: {
+        borderRadius: 15,
+        padding: 20,
+        elevation: 5,
+        width: '100%',
+        maxWidth: 400,
+        alignSelf: 'center'
+    },
     modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+    label: { marginBottom: 5 },
     input: { borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 15 },
+    dismissKeyboardButton: {
+        alignSelf: 'flex-end',
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: -4,
+        marginBottom: 14,
+        paddingVertical: 6
+    },
+    dismissKeyboardText: { marginLeft: 5, fontWeight: '600' },
     switchRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+    switchLabel: { flex: 1, paddingRight: 12 },
     modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 },
     cancelBtn: { padding: 10, marginRight: 10 },
-    saveBtn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }
+    saveBtn: {
+        minWidth: 100,
+        minHeight: 44,
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    disabledButton: { opacity: 0.65 }
 });

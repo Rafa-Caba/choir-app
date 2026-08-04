@@ -505,8 +505,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ loading: true, errorMessage: null });
 
         try {
-            await get().replaceUser(await updateProfile(data, imageUri));
-            set({ loading: false });
+            const incomingUser = await updateProfile(data, imageUri);
+            const current = get();
+            const mergedUser = mergeUser(current.user, incomingUser);
+            const immediateUser = imageUri
+                ? { ...mergedUser, cachedImageUrl: null }
+                : mergedUser;
+
+            set({
+                user: immediateUser,
+                loading: false
+            });
+
+            get().replaceUser(immediateUser).catch(() => undefined);
             return true;
         } catch (error) {
             set({
@@ -521,25 +532,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     replaceUser: async (incomingUser) => {
         const current = get();
-        const user = await hydrateUserMedia(
-            mergeUser(current.user, incomingUser),
-            current.choir
-        );
+        const immediateUser = mergeUser(current.user, incomingUser);
+        set({ user: immediateUser });
 
-        set({ user });
+        const finishReplacement = async (): Promise<void> => {
+            const hydratedUser = await hydrateUserMedia(immediateUser, current.choir);
+            const latest = get();
 
-        if (current.status === 'authenticated') {
-            await savePersistedSessionContext({
-                user,
-                choir: current.choir,
-                requiresPasswordChange: current.requiresPasswordChange,
-                metadata: {
-                    userId: user.id,
-                    choirId: current.choir?.id ?? user.choirId,
-                    validatedAt: new Date().toISOString()
-                }
-            });
-        }
+            if (latest.user?.id === hydratedUser.id) {
+                set({ user: mergeUser(latest.user, hydratedUser) });
+            }
+
+            if (current.status === 'authenticated') {
+                await savePersistedSessionContext({
+                    user: hydratedUser,
+                    choir: current.choir,
+                    requiresPasswordChange: current.requiresPasswordChange,
+                    metadata: {
+                        userId: hydratedUser.id,
+                        choirId: current.choir?.id ?? hydratedUser.choirId,
+                        validatedAt: new Date().toISOString()
+                    }
+                });
+            }
+        };
+
+        finishReplacement().catch(() => undefined);
     },
 
     getTenantContext: () => getContext(get().user, get().choir)

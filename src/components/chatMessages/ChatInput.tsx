@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
+    Keyboard,
     Modal,
     Platform,
     StyleSheet,
@@ -23,6 +25,7 @@ import { getPreviewFromRichText } from '../../utils/textUtils';
 interface Props {
     readonly onSend: (text: string, attachment?: ChatAttachment) => Promise<void>;
     readonly onTyping?: () => void;
+    readonly onFocus?: () => void;
 }
 
 interface SelectedMedia extends ChatAttachment {
@@ -39,15 +42,33 @@ const videoFallback = {
     mimeType: 'video/mp4'
 } as const;
 
-export const ChatInput = ({ onSend, onTyping }: Props) => {
+export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
     const [message, setMessage] = useState('');
     const [selectedMedia, setSelectedMedia] = useState<SelectedMedia | null>(null);
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [sending, setSending] = useState(false);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
     const [showAttachmentModal, setShowAttachmentModal] = useState(false);
-    const { replyingTo, setReplyingTo } = useChatStore();
+    const replyingTo = useChatStore((state) => state.replyingTo);
+    const setReplyingTo = useChatStore((state) => state.setReplyingTo);
     const colors = useTheme().currentTheme;
+
+    useEffect(() => {
+        const showSubscription = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            () => setKeyboardVisible(true)
+        );
+        const hideSubscription = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => setKeyboardVisible(false)
+        );
+
+        return () => {
+            showSubscription.remove();
+            hideSubscription.remove();
+        };
+    }, []);
 
     useEffect(() => {
         return () => {
@@ -171,14 +192,20 @@ export const ChatInput = ({ onSend, onTyping }: Props) => {
             return;
         }
 
+        const mediaToSend = selectedMedia;
+        const replyToRestore = replyingTo;
+
         setSending(true);
+        setMessage('');
+        setSelectedMedia(null);
+        setReplyingTo(null);
 
         try {
-            await onSend(textToSend, selectedMedia ?? undefined);
-            setMessage('');
-            setSelectedMedia(null);
-            setReplyingTo(null);
+            await onSend(textToSend, mediaToSend ?? undefined);
         } catch {
+            setMessage((current) => current.length === 0 ? textToSend : current);
+            setSelectedMedia((current) => current ?? mediaToSend);
+            setReplyingTo(replyToRestore);
             Alert.alert('Error', 'No fue posible enviar el mensaje.');
         } finally {
             setSending(false);
@@ -284,6 +311,7 @@ export const ChatInput = ({ onSend, onTyping }: Props) => {
                             onPress={() => setShowAttachmentModal(true)}
                             style={styles.attachBtn}
                             disabled={sending}
+                            activeOpacity={0.7}
                         >
                             <Ionicons name="add-circle-outline" size={32} color={colors.buttonTextColor} />
                         </TouchableOpacity>
@@ -310,17 +338,47 @@ export const ChatInput = ({ onSend, onTyping }: Props) => {
                             textAlignVertical="top"
                             value={message}
                             onChangeText={handleTextChange}
+                            onFocus={onFocus}
                             autoCorrect
                             spellCheck
                             autoCapitalize="sentences"
                             keyboardType="default"
+                            keyboardAppearance={colors.isDark ? 'dark' : 'light'}
                             editable={!sending}
+                            blurOnSubmit={false}
+                            scrollEnabled
                         />
                     )}
 
+                    {keyboardVisible && !isRecording && (
+                        <TouchableOpacity
+                            style={styles.keyboardButton}
+                            onPress={Keyboard.dismiss}
+                            disabled={sending}
+                            activeOpacity={0.7}
+                            accessibilityLabel="Ocultar teclado"
+                        >
+                            <Ionicons
+                                name="chevron-down-circle-outline"
+                                color={colors.buttonTextColor}
+                                size={25}
+                            />
+                        </TouchableOpacity>
+                    )}
+
                     {message.trim().length > 0 || selectedMedia ? (
-                        <TouchableOpacity style={styles.iconSend} onPress={() => void onSubmit()} disabled={sending}>
-                            <Ionicons name="send" color={colors.buttonTextColor} size={24} />
+                        <TouchableOpacity
+                            style={styles.iconSend}
+                            onPress={() => void onSubmit()}
+                            disabled={sending}
+                            activeOpacity={0.7}
+                            accessibilityLabel="Enviar mensaje"
+                        >
+                            {sending ? (
+                                <ActivityIndicator size="small" color={colors.buttonTextColor} />
+                            ) : (
+                                <Ionicons name="send" color={colors.buttonTextColor} size={24} />
+                            )}
                         </TouchableOpacity>
                     ) : (
                         <TouchableOpacity
@@ -328,12 +386,18 @@ export const ChatInput = ({ onSend, onTyping }: Props) => {
                             onPressIn={() => void startRecording()}
                             onPressOut={() => void stopRecording()}
                             disabled={sending}
+                            activeOpacity={0.7}
+                            accessibilityLabel="Grabar nota de voz"
                         >
-                            <Ionicons
-                                name={isRecording ? 'mic' : 'mic-outline'}
-                                color={isRecording ? '#ff3b30' : colors.buttonTextColor}
-                                size={24}
-                            />
+                            {sending ? (
+                                <ActivityIndicator size="small" color={colors.buttonTextColor} />
+                            ) : (
+                                <Ionicons
+                                    name={isRecording ? 'mic' : 'mic-outline'}
+                                    color={isRecording ? '#ff3b30' : colors.buttonTextColor}
+                                    size={24}
+                                />
+                            )}
                         </TouchableOpacity>
                     )}
                 </View>
@@ -346,9 +410,9 @@ const styles = StyleSheet.create({
     flexOne: { flex: 1 },
     container: {
         width: '100%',
-        paddingBottom: Platform.OS === 'ios' ? 12 : 10,
+        paddingBottom: Platform.OS === 'ios' ? 10 : 8,
         paddingHorizontal: 10,
-        paddingVertical: 10
+        paddingTop: 8
     },
     itemInput: { flexDirection: 'row', alignItems: 'flex-end' },
     input: {
@@ -363,7 +427,14 @@ const styles = StyleSheet.create({
         minHeight: 40
     },
     attachBtn: { marginVertical: 'auto', paddingHorizontal: 3 },
-    iconSend: { marginLeft: 10, marginVertical: 'auto', padding: 5 },
+    keyboardButton: { marginLeft: 6, marginVertical: 'auto', padding: 4 },
+    iconSend: {
+        minWidth: 38,
+        minHeight: 38,
+        marginLeft: 6,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
     recordingContainer: {
         flex: 1,
         height: 40,

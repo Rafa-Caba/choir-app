@@ -1,9 +1,9 @@
+// src/navigation/TabsNavigator.tsx
+
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-
-// Navigators & Screens
 import { HomeNavigator } from './HomeNavigator';
 import { ChatScreen } from '../screens/chat/ChatScreen';
 import { SongsNavigator } from './SongsNavigator';
@@ -11,37 +11,40 @@ import { GalleryNavigator } from './GalleryNavigator';
 import { BlogNavigator } from './BlogNavigator';
 import { SettingsNavigator } from './SettingsNavigator';
 
-const Tab = createBottomTabNavigator();
+type TabsParamList = {
+    readonly HomeTab: undefined;
+    readonly ChatTab: undefined;
+    readonly SongsTab: undefined;
+    readonly GalleryTab: undefined;
+    readonly BlogTab: undefined;
+    readonly SettingsTab: undefined;
+};
+
+const Tab = createBottomTabNavigator<TabsParamList>();
 
 export const TabsNavigator = () => {
-    // Get Current Theme Colors
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
+    const colors = useTheme().currentTheme;
 
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
                 headerShown: false,
-                
-                // 3. Dynamic Colors
+                tabBarHideOnKeyboard: true,
                 tabBarActiveTintColor: colors.primaryColor,
-                // Fallback to gray if secondary text color isn't defined
-                tabBarInactiveTintColor: colors.secondaryTextColor || '#888',
-                
+                tabBarInactiveTintColor: colors.secondaryTextColor || '#888888',
                 tabBarStyle: {
-                    backgroundColor: colors.navColor, 
-                    borderTopColor: colors.borderColor || 'transparent', 
+                    backgroundColor: colors.navColor,
+                    borderTopColor: colors.borderColor || 'transparent',
                     borderTopWidth: 1,
                     elevation: 0,
-                    height: 80, 
+                    height: 80,
                     paddingTop: 5,
                     paddingBottom: 20
                 },
                 tabBarLabelStyle: {
                     fontSize: 12,
-                    marginBottom: 5,
+                    marginBottom: 5
                 },
-                
                 tabBarIcon: ({ color, size, focused }) => {
                     let iconName: keyof typeof Ionicons.glyphMap = 'home';
 
@@ -53,7 +56,7 @@ export const TabsNavigator = () => {
                     else if (route.name === 'SettingsTab') iconName = focused ? 'settings' : 'settings-outline';
 
                     return <Ionicons name={iconName} size={size} color={color} />;
-                },
+                }
             })}
         >
             <Tab.Screen name="HomeTab" component={HomeNavigator} options={{ title: 'Home' }} />

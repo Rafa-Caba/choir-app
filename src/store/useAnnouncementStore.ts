@@ -44,21 +44,35 @@ const replaceAnnouncement = (
     announcements: readonly Announcement[],
     incoming: Announcement
 ): Announcement[] => {
-    const exists = announcements.some((announcement) => announcement.id === incoming.id);
-    return exists
-        ? announcements.map((announcement) => announcement.id === incoming.id ? incoming : announcement)
-        : [incoming, ...announcements];
+    const existing = announcements.find((announcement) => announcement.id === incoming.id);
+    const merged = existing
+        ? {
+            ...existing,
+            ...incoming,
+            cachedImageUrl: incoming.cachedImageUrl ?? (
+                existing.imageUrl === incoming.imageUrl
+                    ? existing.cachedImageUrl
+                    : null
+            )
+        }
+        : incoming;
+
+    return existing
+        ? announcements.map((announcement) => announcement.id === incoming.id ? merged : announcement)
+        : [merged, ...announcements];
 };
 
-export const useAnnouncementStore = create<AnnouncementState>((set, get) => {
-    const fetchAnnouncements = async (): Promise<void> => {
+export const useAnnouncementStore = create<AnnouncementState>((set) => {
+    const syncAnnouncements = async (showLoading: boolean): Promise<void> => {
         const context = useAuthStore.getState().getTenantContext();
 
         if (!context) {
             return;
         }
 
-        set({ loading: true, errorMessage: null });
+        if (showLoading) {
+            set({ loading: true, errorMessage: null });
+        }
 
         try {
             const result = await syncCacheFirst<readonly Announcement[]>({
@@ -68,14 +82,40 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => {
                 ttlMs: CACHE_TTL_MS.announcements,
                 onData: (data) => set({ announcements: [...data] })
             });
-            set({ announcements: await hydrateAnnouncements(result.data) });
+            const rawAnnouncements = [...result.data];
+            set({ announcements: rawAnnouncements });
+
+            hydrateAnnouncements(rawAnnouncements)
+                .then((hydrated) => set((state) => ({
+                    announcements: hydrated.reduce<Announcement[]>(
+                        (current, announcement) => replaceAnnouncement(current, announcement),
+                        state.announcements
+                    )
+                })))
+                .catch(() => undefined);
         } catch (error) {
             set({ errorMessage: getApiErrorMessage(error as object) });
             throw error;
         } finally {
-            set({ loading: false });
+            if (showLoading) {
+                set({ loading: false });
+            }
         }
     };
+
+    const refreshInBackground = (): void => {
+        syncAnnouncements(false).catch(() => undefined);
+    };
+
+    const hydrateAnnouncementInBackground = (announcement: Announcement): void => {
+        hydrateAnnouncements([announcement])
+            .then(([hydrated]) => set((state) => ({
+                announcements: replaceAnnouncement(state.announcements, hydrated)
+            })))
+            .catch(() => undefined);
+    };
+
+    const fetchAnnouncements = (): Promise<void> => syncAnnouncements(true);
 
     return {
         announcements: [],
@@ -83,15 +123,17 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => {
         errorMessage: null,
         fetchPublicAnnouncements: fetchAnnouncements,
         fetchAdminAnnouncements: fetchAnnouncements,
+
         addAnnouncement: async (payload) => {
             set({ loading: true, errorMessage: null });
+
             try {
                 const created = await createAnnouncement(payload);
-                const [hydrated] = await hydrateAnnouncements([created]);
                 set((state) => ({
-                    announcements: replaceAnnouncement(state.announcements, hydrated)
+                    announcements: replaceAnnouncement(state.announcements, created)
                 }));
-                get().fetchPublicAnnouncements().catch(() => undefined);
+                hydrateAnnouncementInBackground(created);
+                refreshInBackground();
                 return true;
             } catch (error) {
                 set({ errorMessage: getApiErrorMessage(error as object) });
@@ -100,15 +142,17 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => {
                 set({ loading: false });
             }
         },
+
         editAnnouncement: async (id, payload) => {
             set({ loading: true, errorMessage: null });
+
             try {
                 const updated = await updateAnnouncement(id, payload);
-                const [hydrated] = await hydrateAnnouncements([updated]);
                 set((state) => ({
-                    announcements: replaceAnnouncement(state.announcements, hydrated)
+                    announcements: replaceAnnouncement(state.announcements, updated)
                 }));
-                get().fetchPublicAnnouncements().catch(() => undefined);
+                hydrateAnnouncementInBackground(updated);
+                refreshInBackground();
                 return true;
             } catch (error) {
                 set({ errorMessage: getApiErrorMessage(error as object) });
@@ -117,18 +161,21 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => {
                 set({ loading: false });
             }
         },
+
         removeAnnouncement: async (id) => {
             try {
                 await deleteAnnouncement(id);
                 set((state) => ({
                     announcements: state.announcements.filter((announcement) => announcement.id !== id)
                 }));
+                refreshInBackground();
                 return true;
             } catch (error) {
                 set({ errorMessage: getApiErrorMessage(error as object) });
                 return false;
             }
         },
+
         reset: () => set({
             announcements: [],
             loading: false,

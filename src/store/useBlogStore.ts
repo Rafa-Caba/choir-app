@@ -47,22 +47,35 @@ const replacePost = (
     posts: readonly BlogPost[],
     incoming: BlogPost
 ): BlogPost[] => {
-    const exists = posts.some((post) => post.id === incoming.id);
-    return exists
-        ? posts.map((post) => post.id === incoming.id ? incoming : post)
-        : [incoming, ...posts];
+    const existing = posts.find((post) => post.id === incoming.id);
+    const merged = existing
+        ? {
+            ...existing,
+            ...incoming,
+            cachedImageUrl: incoming.cachedImageUrl ?? (
+                existing.imageUrl === incoming.imageUrl
+                    ? existing.cachedImageUrl
+                    : null
+            )
+        }
+        : incoming;
+
+    return existing
+        ? posts.map((post) => post.id === incoming.id ? merged : post)
+        : [merged, ...posts];
 };
 
-export const useBlogStore = create<BlogState>((set, get) => ({
-    posts: [],
-    currentPost: null,
-    loading: false,
-    errorMessage: null,
-
-    fetchPosts: async () => {
+export const useBlogStore = create<BlogState>((set) => {
+    const syncPosts = async (showLoading: boolean): Promise<void> => {
         const context = useAuthStore.getState().getTenantContext();
-        if (!context) return;
-        set({ loading: true, errorMessage: null });
+
+        if (!context) {
+            return;
+        }
+
+        if (showLoading) {
+            set({ loading: true, errorMessage: null });
+        }
 
         try {
             const result = await syncCacheFirst<readonly BlogPost[]>({
@@ -72,101 +85,149 @@ export const useBlogStore = create<BlogState>((set, get) => ({
                 ttlMs: CACHE_TTL_MS.blog,
                 onData: (data) => set({ posts: [...data] })
             });
-            const hydrated = await hydratePosts(result.data);
+            const rawPosts = [...result.data];
             set((state) => ({
-                posts: hydrated,
+                posts: rawPosts,
                 currentPost: state.currentPost
-                    ? hydrated.find((post) => post.id === state.currentPost?.id) ?? null
+                    ? rawPosts.find((post) => post.id === state.currentPost?.id) ?? state.currentPost
                     : null
             }));
+
+            hydratePosts(rawPosts)
+                .then((hydrated) => set((state) => ({
+                    posts: hydrated.reduce<BlogPost[]>(
+                        (current, post) => replacePost(current, post),
+                        state.posts
+                    ),
+                    currentPost: state.currentPost
+                        ? hydrated.find((post) => post.id === state.currentPost?.id) ?? state.currentPost
+                        : null
+                })))
+                .catch(() => undefined);
         } catch (error) {
             set({ errorMessage: getApiErrorMessage(error as object) });
             throw error;
         } finally {
-            set({ loading: false });
+            if (showLoading) {
+                set({ loading: false });
+            }
         }
-    },
+    };
 
-    selectPost: (post) => set({ currentPost: post }),
+    const refreshInBackground = (): void => {
+        syncPosts(false).catch(() => undefined);
+    };
 
-    likePost: async (id) => {
-        const user = useAuthStore.getState().user;
-        if (!user) return;
-
-        const response = await togglePostLike(id);
-        const update = (post: BlogPost): BlogPost => {
-            if (post.id !== id) return post;
-            const likedUsers = response.liked
-                ? [...post.likesUsers.filter((userId) => userId !== user.id), user.id]
-                : post.likesUsers.filter((userId) => userId !== user.id);
-            return { ...post, likes: response.likes, likesUsers: likedUsers };
-        };
-
-        set((state) => ({
-            posts: state.posts.map(update),
-            currentPost: state.currentPost ? update(state.currentPost) : null
-        }));
-    },
-
-    commentOnPost: async (id, text) => {
-        const comment = await commentOnPost(id, text);
-        const update = (post: BlogPost): BlogPost => post.id === id
-            ? { ...post, comments: [...post.comments, comment] }
-            : post;
-
-        set((state) => ({
-            posts: state.posts.map(update),
-            currentPost: state.currentPost ? update(state.currentPost) : null
-        }));
-    },
-
-    addPost: async (payload) => {
-        set({ loading: true, errorMessage: null });
-        try {
-            const created = await createPost(payload);
-            const [hydrated] = await hydratePosts([created]);
-            set((state) => ({ posts: replacePost(state.posts, hydrated) }));
-            get().fetchPosts().catch(() => undefined);
-            return true;
-        } catch (error) {
-            set({ errorMessage: getApiErrorMessage(error as object) });
-            return false;
-        } finally {
-            set({ loading: false });
-        }
-    },
-
-    updatePost: async (id, payload) => {
-        set({ loading: true, errorMessage: null });
-        try {
-            const updated = await updatePost(id, payload);
-            const [hydrated] = await hydratePosts([updated]);
-            set((state) => ({
+    const hydratePostInBackground = (post: BlogPost): void => {
+        hydratePosts([post])
+            .then(([hydrated]) => set((state) => ({
                 posts: replacePost(state.posts, hydrated),
-                currentPost: state.currentPost?.id === id ? hydrated : state.currentPost
-            }));
-            get().fetchPosts().catch(() => undefined);
-            return true;
-        } catch (error) {
-            set({ errorMessage: getApiErrorMessage(error as object) });
-            return false;
-        } finally {
-            set({ loading: false });
-        }
-    },
+                currentPost: state.currentPost?.id === hydrated.id
+                    ? hydrated
+                    : state.currentPost
+            })))
+            .catch(() => undefined);
+    };
 
-    deletePost: async (id) => {
-        await deletePost(id);
-        set((state) => ({
-            posts: state.posts.filter((post) => post.id !== id),
-            currentPost: state.currentPost?.id === id ? null : state.currentPost
-        }));
-    },
-
-    reset: () => set({
+    return {
         posts: [],
         currentPost: null,
         loading: false,
-        errorMessage: null
-    })
-}));
+        errorMessage: null,
+
+        fetchPosts: () => syncPosts(true),
+
+        selectPost: (post) => set({ currentPost: post }),
+
+        likePost: async (id) => {
+            const user = useAuthStore.getState().user;
+
+            if (!user) {
+                return;
+            }
+
+            const response = await togglePostLike(id);
+            const update = (post: BlogPost): BlogPost => {
+                if (post.id !== id) {
+                    return post;
+                }
+
+                const likedUsers = response.liked
+                    ? [...post.likesUsers.filter((userId) => userId !== user.id), user.id]
+                    : post.likesUsers.filter((userId) => userId !== user.id);
+
+                return { ...post, likes: response.likes, likesUsers: likedUsers };
+            };
+
+            set((state) => ({
+                posts: state.posts.map(update),
+                currentPost: state.currentPost ? update(state.currentPost) : null
+            }));
+        },
+
+        commentOnPost: async (id, text) => {
+            const comment = await commentOnPost(id, text);
+            const update = (post: BlogPost): BlogPost => post.id === id
+                ? { ...post, comments: [...post.comments, comment] }
+                : post;
+
+            set((state) => ({
+                posts: state.posts.map(update),
+                currentPost: state.currentPost ? update(state.currentPost) : null
+            }));
+        },
+
+        addPost: async (payload) => {
+            set({ loading: true, errorMessage: null });
+
+            try {
+                const created = await createPost(payload);
+                set((state) => ({ posts: replacePost(state.posts, created) }));
+                hydratePostInBackground(created);
+                refreshInBackground();
+                return true;
+            } catch (error) {
+                set({ errorMessage: getApiErrorMessage(error as object) });
+                return false;
+            } finally {
+                set({ loading: false });
+            }
+        },
+
+        updatePost: async (id, payload) => {
+            set({ loading: true, errorMessage: null });
+
+            try {
+                const updated = await updatePost(id, payload);
+                set((state) => ({
+                    posts: replacePost(state.posts, updated),
+                    currentPost: state.currentPost?.id === id ? updated : state.currentPost
+                }));
+                hydratePostInBackground(updated);
+                refreshInBackground();
+                return true;
+            } catch (error) {
+                set({ errorMessage: getApiErrorMessage(error as object) });
+                return false;
+            } finally {
+                set({ loading: false });
+            }
+        },
+
+        deletePost: async (id) => {
+            await deletePost(id);
+            set((state) => ({
+                posts: state.posts.filter((post) => post.id !== id),
+                currentPost: state.currentPost?.id === id ? null : state.currentPost
+            }));
+            refreshInBackground();
+        },
+
+        reset: () => set({
+            posts: [],
+            currentPost: null,
+            loading: false,
+            errorMessage: null
+        })
+    };
+});

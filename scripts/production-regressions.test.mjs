@@ -24,6 +24,11 @@ const uploadServices = [
 const chatStore = read('src/store/useChatStore.ts');
 const chatScreen = read('src/screens/chat/ChatScreen.tsx');
 const chatInput = read('src/components/chatMessages/ChatInput.tsx');
+const tabsNavigator = read('src/navigation/TabsNavigator.tsx');
+const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
+const songsStore = read('src/store/useSongsStore.ts');
+const galleryStore = read('src/store/useGalleryStore.ts');
+const themeService = read('src/services/theme.ts');
 const themeEditor = read('src/screens/settings/themes/ManageThemeScreen.tsx');
 const blogStore = read('src/store/useBlogStore.ts');
 const announcementStore = read('src/store/useAnnouncementStore.ts');
@@ -48,20 +53,43 @@ for (const service of uploadServices) {
 }
 
 assert.match(chatStore, /response\.data\.users/u);
-assert.match(chatStore, /transports: \['polling', 'websocket'\]/u);
+assert.match(chatStore, /transports: \['websocket'\]/u);
+assert.match(chatStore, /upgrade: false/u);
+assert.match(chatStore, /DIRECTORY_TIMEOUT_MS/u);
+assert.match(chatStore, /directoryLoaded/u);
+assert.match(chatStore, /persistChatChanges\(\[toRawChatMessage\(message\)\]\)\.catch/u);
+assert.doesNotMatch(chatStore, /await persistChatChanges\(\[toRawChatMessage\(message\)\]\)/u);
 assert.match(chatStore, /connect_error/u);
-assert.match(chatScreen, /Promise\.allSettled/u);
-assert.match(chatScreen, /connect\(\);/u);
-assert.match(chatInput, /asset\.mimeType/u);
-assert.match(chatInput, /asset\.fileName/u);
+assert.doesNotMatch(chatScreen, /Promise\.allSettled/u);
+assert.match(chatScreen, /fetchDirectory\(\)\.catch/u);
+assert.match(chatScreen, /keyboardVerticalOffset=\{0\}/u);
+assert.match(chatScreen, /directoryLoading/u);
+assert.match(chatInput, /Keyboard\.dismiss/u);
+assert.match(chatInput, /ActivityIndicator/u);
+assert.match(chatInput, /onFocus=\{onFocus\}/u);
+assert.match(tabsNavigator, /tabBarHideOnKeyboard: true/u);
 
+assert.match(songTypesScreen, /KeyboardAvoidingView/u);
+assert.match(songTypesScreen, /keyboardDismissMode/u);
+assert.match(songTypesScreen, /Ocultar teclado/u);
+assert.match(songTypesScreen, /ActivityIndicator/u);
+assert.match(songsStore, /upsertSongType/u);
+assert.match(songsStore, /refreshInBackground/u);
+assert.doesNotMatch(songsStore, /await get\(\)\.fetchData\(\)/u);
+assert.match(galleryStore, /upsertImage/u);
+assert.match(galleryStore, /refreshInBackground/u);
+assert.doesNotMatch(galleryStore, /await get\(\)\.fetchImages\(\)/u);
+
+assert.match(themeService, /THEME_MUTATION_TIMEOUT_MS = 6_000/u);
 assert.match(themeEditor, /onCompleteJS=\{onColorSelect\}/u);
 assert.doesNotMatch(themeEditor, /onComplete=\{onColorSelect\}/u);
 
 assert.match(blogStore, /replacePost/u);
-assert.match(blogStore, /fetchPosts\(\)\.catch/u);
+assert.match(blogStore, /hydratePostInBackground/u);
+assert.match(blogStore, /refreshInBackground/u);
 assert.match(announcementStore, /replaceAnnouncement/u);
-assert.match(announcementStore, /fetchPublicAnnouncements\(\)\.catch/u);
+assert.match(announcementStore, /hydrateAnnouncementInBackground/u);
+assert.match(announcementStore, /refreshInBackground/u);
 
 for (const source of [
     blogEditor,

@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Image,
     KeyboardAvoidingView,
@@ -15,7 +14,6 @@ import {
     View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatInput } from '../../components/chatMessages/ChatInput';
 import { ChatMessageItem } from '../../components/chatMessages/ChatMessageItem';
 import { useTheme } from '../../context/ThemeContext';
@@ -24,15 +22,18 @@ import { useChatStore } from '../../store/useChatStore';
 import type { ChatMessage } from '../../types/chat';
 
 export const ChatScreen = () => {
-    const insets = useSafeAreaInsets();
     const flatListRef = useRef<FlatList<ChatMessage>>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const focusScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showOnlineModal, setShowOnlineModal] = useState(false);
     const colors = useTheme().currentTheme;
     const messages = useChatStore((state) => state.messages);
     const connected = useChatStore((state) => state.connected);
     const connectionError = useChatStore((state) => state.connectionError);
     const loading = useChatStore((state) => state.loading);
+    const directoryLoading = useChatStore((state) => state.directoryLoading);
+    const directoryLoaded = useChatStore((state) => state.directoryLoaded);
+    const directoryError = useChatStore((state) => state.directoryError);
     const onlineUsers = useChatStore((state) => state.onlineUsers);
     const allUsers = useChatStore((state) => state.allUsers);
     const typingUsers = useChatStore((state) => state.typingUsers);
@@ -43,32 +44,21 @@ export const ChatScreen = () => {
     const sendTyping = useChatStore((state) => state.sendTyping);
 
     useEffect(() => {
-        let active = true;
-
-        Promise.allSettled([loadHistory(), fetchDirectory()]).then((results) => {
-            if (!active) {
-                return;
-            }
-
-            connect();
-            const failed = results.some((result) => result.status === 'rejected');
-
-            if (failed) {
-                Alert.alert(
-                    'Chat parcialmente disponible',
-                    'No fue posible cargar toda la información del chat. Intenta de nuevo en unos segundos.'
-                );
-            }
-        });
+        connect();
+        loadHistory().catch(() => undefined);
 
         return () => {
-            active = false;
             if (typingTimeoutRef.current) {
                 clearTimeout(typingTimeoutRef.current);
             }
+
+            if (focusScrollTimeoutRef.current) {
+                clearTimeout(focusScrollTimeoutRef.current);
+            }
+
             sendTyping(false);
         };
-    }, [connect, fetchDirectory, loadHistory, sendTyping]);
+    }, [connect, loadHistory, sendTyping]);
 
     useEffect(() => {
         if (messages.length > 0) {
@@ -110,9 +100,27 @@ export const ChatScreen = () => {
         }, 2_000);
     };
 
+    const handleInputFocus = (): void => {
+        if (focusScrollTimeoutRef.current) {
+            clearTimeout(focusScrollTimeoutRef.current);
+        }
+
+        focusScrollTimeoutRef.current = setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+        }, 180);
+    };
+
+    const openMembers = (): void => {
+        setShowOnlineModal(true);
+
+        if (!directoryLoaded && !directoryLoading) {
+            fetchDirectory().catch(() => undefined);
+        }
+    };
+
     const statusLabel = connected
         ? `${onlineUsers.length} en línea`
-        : connectionError ?? 'Conectando...';
+        : connectionError ?? 'Reconectando...';
 
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
@@ -125,7 +133,7 @@ export const ChatScreen = () => {
                     }
                 ]}
                 activeOpacity={0.7}
-                onPress={() => setShowOnlineModal(true)}
+                onPress={openMembers}
             >
                 <View style={styles.flexOne}>
                     <Text style={[styles.headerTitle, { color: colors.textColor }]}>Chat del coro</Text>
@@ -139,17 +147,13 @@ export const ChatScreen = () => {
                         </Text>
                     </View>
                 </View>
-                {loading ? (
-                    <ActivityIndicator color={colors.primaryColor} />
-                ) : (
-                    <Ionicons name="people" size={24} color={colors.primaryColor} />
-                )}
+                <Ionicons name="people" size={24} color={colors.primaryColor} />
             </TouchableOpacity>
 
             <KeyboardAvoidingView
                 style={styles.flexOne}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+                keyboardVerticalOffset={0}
             >
                 <FlatList
                     ref={flatListRef}
@@ -157,10 +161,18 @@ export const ChatScreen = () => {
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => <ChatMessageItem message={item} />}
                     contentContainerStyle={styles.listContent}
-                    keyboardShouldPersistTaps="handled"
+                    keyboardShouldPersistTaps="always"
                     keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                     onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-                    ListEmptyComponent={loading ? null : (
+                    removeClippedSubviews={Platform.OS === 'android'}
+                    ListEmptyComponent={loading ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator color={colors.primaryColor} />
+                            <Text style={[styles.loadingText, { color: colors.secondaryTextColor }]}>
+                                Cargando mensajes...
+                            </Text>
+                        </View>
+                    ) : (
                         <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
                             Aún no hay mensajes en este coro.
                         </Text>
@@ -177,7 +189,11 @@ export const ChatScreen = () => {
                     </View>
                 )}
 
-                <ChatInput onSend={handleSend} onTyping={handleTyping} />
+                <ChatInput
+                    onSend={handleSend}
+                    onTyping={handleTyping}
+                    onFocus={handleInputFocus}
+                />
             </KeyboardAvoidingView>
 
             <Modal
@@ -195,45 +211,69 @@ export const ChatScreen = () => {
                             </TouchableOpacity>
                         </View>
 
-                        <FlatList
-                            data={sortedUsers}
-                            keyExtractor={(item) => item.id}
-                            renderItem={({ item }) => (
-                                <View style={[styles.userItem, { borderBottomColor: colors.borderColor }]}>
-                                    <View style={styles.userAvatar}>
-                                        {item.imageUrl ? (
-                                            <Image
-                                                source={{ uri: item.imageUrl }}
-                                                style={[styles.avatarImage, { opacity: item.isOnline ? 1 : 0.55 }]}
-                                            />
-                                        ) : (
-                                            <View style={[styles.avatarFallback, { backgroundColor: colors.backgroundColor }]}>
-                                                <Text style={[styles.avatarInitials, { color: colors.textColor }]}>
-                                                    {item.name.slice(0, 2).toUpperCase()}
-                                                </Text>
-                                            </View>
-                                        )}
-                                        <View
-                                            style={[
-                                                styles.onlineBadge,
-                                                { backgroundColor: item.isOnline ? '#4CAF50' : '#BDBDBD' }
-                                            ]}
-                                        />
-                                    </View>
-                                    <View>
-                                        <Text style={[styles.userName, { color: colors.textColor }]}>{item.name}</Text>
-                                        <Text style={[styles.userStatus, { color: colors.secondaryTextColor }]}>
-                                            {item.isOnline ? 'En línea' : 'Desconectado'}
-                                        </Text>
-                                    </View>
-                                </View>
-                            )}
-                            ListEmptyComponent={(
-                                <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
-                                    No hay miembros activos para mostrar.
+                        {directoryLoading && !directoryLoaded ? (
+                            <View style={styles.directoryStatus}>
+                                <ActivityIndicator color={colors.primaryColor} />
+                                <Text style={[styles.loadingText, { color: colors.secondaryTextColor }]}>
+                                    Cargando miembros...
                                 </Text>
-                            )}
-                        />
+                            </View>
+                        ) : directoryError && !directoryLoaded ? (
+                            <View style={styles.directoryStatus}>
+                                <Text style={[styles.directoryError, { color: colors.secondaryTextColor }]}>
+                                    {directoryError}
+                                </Text>
+                                <TouchableOpacity
+                                    style={[styles.retryButton, { backgroundColor: colors.buttonColor }]}
+                                    onPress={() => void fetchDirectory(true)}
+                                    disabled={directoryLoading}
+                                >
+                                    <Text style={{ color: colors.buttonTextColor, fontWeight: '700' }}>
+                                        Reintentar
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <FlatList
+                                data={sortedUsers}
+                                keyExtractor={(item) => item.id}
+                                renderItem={({ item }) => (
+                                    <View style={[styles.userItem, { borderBottomColor: colors.borderColor }]}>
+                                        <View style={styles.userAvatar}>
+                                            {item.imageUrl ? (
+                                                <Image
+                                                    source={{ uri: item.imageUrl }}
+                                                    style={[styles.avatarImage, { opacity: item.isOnline ? 1 : 0.55 }]}
+                                                />
+                                            ) : (
+                                                <View style={[styles.avatarFallback, { backgroundColor: colors.backgroundColor }]}>
+                                                    <Text style={[styles.avatarInitials, { color: colors.textColor }]}>
+                                                        {item.name.slice(0, 2).toUpperCase()}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                            <View
+                                                style={[
+                                                    styles.onlineBadge,
+                                                    { backgroundColor: item.isOnline ? '#4CAF50' : '#BDBDBD' }
+                                                ]}
+                                            />
+                                        </View>
+                                        <View>
+                                            <Text style={[styles.userName, { color: colors.textColor }]}>{item.name}</Text>
+                                            <Text style={[styles.userStatus, { color: colors.secondaryTextColor }]}>
+                                                {item.isOnline ? 'En línea' : 'Desconectado'}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
+                                ListEmptyComponent={(
+                                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
+                                        No hay miembros para mostrar.
+                                    </Text>
+                                )}
+                            />
+                        )}
                     </View>
                 </View>
             </Modal>
@@ -257,12 +297,17 @@ const styles = StyleSheet.create({
     headerSubtitle: { fontSize: 12, flex: 1 },
     listContent: { paddingHorizontal: 12, paddingVertical: 12, flexGrow: 1 },
     emptyText: { padding: 24, textAlign: 'center' },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+    loadingText: { marginTop: 10, fontSize: 13 },
     typingContainer: { paddingHorizontal: 16, paddingVertical: 5 },
     typingText: { fontSize: 12, fontStyle: 'italic' },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
     modalContent: { maxHeight: '70%', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     modalTitle: { fontSize: 20, fontWeight: '700' },
+    directoryStatus: { minHeight: 180, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    directoryError: { textAlign: 'center', marginBottom: 16 },
+    retryButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
     userItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
     userAvatar: { marginRight: 12 },
     avatarImage: { width: 46, height: 46, borderRadius: 23 },

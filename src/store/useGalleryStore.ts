@@ -28,7 +28,10 @@ interface GalleryState {
 
 const hydrateImages = async (images: readonly GalleryImage[]): Promise<GalleryImage[]> => {
     const context = useAuthStore.getState().getTenantContext();
-    if (!context) return [...images];
+
+    if (!context) {
+        return [...images];
+    }
 
     return Promise.all(images.map(async (image) => ({
         ...image,
@@ -36,14 +39,39 @@ const hydrateImages = async (images: readonly GalleryImage[]): Promise<GalleryIm
     })));
 };
 
-export const useGalleryStore = create<GalleryState>((set, get) => ({
-    images: [],
-    loading: false,
+const upsertImage = (
+    images: readonly GalleryImage[],
+    incoming: GalleryImage
+): GalleryImage[] => {
+    const existing = images.find((image) => image.id === incoming.id);
+    const merged = existing
+        ? {
+            ...existing,
+            ...incoming,
+            cachedImageUrl: incoming.cachedImageUrl ?? (
+                existing.imageUrl === incoming.imageUrl
+                    ? existing.cachedImageUrl
+                    : null
+            )
+        }
+        : incoming;
 
-    fetchImages: async () => {
+    return existing
+        ? images.map((image) => image.id === incoming.id ? merged : image)
+        : [merged, ...images];
+};
+
+export const useGalleryStore = create<GalleryState>((set) => {
+    const syncImages = async (showLoading: boolean): Promise<void> => {
         const context = useAuthStore.getState().getTenantContext();
-        if (!context) return;
-        set({ loading: true });
+
+        if (!context) {
+            return;
+        }
+
+        if (showLoading) {
+            set({ loading: true });
+        }
 
         try {
             const result = await syncCacheFirst<readonly GalleryImage[]>({
@@ -53,39 +81,77 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
                 ttlMs: CACHE_TTL_MS.gallery,
                 onData: (data) => set({ images: [...data] })
             });
-            set({ images: await hydrateImages(result.data) });
+            const rawImages = [...result.data];
+            set({ images: rawImages });
+
+            hydrateImages(rawImages)
+                .then((hydrated) => set((state) => ({
+                    images: hydrated.reduce<GalleryImage[]>(
+                        (current, image) => upsertImage(current, image),
+                        state.images
+                    )
+                })))
+                .catch(() => undefined);
         } finally {
-            set({ loading: false });
+            if (showLoading) {
+                set({ loading: false });
+            }
         }
-    },
+    };
 
-    addImage: async (payload) => {
-        set({ loading: true });
-        try {
-            await addImage(payload);
-            await get().fetchImages();
-            return true;
-        } catch {
-            return false;
-        } finally {
-            set({ loading: false });
-        }
-    },
+    const refreshInBackground = (): void => {
+        syncImages(false).catch(() => undefined);
+    };
 
-    removeImage: async (id) => {
-        try {
-            await removeImage(id);
-            await get().fetchImages();
-            return true;
-        } catch {
-            return false;
-        }
-    },
+    const hydrateImageInBackground = (image: GalleryImage): void => {
+        hydrateImages([image])
+            .then(([hydrated]) => set((state) => ({
+                images: upsertImage(state.images, hydrated)
+            })))
+            .catch(() => undefined);
+    };
 
-    setFlags: async (id, flags) => {
-        await setGalleryFlags(id, flags);
-        await get().fetchImages();
-    },
+    return {
+        images: [],
+        loading: false,
 
-    reset: () => set({ images: [], loading: false })
-}));
+        fetchImages: () => syncImages(true),
+
+        addImage: async (payload) => {
+            set({ loading: true });
+
+            try {
+                const created = await addImage(payload);
+                set((state) => ({ images: upsertImage(state.images, created) }));
+                hydrateImageInBackground(created);
+                refreshInBackground();
+                return true;
+            } catch {
+                return false;
+            } finally {
+                set({ loading: false });
+            }
+        },
+
+        removeImage: async (id) => {
+            try {
+                await removeImage(id);
+                set((state) => ({
+                    images: state.images.filter((image) => image.id !== id)
+                }));
+                refreshInBackground();
+                return true;
+            } catch {
+                return false;
+            }
+        },
+
+        setFlags: async (id, flags) => {
+            const updated = await setGalleryFlags(id, flags);
+            set((state) => ({ images: upsertImage(state.images, updated) }));
+            refreshInBackground();
+        },
+
+        reset: () => set({ images: [], loading: false })
+    };
+});
