@@ -251,7 +251,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
             : { accessToken: token };
         const socket: ChoirSocket = io(ENV.SOCKET_URL, {
             auth: socketAuth,
-            transports: ['polling', 'websocket'],
+            transports: ['websocket', 'polling'],
+            tryAllTransports: true,
+            rememberUpgrade: true,
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 1_000,
@@ -268,13 +270,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
             connected: false,
             connectionError: error.message || 'No fue posible conectar el chat'
         }));
-        socket.on('disconnect', (reason) => set({
-            connected: false,
-            connectionError: reason === 'io client disconnect'
-                ? null
-                : 'Conexión del chat interrumpida',
-            onlineUsers: []
-        }));
+        socket.on('disconnect', (reason, details) => {
+            const disconnectDetails = details
+                ? details instanceof Error
+                    ? details.message
+                    : details.description
+                : undefined;
+
+            console.warn('Socket disconnected', {
+                reason,
+                details: disconnectDetails
+            });
+
+            set({
+                connected: false
+            });
+        });
         socket.on('new-message', (raw) => {
             persistChatChanges([raw]).catch(() => undefined);
             const normalized = normalizeChatMessage(raw);

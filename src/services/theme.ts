@@ -1,7 +1,26 @@
 // src/services/theme.ts
 
+import axios from 'axios';
 import choirApi from '../api/choirApi';
 import type { CreateThemePayload, Theme } from '../types/theme';
+
+const THEME_UPDATE_RETRY_DELAY_MS = 500;
+
+const delay = async (milliseconds: number): Promise<void> => {
+    await new Promise<void>((resolve) => {
+        setTimeout(resolve, milliseconds);
+    });
+};
+
+const isTransientRequestFailure = (error: Error): boolean => {
+    if (!axios.isAxiosError(error)) {
+        return false;
+    }
+
+    return !error.response ||
+        error.code === 'ECONNABORTED' ||
+        error.code === 'ERR_NETWORK';
+};
 
 export const getAllThemes = async (): Promise<readonly Theme[]> => {
     const response = await choirApi.get<readonly Theme[]>('/themes');
@@ -17,8 +36,18 @@ export const updateTheme = async (
     id: string,
     payload: Partial<CreateThemePayload>
 ): Promise<Theme> => {
-    const response = await choirApi.put<Theme>(`/themes/${id}`, payload);
-    return response.data;
+    try {
+        const response = await choirApi.put<Theme>(`/themes/${id}`, payload);
+        return response.data;
+    } catch (error) {
+        if (!(error instanceof Error) || !isTransientRequestFailure(error)) {
+            throw error;
+        }
+
+        await delay(THEME_UPDATE_RETRY_DELAY_MS);
+        const retryResponse = await choirApi.put<Theme>(`/themes/${id}`, payload);
+        return retryResponse.data;
+    }
 };
 
 export const deleteTheme = async (id: string): Promise<void> => {
