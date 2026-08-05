@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
+    Dimensions,
     FlatList,
     Image,
     Keyboard,
@@ -16,13 +18,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
-import { ChatInput } from '../../components/chatMessages/ChatInput';
+import {
+    ChatInput,
+    type ChatInputSendRequest
+} from '../../components/chatMessages/ChatInput';
 import { ChatMessageItem } from '../../components/chatMessages/ChatMessageItem';
 import { useTheme } from '../../context/ThemeContext';
-import type { ChatAttachment } from '../../services/chat';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useChatStore } from '../../store/useChatStore';
-import type { ChatMessage, MessageType } from '../../types/chat';
+import type { ChatMessage } from '../../types/chat';
 import {
     useChatDirectoryQuery,
     useChatHistoryQuery,
@@ -30,16 +34,25 @@ import {
     useSendChatMessageMutation
 } from '../../hooks/query/useChatData';
 
+interface ScrollToIndexFailureInfo {
+    readonly index: number;
+    readonly highestMeasuredFrameIndex: number;
+    readonly averageItemLength: number;
+}
+
 export const ChatScreen = () => {
     const flatListRef = useRef<FlatList<ChatMessage>>(null);
     const composerRef = useRef<View>(null);
     const composerShiftRef = useRef(0);
     const keyboardTopRef = useRef<number | null>(null);
+    const keyboardVisibleRef = useRef(false);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingReadKeyRef = useRef('');
     const [showOnlineModal, setShowOnlineModal] = useState(false);
-    const [composerHeight, setComposerHeight] = useState(0);
     const [composerShift, setComposerShift] = useState(0);
+    const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const colors = useTheme().currentTheme;
     const isFocused = useIsFocused();
     const historyQuery = useChatHistoryQuery(isFocused);
@@ -56,6 +69,40 @@ export const ChatScreen = () => {
     const sendTyping = useChatStore((state) => state.sendTyping);
     const allUsers = directoryQuery.data ?? [];
 
+    const resetComposerShift = useCallback((): void => {
+        keyboardVisibleRef.current = false;
+        keyboardTopRef.current = null;
+        composerShiftRef.current = 0;
+        setComposerShift(0);
+    }, []);
+
+    const measureComposerOverlap = useCallback((): void => {
+        if (!keyboardVisibleRef.current || keyboardTopRef.current === null) {
+            resetComposerShift();
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            composerRef.current?.measureInWindow((_x, y, _width, height) => {
+                const keyboardTop = keyboardTopRef.current;
+
+                if (!keyboardVisibleRef.current || keyboardTop === null) {
+                    resetComposerShift();
+                    return;
+                }
+
+                const unshiftedBottom = y + height + composerShiftRef.current;
+                const overlap = Math.max(0, unshiftedBottom - keyboardTop);
+                composerShiftRef.current = overlap;
+                setComposerShift(overlap);
+
+                requestAnimationFrame(() => {
+                    flatListRef.current?.scrollToEnd({ animated: true });
+                });
+            });
+        });
+    }, [resetComposerShift]);
+
     useEffect(() => {
         if (isFocused) {
             connect();
@@ -66,56 +113,61 @@ export const ChatScreen = () => {
             clearTimeout(typingTimeoutRef.current);
         }
         sendTyping(false);
-    }, [connect, isFocused, sendTyping]);
-
-    const measureComposerOverlap = useCallback((keyboardTop: number): void => {
-        requestAnimationFrame(() => {
-            composerRef.current?.measureInWindow((_x, y, _width, height) => {
-                const desiredGap = 0;
-                const unshiftedBottom = y + height + composerShiftRef.current;
-                const overlap = Math.max(0, unshiftedBottom - keyboardTop + desiredGap);
-                composerShiftRef.current = overlap;
-                setComposerShift(overlap);
-
-                requestAnimationFrame(() => {
-                    flatListRef.current?.scrollToEnd({ animated: true });
-                });
-            });
-        });
-    }, []);
+        resetComposerShift();
+    }, [connect, isFocused, resetComposerShift, sendTyping]);
 
     useEffect(() => {
         const handleKeyboardFrame = (event: KeyboardEvent): void => {
             const keyboardTop = event.endCoordinates.screenY;
+            const screenHeight = Dimensions.get('screen').height;
+            const keyboardHidden = event.endCoordinates.height <= 0 || keyboardTop >= screenHeight - 1;
+
+            if (keyboardHidden) {
+                resetComposerShift();
+                return;
+            }
+
+            keyboardVisibleRef.current = true;
             keyboardTopRef.current = keyboardTop;
-            measureComposerOverlap(keyboardTop);
+            measureComposerOverlap();
         };
         const handleKeyboardHide = (): void => {
-            keyboardTopRef.current = null;
-            composerShiftRef.current = 0;
-            setComposerShift(0);
+            resetComposerShift();
         };
-        const frameEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
-        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-        const frameSubscription = Keyboard.addListener(frameEvent, handleKeyboardFrame);
-        const hideSubscription = Keyboard.addListener(hideEvent, handleKeyboardHide);
-        const didShowSubscription = Platform.OS === 'ios'
-            ? Keyboard.addListener('keyboardDidShow', handleKeyboardFrame)
-            : null;
+        const subscriptions = Platform.OS === 'ios'
+            ? [
+                Keyboard.addListener('keyboardWillShow', handleKeyboardFrame),
+                Keyboard.addListener('keyboardWillChangeFrame', handleKeyboardFrame),
+                Keyboard.addListener('keyboardDidShow', handleKeyboardFrame),
+                Keyboard.addListener('keyboardWillHide', handleKeyboardHide),
+                Keyboard.addListener('keyboardDidHide', handleKeyboardHide)
+            ]
+            : [
+                Keyboard.addListener('keyboardDidShow', handleKeyboardFrame),
+                Keyboard.addListener('keyboardDidHide', handleKeyboardHide)
+            ];
 
         return () => {
-            frameSubscription.remove();
-            hideSubscription.remove();
-            didShowSubscription?.remove();
+            subscriptions.forEach((subscription) => subscription.remove());
         };
-    }, [measureComposerOverlap]);
+    }, [measureComposerOverlap, resetComposerShift]);
+
+    useEffect(() => {
+        return () => {
+            if (highlightTimeoutRef.current) {
+                clearTimeout(highlightTimeoutRef.current);
+            }
+            if (scrollRetryTimeoutRef.current) {
+                clearTimeout(scrollRetryTimeoutRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (messages.length > 0) {
             requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: false }));
         }
     }, [messages.length]);
-
 
     useEffect(() => {
         if (!isFocused || !currentUserId || receiptMutation.isPending) {
@@ -158,12 +210,8 @@ export const ChatScreen = () => {
             return left.isOnline ? -1 : 1;
         }), [allUsers, onlineUsers]);
 
-    const handleSend = async (
-        text: string,
-        attachment?: ChatAttachment,
-        messageType?: MessageType
-    ): Promise<void> => {
-        await sendMutation.mutateAsync({ text, attachment, messageType });
+    const handleSend = async (request: ChatInputSendRequest): Promise<void> => {
+        await sendMutation.mutateAsync(request);
         requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
     };
 
@@ -182,6 +230,56 @@ export const ChatScreen = () => {
             flatListRef.current?.scrollToEnd({ animated: true });
         });
     };
+
+    const highlightMessage = useCallback((messageId: string): void => {
+        if (highlightTimeoutRef.current) {
+            clearTimeout(highlightTimeoutRef.current);
+        }
+
+        setHighlightedMessageId(messageId);
+        highlightTimeoutRef.current = setTimeout(() => {
+            setHighlightedMessageId(null);
+            highlightTimeoutRef.current = null;
+        }, 1_800);
+    }, []);
+
+    const scrollToReply = useCallback((messageId: string): void => {
+        const targetIndex = messages.findIndex((message) => message.id === messageId);
+
+        if (targetIndex < 0) {
+            Alert.alert(
+                'Mensaje no disponible',
+                'El mensaje original ya no está dentro del historial cargado.'
+            );
+            return;
+        }
+
+        Keyboard.dismiss();
+        highlightMessage(messageId);
+        flatListRef.current?.scrollToIndex({
+            index: targetIndex,
+            animated: true,
+            viewPosition: 0.45
+        });
+    }, [highlightMessage, messages]);
+
+    const handleScrollToIndexFailed = useCallback((info: ScrollToIndexFailureInfo): void => {
+        const offset = Math.max(0, info.averageItemLength * info.index);
+        flatListRef.current?.scrollToOffset({ offset, animated: true });
+
+        if (scrollRetryTimeoutRef.current) {
+            clearTimeout(scrollRetryTimeoutRef.current);
+        }
+
+        scrollRetryTimeoutRef.current = setTimeout(() => {
+            flatListRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+                viewPosition: 0.45
+            });
+            scrollRetryTimeoutRef.current = null;
+        }, 250);
+    }, []);
 
     const statusLabel = connected
         ? `${onlineUsers.length} en línea`
@@ -222,10 +320,16 @@ export const ChatScreen = () => {
                     style={styles.flexOne}
                     data={messages}
                     keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <ChatMessageItem message={item} />}
+                    renderItem={({ item }) => (
+                        <ChatMessageItem
+                            message={item}
+                            highlighted={item.id === highlightedMessageId}
+                            onReplyPress={scrollToReply}
+                        />
+                    )}
                     contentContainerStyle={[
                         styles.listContent,
-                        { paddingBottom: composerHeight + composerShift + 16 }
+                        { paddingBottom: composerShift + 16 }
                     ]}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -233,11 +337,7 @@ export const ChatScreen = () => {
                     onTouchStart={Keyboard.dismiss}
                     refreshing={historyQuery.isRefetching && messages.length > 0}
                     onRefresh={() => void historyQuery.refetch()}
-                    onContentSizeChange={() => {
-                        if (isFocused) {
-                            flatListRef.current?.scrollToEnd({ animated: false });
-                        }
-                    }}
+                    onScrollToIndexFailed={handleScrollToIndexFailed}
                     ListEmptyComponent={historyQuery.isLoading ? (
                         <View style={styles.loadingContainer}>
                             <ActivityIndicator color={colors.primaryColor} />
@@ -271,11 +371,11 @@ export const ChatScreen = () => {
                         styles.composerDock,
                         { transform: [{ translateY: -composerShift }] }
                     ]}
-                    onLayout={(event) => {
-                        setComposerHeight(event.nativeEvent.layout.height);
-
-                        if (keyboardTopRef.current !== null) {
-                            measureComposerOverlap(keyboardTopRef.current);
+                    onLayout={() => {
+                        if (keyboardVisibleRef.current) {
+                            measureComposerOverlap();
+                        } else if (composerShiftRef.current !== 0) {
+                            resetComposerShift();
                         }
                     }}
                 >
