@@ -9,7 +9,17 @@ export interface ChatUserSummary {
     readonly imageUrl?: string;
 }
 
-export type MessageType = 'TEXT' | 'IMAGE' | 'FILE' | 'MEDIA' | 'REACTION' | 'AUDIO' | 'VIDEO';
+export type MessageType =
+    | 'TEXT'
+    | 'IMAGE'
+    | 'FILE'
+    | 'MEDIA'
+    | 'REACTION'
+    | 'AUDIO'
+    | 'VIDEO'
+    | 'STICKER';
+
+export type ChatReceiptStatus = 'DELIVERED' | 'READ';
 
 export interface MessageReaction {
     readonly emoji: string;
@@ -36,6 +46,8 @@ export interface ChatMessage {
     readonly cachedMediaUrl?: string | null;
     readonly reactions: readonly MessageReaction[];
     readonly replyTo?: ReplyPreview | null;
+    readonly deliveredTo: readonly string[];
+    readonly readBy: readonly string[];
     readonly createdAt: string;
     readonly updatedAt?: string;
 }
@@ -61,6 +73,13 @@ export interface RawReplyMessage {
     readonly author?: RawChatUser;
 }
 
+export interface RawReceiptUser {
+    readonly id?: string;
+    readonly _id?: string;
+}
+
+export type RawReceiptValue = string | RawReceiptUser;
+
 export interface RawChatMessage {
     readonly id?: string;
     readonly _id?: string;
@@ -74,6 +93,8 @@ export interface RawChatMessage {
     readonly imagePublicId?: string;
     readonly reactions?: readonly RawReaction[];
     readonly replyTo?: RawReplyMessage | null;
+    readonly deliveredTo?: readonly RawReceiptValue[];
+    readonly readBy?: readonly RawReceiptValue[];
     readonly createdAt?: string;
     readonly updatedAt?: string;
 }
@@ -94,6 +115,10 @@ export interface ChatUploadResponse {
 
 export interface ChatMessageResponse {
     readonly message: RawChatMessage;
+}
+
+export interface ChatReceiptsResponse {
+    readonly messages: readonly RawChatMessage[];
 }
 
 export interface SocketPresenceUser extends ChatUserSummary {
