@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Image,
     Keyboard,
     Modal,
     Platform,
@@ -407,15 +408,33 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             {selectedMedia && (
                 <View style={[styles.imagePreviewBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}>
                     <View style={styles.previewRow}>
-                        <Ionicons
-                            name={getPreviewIcon()}
-                            size={24}
-                            color={colors.textColor}
-                            style={styles.previewIcon}
-                        />
-                        <Text style={[styles.previewText, { color: colors.textColor }]} numberOfLines={1}>
-                            {selectedMedia.filename}
-                        </Text>
+                        {selectedMedia.type === 'image' ? (
+                            <Image
+                                source={{ uri: selectedMedia.uri }}
+                                style={styles.previewThumbnail}
+                                resizeMode="cover"
+                            />
+                        ) : (
+                            <View style={[styles.previewFallback, { backgroundColor: colors.backgroundColor }]}>
+                                <Ionicons
+                                    name={getPreviewIcon()}
+                                    size={24}
+                                    color={colors.textColor}
+                                />
+                            </View>
+                        )}
+                        <View style={styles.previewTextContainer}>
+                            <Text style={[styles.previewText, { color: colors.textColor }]} numberOfLines={1}>
+                                {selectedMedia.filename}
+                            </Text>
+                            <Text style={[styles.previewType, { color: colors.secondaryTextColor }]}>
+                                {selectedMedia.type === 'image'
+                                    ? 'Imagen lista para enviar'
+                                    : selectedMedia.type === 'video'
+                                        ? 'Video listo para enviar'
+                                        : 'Documento listo para enviar'}
+                            </Text>
+                        </View>
                     </View>
                     <TouchableOpacity onPress={() => setSelectedMedia(null)} style={styles.removeImageBtn}>
                         <Ionicons name="close-circle" size={24} color={colors.textColor} />
@@ -574,8 +593,18 @@ const styles = StyleSheet.create({
         borderTopWidth: 1
     },
     previewRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    previewIcon: { marginRight: 10 },
-    previewText: { maxWidth: 240 },
+    previewThumbnail: { width: 54, height: 54, borderRadius: 10, marginRight: 10 },
+    previewFallback: {
+        width: 54,
+        height: 54,
+        borderRadius: 10,
+        marginRight: 10,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    previewTextContainer: { flex: 1 },
+    previewText: { fontWeight: '600' },
+    previewType: { fontSize: 12, marginTop: 3 },
     removeImageBtn: { marginLeft: 10 },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%' },
