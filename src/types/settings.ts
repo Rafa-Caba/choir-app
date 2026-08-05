@@ -1,6 +1,6 @@
 // src/types/settings.ts
 
-import type { JsonValue } from './json';
+import type { TipTapDocument } from './tiptap';
 
 export interface SocialLinks {
     readonly facebook: string;
@@ -15,10 +15,7 @@ export interface HomeLegends {
     readonly secondary: string;
 }
 
-export interface RichTextDocument {
-    readonly type: string;
-    readonly content?: readonly JsonValue[];
-}
+export type RichTextDocument = TipTapDocument;
 
 export interface AppSettings {
     readonly id: string;
