@@ -4,6 +4,8 @@ import choirApi from '../api/choirApi';
 import type {
     ChatMessage,
     ChatMessageResponse,
+    ChatReceiptsResponse,
+    ChatReceiptStatus,
     ChatUploadResponse,
     NewMessagePayload,
     RawChatMessage
@@ -96,4 +98,21 @@ export const toggleReaction = async (
         { emoji }
     );
     return normalizeChatMessage(response.data.message);
+};
+
+
+export const markChatReceipts = async (
+    messageIds: readonly string[],
+    status: ChatReceiptStatus
+): Promise<readonly ChatMessage[]> => {
+    if (messageIds.length === 0) {
+        return [];
+    }
+
+    const response = await choirApi.patch<ChatReceiptsResponse>('/chat/receipts', {
+        messageIds,
+        status
+    });
+
+    return response.data.messages.map(normalizeChatMessage);
 };
