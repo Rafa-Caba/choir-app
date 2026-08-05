@@ -33,11 +33,14 @@ const changedSources = [
     'src/screens/blog/BlogListScreen.tsx',
     'src/screens/blog/CreateBlogScreen.tsx',
     'src/components/chatMessages/ChatInput.tsx',
+    'src/constants/chatStickers.ts',
     'src/components/chatMessages/ChatMessageItem.tsx',
     'src/components/chatMessages/MessageContent.tsx',
     'src/screens/chat/ChatScreen.tsx',
     'src/screens/gallery/GalleryScreen.tsx',
     'src/screens/gallery/MediaDetailScreen.tsx',
+    'src/screens/settings/AdminSettingsScreen.tsx',
+    'src/screens/settings/profile/ProfileScreen.tsx',
     'src/screens/platform/PlatformProfileScreen.tsx',
     'src/screens/settings/AdminThemeEditorScreen.tsx',
     'src/screens/settings/themes/ManageThemeScreen.tsx',
@@ -62,7 +65,10 @@ const changedSources = [
     'src/store/useSongsStore.ts',
     'src/store/useThemeStore.ts',
     'src/types/chat.ts',
-    'src/utils/normalizeChatMessage.ts'
+    'src/types/settings.ts',
+    'src/types/tiptap.ts',
+    'src/utils/normalizeChatMessage.ts',
+    'src/utils/tiptapUtils.ts'
 ];
 
 for (const relativePath of changedSources) {
@@ -72,6 +78,7 @@ for (const relativePath of changedSources) {
     assert.doesNotMatch(source, /:\s*any\b/u, `${relativePath} must not use any`);
     assert.doesNotMatch(source, /<any>/u, `${relativePath} must not use any generics`);
     assert.doesNotMatch(source, /@ts-ignore/u, `${relativePath} must not suppress TypeScript errors`);
+    assert.doesNotMatch(source, /\bunknown\b/u, `${relativePath} must not use unknown`);
 }
 
 const app = read('App.tsx');
@@ -89,6 +96,9 @@ const chatMessageItem = read('src/components/chatMessages/ChatMessageItem.tsx');
 const messageContent = read('src/components/chatMessages/MessageContent.tsx');
 const chatTypes = read('src/types/chat.ts');
 const normalizeChatMessage = read('src/utils/normalizeChatMessage.ts');
+const chatStickers = read('src/constants/chatStickers.ts');
+const mediaDetail = read('src/screens/gallery/MediaDetailScreen.tsx');
+const testflightEnv = read('.env.testflight.example');
 const authService = read('src/services/auth.ts');
 const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
 const galleryScreen = read('src/screens/gallery/GalleryScreen.tsx');
@@ -123,8 +133,15 @@ assert.match(chatData, /timeout: 6_000/u);
 assert.match(chatData, /signal/u);
 assert.doesNotMatch(chatScreen, /KeyboardAvoidingView/u);
 assert.match(chatScreen, /measureInWindow/u);
-assert.match(chatScreen, /composerShift/u);
-assert.match(chatScreen, /keyboardWillChangeFrame/u);
+assert.match(chatScreen, /keyboardVisibleRef/u);
+assert.match(chatScreen, /resetComposerShift/u);
+assert.match(chatScreen, /keyboardWillHide/u);
+assert.match(chatScreen, /keyboardDidHide/u);
+assert.match(chatScreen, /event\.endCoordinates\.height <= 0/u);
+assert.match(chatScreen, /translateY: -composerShift/u);
+assert.doesNotMatch(chatScreen, /composerHeight \+ composerShift/u);
+assert.match(chatScreen, /scrollToIndex/u);
+assert.match(chatScreen, /onReplyPress=\{scrollToReply\}/u);
 assert.match(chatScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
 assert.match(chatScreen, /useIsFocused/u);
 assert.match(chatScreen, /composerDock/u);
@@ -138,18 +155,31 @@ assert.match(chatInput, /cancelRecording/u);
 assert.match(chatInput, /pickCameraImage/u);
 assert.match(chatInput, /showStickerModal/u);
 assert.match(chatInput, /messageType\?: MessageType/u);
+assert.match(chatInput, /replyToId\?: string/u);
+assert.match(chatInput, /CHAT_STICKER_PACKS/u);
 assert.match(chatInput, /ActivityIndicator/u);
 assert.match(chatInput, /previewThumbnail/u);
 assert.match(chatInput, /Imagen lista para enviar/u);
 assert.doesNotMatch(chatInput, /Ocultar teclado/u);
 assert.match(chatMessageItem, /checkmark-done/u);
 assert.match(chatMessageItem, /message\.readBy/u);
+assert.match(chatMessageItem, /onReplyPress/u);
+assert.match(chatMessageItem, /Ir al mensaje original/u);
 assert.match(messageContent, /type === 'STICKER'/u);
 assert.match(messageContent, /audioWaveform/u);
 assert.match(chatTypes, /'STICKER'/u);
 assert.match(chatTypes, /deliveredTo/u);
 assert.match(chatTypes, /readBy/u);
 assert.match(normalizeChatMessage, /normalizeReceiptIds/u);
+assert.match(normalizeChatMessage, /authorName/u);
+assert.match(chatData, /replyToId/u);
+assert.doesNotMatch(chatData, /const replyingTo = useChatStore/u);
+assert.match(chatStickers, /CHAT_STICKER_PACKS/u);
+assert.match(mediaDetail, /switchControlContainer/u);
+assert.match(mediaDetail, /useSafeAreaInsets/u);
+assert.match(testflightEnv, /https:\/\/choirs-api-production\.up\.railway\.app/u);
+assert.doesNotMatch(testflightEnv, /https:\/\/https:\/\//u);
+assert.doesNotMatch(testflightEnv, /chiors/u);
 
 assert.match(songTypesScreen, /KeyboardAvoidingView/u);
 assert.match(songTypesScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
