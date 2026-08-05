@@ -1,135 +1,193 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+// src/screens/songs/CreateSongScreen.tsx
+
+import React, { useEffect, useLayoutEffect, useState } from 'react';
 import {
-    View, Text, TextInput, TouchableOpacity, StyleSheet,
-    ScrollView, ActivityIndicator, Alert, Platform, KeyboardAvoidingView
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { useSongsStore } from '../../store/useSongsStore';
+import {
+    useCreateSongMutation,
+    useSongTypesQuery,
+    useUpdateSongMutation
+} from '../../hooks/query/useSongsData';
 import { useTheme } from '../../context/ThemeContext';
 import { TypeSelectorModal } from '../../components/song/TypeSelectorModal';
+import type { SongsStackParamList } from '../../navigation/SongsNavigator';
+import type { SongContent } from '../../types/song';
+import type { TipTapNode } from '../../types/blog';
 
+const extractNodeText = (node: TipTapNode): string => {
+    if (typeof node.text === 'string') {
+        return node.text;
+    }
+
+    return (node.content ?? []).map(extractNodeText).join('');
+};
+
+const extractSongText = (content: SongContent | undefined): string => {
+    if (!content?.content) {
+        return '';
+    }
+
+    return content.content.map(extractNodeText).join('\n');
+};
+
+const buildSongContent = (value: string): SongContent => ({
+    type: 'doc',
+    content: value.split('\n').map((line) => ({
+        type: 'paragraph',
+        content: line.length > 0 ? [{ type: 'text', text: line }] : []
+    }))
+});
 
 export const CreateSongScreen = () => {
-    const navigation = useNavigation();
-    const route = useRoute<any>();
-    const { songToEdit, preSelectedTypeId } = route.params || {};
-    const isEdit = !!songToEdit;
-
-    const { songTypes, addSong, editSong, fetchData } = useSongsStore();
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
-    useEffect(() => {
-        if (songTypes.length === 0) fetchData();
-    }, []);
-
-    const extractText = (jsonContent: any) => {
-        if (!jsonContent) return '';
-        try {
-            if (jsonContent.type === 'doc' && Array.isArray(jsonContent.content)) {
-                return jsonContent.content.map((n: any) => n.content?.[0]?.text || '').join('\n');
-            }
-        } catch (e) { return ''; }
-        return '';
-    };
-
-    const [title, setTitle] = useState(songToEdit?.title || '');
-    const [composer, setComposer] = useState(songToEdit?.composer || '');
-    const [content, setContent] = useState(isEdit ? extractText(songToEdit.content) : '');
-
-    // Type State
-    const [selectedType, setSelectedType] = useState<string | null>(songToEdit?.songTypeId || preSelectedTypeId || null);
-    const [selectedTypeName, setSelectedTypeName] = useState('');
+    const navigation = useNavigation<NativeStackNavigationProp<SongsStackParamList, 'CreateSongScreen'>>();
+    const route = useRoute<RouteProp<SongsStackParamList, 'CreateSongScreen'>>();
+    const songToEdit = route.params?.songToEdit;
+    const preSelectedTypeId = route.params?.preSelectedTypeId;
+    const isEdit = Boolean(songToEdit);
+    const songTypesQuery = useSongTypesQuery();
+    const createMutation = useCreateSongMutation();
+    const updateMutation = useUpdateSongMutation();
+    const songTypes = songTypesQuery.data ?? [];
+    const colors = useTheme().currentTheme;
+    const [title, setTitle] = useState(songToEdit?.title ?? '');
+    const [composer, setComposer] = useState(songToEdit?.composer ?? '');
+    const [content, setContent] = useState(extractSongText(songToEdit?.content));
+    const [selectedType, setSelectedType] = useState<string | null>(
+        songToEdit?.songTypeId ?? preSelectedTypeId ?? null
+    );
+    const [selectedTypeName, setSelectedTypeName] = useState('Selecciona una categoría');
     const [showTypeModal, setShowTypeModal] = useState(false);
-
     const [audioUri, setAudioUri] = useState<string | null>(null);
-    const [audioName, setAudioName] = useState<string | null>(songToEdit?.audioUrl ? 'Existing Audio Saved' : null);
-    const [submitting, setSubmitting] = useState(false);
+    const [audioName, setAudioName] = useState<string | null>(
+        songToEdit?.audioUrl ? 'Audio actual' : null
+    );
+    const submitting = createMutation.isPending || updateMutation.isPending;
 
     useLayoutEffect(() => {
-        navigation.setOptions({ title: isEdit ? 'Editar Canto' : 'Nuevo Canto' });
-    }, [navigation, isEdit]);
+        navigation.setOptions({ title: isEdit ? 'Editar canto' : 'Nuevo canto' });
+    }, [isEdit, navigation]);
 
-    // Sync selectedTypeName when types load or selection changes
     useEffect(() => {
-        if (selectedType && songTypes.length > 0) {
-            const found = songTypes.find(t => t.id === selectedType);
-            if (found) setSelectedTypeName(found.name);
-        } else if (!selectedType) {
-            setSelectedTypeName('Selecciona una Categoría');
-        }
+        const selected = songTypes.find((type) => type.id === selectedType);
+        setSelectedTypeName(selected?.name ?? 'Selecciona una categoría');
     }, [selectedType, songTypes]);
 
-    const handlePickAudio = async () => {
+    const handlePickAudio = async (): Promise<void> => {
         try {
-            const result = await DocumentPicker.getDocumentAsync({ type: 'audio/*', copyToCacheDirectory: true });
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'audio/*',
+                copyToCacheDirectory: true
+            });
+
             if (!result.canceled) {
-                setAudioUri(result.assets[0].uri);
-                setAudioName(result.assets[0].name);
+                const asset = result.assets[0];
+                setAudioUri(asset.uri);
+                setAudioName(asset.name);
             }
-        } catch (e) { Alert.alert("Error", "Audio selection failed"); }
+        } catch {
+            Alert.alert('Error', 'No fue posible seleccionar el audio.');
+        }
     };
 
-    const handleSubmit = async () => {
-        if (!title.trim()) { Alert.alert("Error", "Title is required"); return; }
-        if (!selectedType) { Alert.alert("Error", "Select a song type"); return; }
+    const handleSubmit = async (): Promise<void> => {
+        const normalizedTitle = title.trim();
 
-        setSubmitting(true);
+        if (!normalizedTitle) {
+            Alert.alert('Error', 'El título es obligatorio.');
+            return;
+        }
 
-        const richContent = {
-            type: 'doc',
-            content: content.split('\n').map((line: string) => ({
-                type: 'paragraph',
-                content: line.trim() ? [{ type: 'text', text: line }] : []
-            }))
-        };
+        if (!selectedType) {
+            Alert.alert('Error', 'Selecciona una categoría.');
+            return;
+        }
 
         const payload = {
-            title,
-            composer,
-            content: richContent,
+            title: normalizedTitle,
+            composer: composer.trim(),
+            content: buildSongContent(content),
             songTypeId: selectedType
         };
 
-        let success;
-        if (isEdit) {
-            success = await editSong(songToEdit.id, payload, audioUri || undefined);
-        } else {
-            success = await addSong(payload, audioUri || undefined);
-        }
-
-        setSubmitting(false);
-
-        if (success) {
+        try {
+            if (songToEdit) {
+                await updateMutation.mutateAsync({
+                    id: songToEdit.id,
+                    payload,
+                    audioUri: audioUri ?? undefined
+                });
+            } else {
+                await createMutation.mutateAsync({
+                    payload,
+                    audioUri: audioUri ?? undefined
+                });
+            }
             navigation.goBack();
-        } else {
-            Alert.alert("Error", "Could not save song.");
+        } catch {
+            Alert.alert('Error', 'No fue posible guardar el canto. Intenta nuevamente.');
         }
     };
 
-    // Style Helper
-    const inputStyle = [styles.input, { backgroundColor: colors.cardColor, color: colors.textColor }];
+    const inputStyle = [
+        styles.input,
+        { backgroundColor: colors.cardColor, color: colors.textColor }
+    ];
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: colors.backgroundColor }}>
-            <ScrollView contentContainerStyle={{ padding: 20 }}>
-
+        <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={[styles.flexOne, { backgroundColor: colors.backgroundColor }]}
+        >
+            <ScrollView
+                contentContainerStyle={styles.content}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+            >
                 <Text style={[styles.label, { color: colors.textColor }]}>Título</Text>
-                <TextInput style={inputStyle} value={title} onChangeText={setTitle} />
+                <TextInput
+                    style={inputStyle}
+                    value={title}
+                    onChangeText={setTitle}
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="sentences"
+                    editable={!submitting}
+                />
 
                 <Text style={[styles.label, { color: colors.textColor }]}>Compositor</Text>
-                <TextInput style={inputStyle} value={composer} onChangeText={setComposer} />
+                <TextInput
+                    style={inputStyle}
+                    value={composer}
+                    onChangeText={setComposer}
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="words"
+                    editable={!submitting}
+                />
 
-                {/* 🆕 CUSTOM SELECTOR BUTTON */}
                 <Text style={[styles.label, { color: colors.textColor }]}>Categoría</Text>
                 <TouchableOpacity
-                    style={[inputStyle, styles.selectorBtn]}
+                    style={[inputStyle, styles.selectorButton]}
                     onPress={() => setShowTypeModal(true)}
+                    disabled={submitting || songTypesQuery.isLoading}
                 >
                     <Text style={{ color: selectedType ? colors.textColor : colors.secondaryTextColor }}>
-                        {selectedTypeName}
+                        {songTypesQuery.isLoading ? 'Cargando categorías...' : selectedTypeName}
                     </Text>
                     <Ionicons name="chevron-down" size={20} color={colors.secondaryTextColor} />
                 </TouchableOpacity>
@@ -147,12 +205,27 @@ export const CreateSongScreen = () => {
 
                 <Text style={[styles.label, { color: colors.textColor }]}>Audio</Text>
                 <View style={styles.audioRow}>
-                    <TouchableOpacity style={[styles.audioBtn, { backgroundColor: colors.cardColor, borderColor: colors.primaryColor }]} onPress={handlePickAudio}>
+                    <TouchableOpacity
+                        style={[
+                            styles.audioButton,
+                            {
+                                backgroundColor: colors.cardColor,
+                                borderColor: colors.primaryColor
+                            }
+                        ]}
+                        onPress={() => void handlePickAudio()}
+                        disabled={submitting}
+                    >
                         <Ionicons name="musical-note" size={20} color={colors.primaryColor} />
-                        <Text style={{ marginLeft: 10, color: colors.textColor }}>{audioName || "Selecciona un audio..."}</Text>
+                        <Text style={[styles.audioText, { color: colors.textColor }]} numberOfLines={1}>
+                            {audioName ?? 'Selecciona un audio...'}
+                        </Text>
                     </TouchableOpacity>
                     {audioUri && (
-                        <TouchableOpacity onPress={() => { setAudioUri(null); setAudioName(null); }}>
+                        <TouchableOpacity onPress={() => {
+                            setAudioUri(null);
+                            setAudioName(null);
+                        }}>
                             <Ionicons name="close-circle" size={24} color="#E91E63" />
                         </TouchableOpacity>
                     )}
@@ -167,10 +240,24 @@ export const CreateSongScreen = () => {
                     textAlignVertical="top"
                     placeholder="Escribe la letra aquí..."
                     placeholderTextColor={colors.secondaryTextColor}
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="sentences"
+                    editable={!submitting}
                 />
 
-                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.buttonColor }]} onPress={handleSubmit} disabled={submitting}>
-                    {submitting ? <ActivityIndicator color="white" /> : <Text style={[styles.submitText, { color: colors.buttonTextColor }]}>{isEdit ? 'Update Song' : 'Save Song'}</Text>}
+                <TouchableOpacity
+                    style={[styles.submitButton, { backgroundColor: colors.buttonColor }]}
+                    onPress={() => void handleSubmit()}
+                    disabled={submitting}
+                >
+                    {submitting ? (
+                        <ActivityIndicator color={colors.buttonTextColor} />
+                    ) : (
+                        <Text style={[styles.submitText, { color: colors.buttonTextColor }]}>
+                            {isEdit ? 'Actualizar canto' : 'Guardar canto'}
+                        </Text>
+                    )}
                 </TouchableOpacity>
             </ScrollView>
         </KeyboardAvoidingView>
@@ -178,12 +265,23 @@ export const CreateSongScreen = () => {
 };
 
 const styles = StyleSheet.create({
+    flexOne: { flex: 1 },
+    content: { padding: 20, paddingBottom: 60 },
     label: { fontSize: 16, fontWeight: 'bold', marginBottom: 8, marginTop: 10 },
     input: { borderRadius: 8, padding: 12, fontSize: 16 },
-    selectorBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    textArea: { height: 250 },
+    selectorButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    textArea: { minHeight: 250 },
     audioRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    audioBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed' },
-    submitBtn: { marginTop: 30, marginBottom: 50, padding: 15, borderRadius: 10, alignItems: 'center' },
+    audioButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 15,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderStyle: 'dashed'
+    },
+    audioText: { marginLeft: 10, flex: 1 },
+    submitButton: { marginTop: 30, padding: 15, borderRadius: 10, alignItems: 'center' },
     submitText: { fontSize: 18, fontWeight: 'bold' }
 });

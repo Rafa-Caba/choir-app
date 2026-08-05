@@ -1,6 +1,7 @@
 // src/hooks/usePushNotifications.ts
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { InteractionManager } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { registerCurrentPushDevice } from '../services/pushDevices';
 import { useAuthStore } from '../store/useAuthStore';
@@ -14,15 +15,27 @@ interface PushNotificationState {
 export const usePushNotifications = (): PushNotificationState => {
 	const status = useAuthStore((state) => state.status);
 	const requiresPasswordChange = useAuthStore((state) => state.requiresPasswordChange);
+	const userId = useAuthStore((state) => state.user?.id ?? null);
 	const userRole = useAuthStore((state) => state.user?.role);
-	const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
+	const userChoirId = useAuthStore((state) => state.user?.choirId ?? null);
+	const targetChoirId = useTargetChoirStore((state) => state.selectedChoir?.id ?? null);
 	const viewMode = useTargetChoirStore((state) => state.viewMode);
 	const [registered, setRegistered] = useState(false);
 	const [notification, setNotification] = useState<Notifications.Notification | null>(null);
+	const tenantChoirId = userRole === 'SUPER_ADMIN' ? targetChoirId : userChoirId;
+	const registrationKey = useMemo(
+		() => `${userId ?? 'none'}:${tenantChoirId ?? 'none'}:${viewMode}`,
+		[tenantChoirId, userId, viewMode]
+	);
+
+	useEffect(() => {
+		const receivedSubscription = Notifications.addNotificationReceivedListener(setNotification);
+		return () => receivedSubscription.remove();
+	}, []);
 
 	useEffect(() => {
 		const hasTenantContext = userRole !== 'SUPER_ADMIN' || (
-			viewMode === 'tenant' && selectedChoir !== null
+			viewMode === 'tenant' && tenantChoirId !== null
 		);
 
 		if (status !== 'authenticated' || requiresPasswordChange || !hasTenantContext) {
@@ -31,37 +44,28 @@ export const usePushNotifications = (): PushNotificationState => {
 		}
 
 		let active = true;
-		const receivedSubscription = Notifications.addNotificationReceivedListener((received) => {
-			setNotification(received);
-		});
-		const tokenSubscription = Notifications.addPushTokenListener(() => {
+		const register = (): void => {
 			registerCurrentPushDevice()
 				.then((didRegister) => {
 					if (active) {
 						setRegistered(didRegister);
 					}
 				})
-				.catch(() => undefined);
-		});
-
-		registerCurrentPushDevice()
-			.then((didRegister) => {
-				if (active) {
-					setRegistered(didRegister);
-				}
-			})
-			.catch(() => {
-				if (active) {
-					setRegistered(false);
-				}
-			});
+				.catch(() => {
+					if (active) {
+						setRegistered(false);
+					}
+				});
+		};
+		const tokenSubscription = Notifications.addPushTokenListener(register);
+		const interactionTask = InteractionManager.runAfterInteractions(register);
 
 		return () => {
 			active = false;
-			receivedSubscription.remove();
+			interactionTask.cancel();
 			tokenSubscription.remove();
 		};
-	}, [requiresPasswordChange, selectedChoir, status, userRole, viewMode]);
+	}, [registrationKey, requiresPasswordChange, status, tenantChoirId, userRole, viewMode]);
 
 	return { registered, notification };
 };

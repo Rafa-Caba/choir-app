@@ -4,19 +4,20 @@ import { create } from 'zustand';
 import {
     createAnnouncement,
     deleteAnnouncement,
+    getAnnouncements,
     updateAnnouncement
 } from '../services/announcement';
 import { getApiErrorMessage } from '../services/auth';
-import { CACHE_TTL_MS } from '../config/cachePolicy';
-import { syncCacheFirst } from '../services/sync';
-import { cacheRemoteMedia } from '../storage/mediaCache';
 import type { Announcement, CreateAnnouncementPayload } from '../types/announcement';
-import { useAuthStore } from './useAuthStore';
+import { queryClient } from '../query/queryClient';
+import { queryKeys } from '../query/queryKeys';
+import { getTenantQueryScopeSnapshot } from '../hooks/query/useTenantQueryScope';
+import { removeById, upsertById } from '../query/cacheUpdates';
 
 interface AnnouncementState {
-    announcements: Announcement[];
-    loading: boolean;
-    errorMessage: string | null;
+    readonly announcements: readonly Announcement[];
+    readonly loading: boolean;
+    readonly errorMessage: string | null;
     fetchPublicAnnouncements: () => Promise<void>;
     fetchAdminAnnouncements: () => Promise<void>;
     addAnnouncement: (payload: CreateAnnouncementPayload) => Promise<boolean>;
@@ -25,97 +26,45 @@ interface AnnouncementState {
     reset: () => void;
 }
 
-const hydrateAnnouncements = async (
-    announcements: readonly Announcement[]
-): Promise<Announcement[]> => {
-    const context = useAuthStore.getState().getTenantContext();
+const writeCachedAnnouncements = (
+    updater: (current: readonly Announcement[]) => readonly Announcement[]
+): readonly Announcement[] => {
+    const scope = getTenantQueryScopeSnapshot();
 
-    if (!context) {
-        return [...announcements];
+    if (!scope.enabled) {
+        return [];
     }
 
-    return Promise.all(announcements.map(async (announcement) => ({
-        ...announcement,
-        cachedImageUrl: await cacheRemoteMedia(context, 'announcements', announcement.imageUrl)
-    })));
-};
-
-const replaceAnnouncement = (
-    announcements: readonly Announcement[],
-    incoming: Announcement
-): Announcement[] => {
-    const existing = announcements.find((announcement) => announcement.id === incoming.id);
-    const merged = existing
-        ? {
-            ...existing,
-            ...incoming,
-            cachedImageUrl: incoming.cachedImageUrl ?? (
-                existing.imageUrl === incoming.imageUrl
-                    ? existing.cachedImageUrl
-                    : null
-            )
-        }
-        : incoming;
-
-    return existing
-        ? announcements.map((announcement) => announcement.id === incoming.id ? merged : announcement)
-        : [merged, ...announcements];
+    const key = queryKeys.announcements(scope.tenantKey);
+    queryClient.setQueryData<readonly Announcement[]>(key, (current) => updater(current ?? []));
+    return queryClient.getQueryData<readonly Announcement[]>(key) ?? [];
 };
 
 export const useAnnouncementStore = create<AnnouncementState>((set) => {
-    const syncAnnouncements = async (showLoading: boolean): Promise<void> => {
-        const context = useAuthStore.getState().getTenantContext();
+    const fetchAnnouncements = async (): Promise<void> => {
+        const scope = getTenantQueryScopeSnapshot();
 
-        if (!context) {
+        if (!scope.enabled) {
+            set({ announcements: [] });
             return;
         }
 
-        if (showLoading) {
-            set({ loading: true, errorMessage: null });
-        }
+        set({ loading: true, errorMessage: null });
 
         try {
-            const result = await syncCacheFirst<readonly Announcement[]>({
-                context,
-                resource: 'announcements',
-                path: '/announcements',
-                ttlMs: CACHE_TTL_MS.announcements,
-                onData: (data) => set({ announcements: [...data] })
+            const announcements = await queryClient.fetchQuery({
+                queryKey: queryKeys.announcements(scope.tenantKey),
+                queryFn: getAnnouncements,
+                staleTime: 15_000
             });
-            const rawAnnouncements = [...result.data];
-            set({ announcements: rawAnnouncements });
-
-            hydrateAnnouncements(rawAnnouncements)
-                .then((hydrated) => set((state) => ({
-                    announcements: hydrated.reduce<Announcement[]>(
-                        (current, announcement) => replaceAnnouncement(current, announcement),
-                        state.announcements
-                    )
-                })))
-                .catch(() => undefined);
+            set({ announcements });
         } catch (error) {
             set({ errorMessage: getApiErrorMessage(error as object) });
             throw error;
         } finally {
-            if (showLoading) {
-                set({ loading: false });
-            }
+            set({ loading: false });
         }
     };
-
-    const refreshInBackground = (): void => {
-        syncAnnouncements(false).catch(() => undefined);
-    };
-
-    const hydrateAnnouncementInBackground = (announcement: Announcement): void => {
-        hydrateAnnouncements([announcement])
-            .then(([hydrated]) => set((state) => ({
-                announcements: replaceAnnouncement(state.announcements, hydrated)
-            })))
-            .catch(() => undefined);
-    };
-
-    const fetchAnnouncements = (): Promise<void> => syncAnnouncements(true);
 
     return {
         announcements: [],
@@ -129,11 +78,10 @@ export const useAnnouncementStore = create<AnnouncementState>((set) => {
 
             try {
                 const created = await createAnnouncement(payload);
-                set((state) => ({
-                    announcements: replaceAnnouncement(state.announcements, created)
-                }));
-                hydrateAnnouncementInBackground(created);
-                refreshInBackground();
+                const announcements = writeCachedAnnouncements(
+                    (current) => upsertById(current, created)
+                );
+                set({ announcements });
                 return true;
             } catch (error) {
                 set({ errorMessage: getApiErrorMessage(error as object) });
@@ -148,11 +96,10 @@ export const useAnnouncementStore = create<AnnouncementState>((set) => {
 
             try {
                 const updated = await updateAnnouncement(id, payload);
-                set((state) => ({
-                    announcements: replaceAnnouncement(state.announcements, updated)
-                }));
-                hydrateAnnouncementInBackground(updated);
-                refreshInBackground();
+                const announcements = writeCachedAnnouncements(
+                    (current) => upsertById(current, updated)
+                );
+                set({ announcements });
                 return true;
             } catch (error) {
                 set({ errorMessage: getApiErrorMessage(error as object) });
@@ -165,10 +112,10 @@ export const useAnnouncementStore = create<AnnouncementState>((set) => {
         removeAnnouncement: async (id) => {
             try {
                 await deleteAnnouncement(id);
-                set((state) => ({
-                    announcements: state.announcements.filter((announcement) => announcement.id !== id)
-                }));
-                refreshInBackground();
+                const announcements = writeCachedAnnouncements(
+                    (current) => removeById(current, id)
+                );
+                set({ announcements });
                 return true;
             } catch (error) {
                 set({ errorMessage: getApiErrorMessage(error as object) });

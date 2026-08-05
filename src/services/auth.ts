@@ -99,7 +99,11 @@ export const getUserProfile = async (): Promise<User> => {
 };
 
 export const updateTheme = async (themeId: string): Promise<User> => {
-    const response = await choirApi.put<UserResponse>('/users/me/theme', { themeId });
+    const response = await choirApi.put<UserResponse>(
+        '/users/me/theme',
+        { themeId },
+        { timeout: 6_000 }
+    );
     return response.data.user;
 };
 

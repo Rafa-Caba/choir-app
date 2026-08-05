@@ -9,7 +9,7 @@ import React, {
 } from 'react';
 import { updateTheme as persistUserTheme } from '../services/auth';
 import { useAuthStore } from '../store/useAuthStore';
-import { useThemeStore } from '../store/useThemeStore';
+import { useThemesQuery } from '../hooks/query/useThemesData';
 import type { Theme } from '../types/theme';
 
 const DEFAULT_THEME: Theme = {
@@ -47,7 +47,10 @@ const ThemeContext = createContext<ThemeContextType>({
 });
 
 const resolveThemeId = (themeId: string | Theme | null | undefined): string | null => {
-    if (!themeId) return null;
+    if (!themeId) {
+        return null;
+    }
+
     return typeof themeId === 'string' ? themeId : themeId.id;
 };
 
@@ -55,23 +58,19 @@ export const ThemeProvider = ({ children }: { readonly children: React.ReactNode
     const status = useAuthStore((state) => state.status);
     const user = useAuthStore((state) => state.user);
     const replaceUser = useAuthStore((state) => state.replaceUser);
-    const themes = useThemeStore((state) => state.themes);
-    const loading = useThemeStore((state) => state.loading);
-    const fetchThemes = useThemeStore((state) => state.fetchThemes);
+    const themesQuery = useThemesQuery();
+    const themes = themesQuery.data ?? [];
     const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
     const userThemeId = resolveThemeId(user?.themeId);
 
     useEffect(() => {
-        if (status === 'authenticated') {
-            fetchThemes().catch(() => undefined);
-        } else {
+        if (status !== 'authenticated') {
             setSelectedThemeId(null);
+            return;
         }
-    }, [fetchThemes, status, user?.id]);
 
-    useEffect(() => {
         setSelectedThemeId(userThemeId);
-    }, [userThemeId]);
+    }, [status, userThemeId]);
 
     const currentTheme = useMemo(() => {
         const preferredId = selectedThemeId ?? userThemeId;
@@ -85,12 +84,19 @@ export const ThemeProvider = ({ children }: { readonly children: React.ReactNode
     const setThemeById = async (id: string): Promise<void> => {
         const theme = themes.find((item) => item.id === id);
 
-        if (!theme) return;
+        if (!theme || !user) {
+            return;
+        }
+
+        const previousThemeId = selectedThemeId ?? userThemeId;
         setSelectedThemeId(id);
 
-        if (user) {
+        try {
             const updatedUser = await persistUserTheme(id);
             await replaceUser(updatedUser);
+        } catch (error) {
+            setSelectedThemeId(previousThemeId);
+            throw error;
         }
     };
 
@@ -101,7 +107,7 @@ export const ThemeProvider = ({ children }: { readonly children: React.ReactNode
                 availableThemes: themes,
                 setTheme,
                 setThemeById,
-                loading,
+                loading: themesQuery.isLoading,
                 colors: currentTheme
             }}
         >

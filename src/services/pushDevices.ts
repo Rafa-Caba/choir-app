@@ -15,7 +15,13 @@ interface RegisterPushDevicePayload {
     readonly appVersion?: string;
 }
 
-export const registerCurrentPushDevice = async (): Promise<boolean> => {
+const REGISTRATION_RETRY_COOLDOWN_MS = 60_000;
+
+let registrationPromise: Promise<boolean> | null = null;
+let lastRegistrationSignature: string | null = null;
+let lastRegistrationAttemptAt = 0;
+
+const performRegistration = async (): Promise<boolean> => {
     if (Platform.OS === 'web' || !Device.isDevice) {
         return false;
     }
@@ -53,7 +59,35 @@ export const registerCurrentPushDevice = async (): Promise<boolean> => {
         deviceName: Device.deviceName ?? undefined,
         appVersion: Constants.expoConfig?.version
     };
+    const signature = `${payload.deviceId}:${payload.expoPushToken}:${payload.appVersion ?? ''}`;
 
-    await choirApi.post('/push-devices', payload);
+    if (lastRegistrationSignature === signature) {
+        return true;
+    }
+
+    await choirApi.post('/push-devices', payload, { timeout: 8_000 });
+    lastRegistrationSignature = signature;
     return true;
+};
+
+export const registerCurrentPushDevice = (): Promise<boolean> => {
+    if (registrationPromise) {
+        return registrationPromise;
+    }
+
+    if (Date.now() - lastRegistrationAttemptAt < REGISTRATION_RETRY_COOLDOWN_MS) {
+        return Promise.resolve(lastRegistrationSignature !== null);
+    }
+
+    lastRegistrationAttemptAt = Date.now();
+    registrationPromise = performRegistration().finally(() => {
+        registrationPromise = null;
+    });
+
+    return registrationPromise;
+};
+
+export const resetPushDeviceRegistrationCache = (): void => {
+    lastRegistrationSignature = null;
+    lastRegistrationAttemptAt = 0;
 };

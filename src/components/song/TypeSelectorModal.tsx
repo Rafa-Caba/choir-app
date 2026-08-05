@@ -10,7 +10,7 @@ interface Props {
     visible: boolean;
     onClose: () => void;
     onSelect: (typeId: string, typeName: string) => void;
-    allTypes: SongType[];
+    readonly allTypes: readonly SongType[];
     selectedTypeId?: string | null;
 }
 

@@ -1,6 +1,6 @@
 // src/screens/chat/ChatScreen.tsx
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -14,78 +14,71 @@ import {
     View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { ChatInput } from '../../components/chatMessages/ChatInput';
 import { ChatMessageItem } from '../../components/chatMessages/ChatMessageItem';
 import { useTheme } from '../../context/ThemeContext';
 import type { ChatAttachment } from '../../services/chat';
 import { useChatStore } from '../../store/useChatStore';
 import type { ChatMessage } from '../../types/chat';
+import {
+    useChatDirectoryQuery,
+    useChatHistoryQuery,
+    useSendChatMessageMutation
+} from '../../hooks/query/useChatData';
 
 export const ChatScreen = () => {
     const flatListRef = useRef<FlatList<ChatMessage>>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const focusScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showOnlineModal, setShowOnlineModal] = useState(false);
     const colors = useTheme().currentTheme;
-    const messages = useChatStore((state) => state.messages);
+    const isFocused = useIsFocused();
+    const historyQuery = useChatHistoryQuery(isFocused);
+    const directoryQuery = useChatDirectoryQuery(showOnlineModal);
+    const sendMutation = useSendChatMessageMutation();
+    const messages = historyQuery.data ?? [];
     const connected = useChatStore((state) => state.connected);
     const connectionError = useChatStore((state) => state.connectionError);
-    const loading = useChatStore((state) => state.loading);
-    const directoryLoading = useChatStore((state) => state.directoryLoading);
-    const directoryLoaded = useChatStore((state) => state.directoryLoaded);
-    const directoryError = useChatStore((state) => state.directoryError);
     const onlineUsers = useChatStore((state) => state.onlineUsers);
-    const allUsers = useChatStore((state) => state.allUsers);
     const typingUsers = useChatStore((state) => state.typingUsers);
     const connect = useChatStore((state) => state.connect);
-    const loadHistory = useChatStore((state) => state.loadHistory);
-    const fetchDirectory = useChatStore((state) => state.fetchDirectory);
-    const sendMessage = useChatStore((state) => state.sendMessage);
+    const disconnect = useChatStore((state) => state.disconnect);
     const sendTyping = useChatStore((state) => state.sendTyping);
+    const allUsers = directoryQuery.data ?? [];
 
-    useEffect(() => {
+    useFocusEffect(useCallback(() => {
         connect();
-        loadHistory().catch(() => undefined);
 
         return () => {
             if (typingTimeoutRef.current) {
                 clearTimeout(typingTimeoutRef.current);
             }
-
-            if (focusScrollTimeoutRef.current) {
-                clearTimeout(focusScrollTimeoutRef.current);
-            }
-
             sendTyping(false);
+            disconnect();
         };
-    }, [connect, loadHistory, sendTyping]);
+    }, [connect, disconnect, sendTyping]));
 
     useEffect(() => {
         if (messages.length > 0) {
-            flatListRef.current?.scrollToEnd({ animated: true });
+            requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: false }));
         }
     }, [messages.length]);
 
-    const sortedUsers = useMemo(() => {
-        return [...allUsers]
-            .map((user) => ({
-                ...user,
-                isOnline: onlineUsers.some((online) => online.id === user.id)
-            }))
-            .sort((left, right) => {
-                if (left.isOnline === right.isOnline) {
-                    return left.name.localeCompare(right.name);
-                }
+    const sortedUsers = useMemo(() => [...allUsers]
+        .map((user) => ({
+            ...user,
+            isOnline: onlineUsers.some((online) => online.id === user.id)
+        }))
+        .sort((left, right) => {
+            if (left.isOnline === right.isOnline) {
+                return left.name.localeCompare(right.name);
+            }
+            return left.isOnline ? -1 : 1;
+        }), [allUsers, onlineUsers]);
 
-                return left.isOnline ? -1 : 1;
-            });
-    }, [allUsers, onlineUsers]);
-
-    const handleSend = async (
-        text: string,
-        attachment?: ChatAttachment
-    ): Promise<void> => {
-        await sendMessage(text, attachment);
+    const handleSend = async (text: string, attachment?: ChatAttachment): Promise<void> => {
+        await sendMutation.mutateAsync({ text, attachment });
+        requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
     };
 
     const handleTyping = (): void => {
@@ -95,32 +88,13 @@ export const ChatScreen = () => {
             clearTimeout(typingTimeoutRef.current);
         }
 
-        typingTimeoutRef.current = setTimeout(() => {
-            sendTyping(false);
-        }, 2_000);
-    };
-
-    const handleInputFocus = (): void => {
-        if (focusScrollTimeoutRef.current) {
-            clearTimeout(focusScrollTimeoutRef.current);
-        }
-
-        focusScrollTimeoutRef.current = setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-        }, 180);
-    };
-
-    const openMembers = (): void => {
-        setShowOnlineModal(true);
-
-        if (!directoryLoaded && !directoryLoading) {
-            fetchDirectory().catch(() => undefined);
-        }
+        typingTimeoutRef.current = setTimeout(() => sendTyping(false), 2_000);
     };
 
     const statusLabel = connected
         ? `${onlineUsers.length} en línea`
-        : connectionError ?? 'Reconectando...';
+        : connectionError ?? 'Sincronización periódica activa';
+    const statusColor = connected ? '#4CAF50' : '#FF9800';
 
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
@@ -133,12 +107,12 @@ export const ChatScreen = () => {
                     }
                 ]}
                 activeOpacity={0.7}
-                onPress={openMembers}
+                onPress={() => setShowOnlineModal(true)}
             >
                 <View style={styles.flexOne}>
                     <Text style={[styles.headerTitle, { color: colors.textColor }]}>Chat del coro</Text>
                     <View style={styles.statusRow}>
-                        <View style={[styles.dot, { backgroundColor: connected ? '#4CAF50' : '#F44336' }]} />
+                        <View style={[styles.dot, { backgroundColor: statusColor }]} />
                         <Text
                             numberOfLines={1}
                             style={[styles.headerSubtitle, { color: colors.secondaryTextColor }]}
@@ -157,20 +131,33 @@ export const ChatScreen = () => {
             >
                 <FlatList
                     ref={flatListRef}
+                    style={styles.flexOne}
                     data={messages}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => <ChatMessageItem message={item} />}
                     contentContainerStyle={styles.listContent}
-                    keyboardShouldPersistTaps="always"
+                    keyboardShouldPersistTaps="handled"
                     keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                    onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-                    removeClippedSubviews={Platform.OS === 'android'}
-                    ListEmptyComponent={loading ? (
+                    refreshing={historyQuery.isRefetching && messages.length > 0}
+                    onRefresh={() => void historyQuery.refetch()}
+                    ListEmptyComponent={historyQuery.isLoading ? (
                         <View style={styles.loadingContainer}>
                             <ActivityIndicator color={colors.primaryColor} />
                             <Text style={[styles.loadingText, { color: colors.secondaryTextColor }]}>
                                 Cargando mensajes...
                             </Text>
+                        </View>
+                    ) : historyQuery.isError ? (
+                        <View style={styles.loadingContainer}>
+                            <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
+                                No fue posible cargar los mensajes.
+                            </Text>
+                            <TouchableOpacity
+                                style={[styles.retryButton, { backgroundColor: colors.buttonColor }]}
+                                onPress={() => void historyQuery.refetch()}
+                            >
+                                <Text style={{ color: colors.buttonTextColor, fontWeight: '700' }}>Reintentar</Text>
+                            </TouchableOpacity>
                         </View>
                     ) : (
                         <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
@@ -188,11 +175,10 @@ export const ChatScreen = () => {
                         </Text>
                     </View>
                 )}
-
                 <ChatInput
                     onSend={handleSend}
                     onTyping={handleTyping}
-                    onFocus={handleInputFocus}
+                    onFocus={() => requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }))}
                 />
             </KeyboardAvoidingView>
 
@@ -211,26 +197,23 @@ export const ChatScreen = () => {
                             </TouchableOpacity>
                         </View>
 
-                        {directoryLoading && !directoryLoaded ? (
+                        {directoryQuery.isLoading ? (
                             <View style={styles.directoryStatus}>
                                 <ActivityIndicator color={colors.primaryColor} />
                                 <Text style={[styles.loadingText, { color: colors.secondaryTextColor }]}>
                                     Cargando miembros...
                                 </Text>
                             </View>
-                        ) : directoryError && !directoryLoaded ? (
+                        ) : directoryQuery.isError ? (
                             <View style={styles.directoryStatus}>
                                 <Text style={[styles.directoryError, { color: colors.secondaryTextColor }]}>
-                                    {directoryError}
+                                    No fue posible cargar los miembros.
                                 </Text>
                                 <TouchableOpacity
                                     style={[styles.retryButton, { backgroundColor: colors.buttonColor }]}
-                                    onPress={() => void fetchDirectory(true)}
-                                    disabled={directoryLoading}
+                                    onPress={() => void directoryQuery.refetch()}
                                 >
-                                    <Text style={{ color: colors.buttonTextColor, fontWeight: '700' }}>
-                                        Reintentar
-                                    </Text>
+                                    <Text style={{ color: colors.buttonTextColor, fontWeight: '700' }}>Reintentar</Text>
                                 </TouchableOpacity>
                             </View>
                         ) : (
@@ -243,7 +226,7 @@ export const ChatScreen = () => {
                                             {item.imageUrl ? (
                                                 <Image
                                                     source={{ uri: item.imageUrl }}
-                                                    style={[styles.avatarImage, { opacity: item.isOnline ? 1 : 0.55 }]}
+                                                    style={[styles.avatarImage, { opacity: item.isOnline ? 1 : 0.65 }]}
                                                 />
                                             ) : (
                                                 <View style={[styles.avatarFallback, { backgroundColor: colors.backgroundColor }]}>
@@ -262,7 +245,9 @@ export const ChatScreen = () => {
                                         <View>
                                             <Text style={[styles.userName, { color: colors.textColor }]}>{item.name}</Text>
                                             <Text style={[styles.userStatus, { color: colors.secondaryTextColor }]}>
-                                                {item.isOnline ? 'En línea' : 'Desconectado'}
+                                                {connected
+                                                    ? item.isOnline ? 'En línea' : 'Desconectado'
+                                                    : 'Estado en tiempo real no disponible'}
                                             </Text>
                                         </View>
                                     </View>

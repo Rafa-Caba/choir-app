@@ -1,176 +1,145 @@
-import React, { useEffect } from 'react';
-import {
-    View, Text, FlatList, Image, TouchableOpacity, StyleSheet,
-    Alert, Platform
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+// src/screens/HomeScreen.tsx
 
+import React from 'react';
+import {
+    Alert,
+    FlatList,
+    Image,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
+import type { DrawerNavigationProp } from '@react-navigation/drawer';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../context/ThemeContext';
 import { useAuthStore } from '../store/useAuthStore';
-import { useAnnouncementStore } from '../store/useAnnouncementStore';
-
 import { AnnouncementCard } from '../components/AnnouncementCard';
-import { Announcement } from '../types/announcement';
-import { useChatStore } from '../store/useChatStore';
+import type { Announcement } from '../types/announcement';
+import type { HomeStackParamList } from '../navigation/HomeNavigator';
+import {
+    useAnnouncementsQuery,
+    useDeleteAnnouncementMutation
+} from '../hooks/query/useAnnouncementData';
+
+type DrawerRoutes = {
+    readonly Root: undefined;
+};
+
+type HomeNavigation = CompositeNavigationProp<
+    NativeStackNavigationProp<HomeStackParamList, 'HomeScreen'>,
+    DrawerNavigationProp<DrawerRoutes>
+>;
 
 export const HomeScreen = () => {
-    const insets = useSafeAreaInsets();
-    const navigation = useNavigation<any>();
-    const { connected } = useChatStore();
-
-
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
-    const { user } = useAuthStore();
-
-    const {
-        announcements,
-        fetchPublicAnnouncements,
-        fetchAdminAnnouncements,
-        removeAnnouncement,
-        loading
-    } = useAnnouncementStore();
-
+    const navigation = useNavigation<HomeNavigation>();
+    const colors = useTheme().currentTheme;
+    const user = useAuthStore((state) => state.user);
     const canEdit = user?.role === 'ADMIN' || user?.role === 'EDITOR';
+    const announcementsQuery = useAnnouncementsQuery(canEdit ? 'all' : 'public');
+    const deleteMutation = useDeleteAnnouncementMutation();
+    const announcements = announcementsQuery.data ?? [];
 
-    useEffect(() => {
-        if (canEdit) {
-            fetchAdminAnnouncements();
-        } else {
-            fetchPublicAnnouncements();
-        }
-    }, [canEdit]);
+    const handleDelete = (id: string): void => {
+        const remove = (): void => {
+            deleteMutation.mutate(id, {
+                onError: () => Alert.alert('Error', 'No fue posible eliminar el aviso.')
+            });
+        };
 
-    const handleCardPress = (announcement: Announcement) => {
-        if (canEdit) {
-            navigation.navigate('CreateAnnouncement', { announcement });
-        }
-    };
-
-    const handleDelete = (id: string) => {
         if (Platform.OS === 'web') {
-            if (window.confirm("Delete this announcement?")) {
-                removeAnnouncement(id);
+            if (window.confirm('¿Eliminar este aviso?')) {
+                remove();
             }
-        } else {
-            Alert.alert(
-                "Delete Announcement",
-                "Are you sure you want to delete this?",
-                [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: () => removeAnnouncement(id)
-                    }
-                ]
-            );
+            return;
         }
+
+        Alert.alert('Eliminar aviso', '¿Estás seguro?', [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Eliminar', style: 'destructive', onPress: remove }
+        ]);
     };
+
+    const renderAnnouncement = ({ item }: { readonly item: Announcement }) => (
+        <AnnouncementCard
+            announcement={item}
+            onPress={() => {
+                if (canEdit) {
+                    navigation.navigate('CreateAnnouncement', { announcement: item });
+                }
+            }}
+            onDelete={canEdit ? () => handleDelete(item.id) : undefined}
+        />
+    );
 
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-
-            {/* Header */}
             <View style={styles.header}>
                 <View>
-                    <Text style={[styles.greeting, { color: colors.secondaryTextColor }]}>
-                        Hello,
-                    </Text>
-                    <Text style={[styles.name, { color: colors.textColor }]}>
-                        {user?.name || 'Guest'}
-                    </Text>
+                    <Text style={[styles.greeting, { color: colors.secondaryTextColor }]}>Hola,</Text>
+                    <Text style={[styles.name, { color: colors.textColor }]}>{user?.name || 'Usuario'}</Text>
                 </View>
                 <TouchableOpacity onPress={() => navigation.openDrawer()}>
-                    {/* <Image
-                        source={{ uri: user?.imageUrl || 'https://via.placeholder.com/100' }}
+                    <Image
+                        source={{ uri: user?.cachedImageUrl ?? user?.imageUrl ?? 'https://via.placeholder.com/100' }}
                         style={[styles.avatar, { borderColor: colors.primaryColor }]}
-                    /> */}
-                    <View>
-                        <Image
-                            source={{ uri: user?.imageUrl || 'https://via.placeholder.com/100' }}
-                            style={styles.avatar}
-                        />
-                        <View style={[
-                            styles.statusDot,
-                            { backgroundColor: connected ? '#4CAF50' : '#BDBDBD', borderColor: colors.backgroundColor }
-                        ]} />
-                    </View>
+                    />
                 </TouchableOpacity>
             </View>
 
-            {/* Section Title & Action */}
             <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: colors.textColor }]}>
-                    Announcements
-                </Text>
+                <Text style={[styles.sectionTitle, { color: colors.textColor }]}>Avisos</Text>
                 {canEdit && (
                     <TouchableOpacity
                         style={[styles.addButton, { backgroundColor: colors.buttonColor }]}
                         onPress={() => navigation.navigate('CreateAnnouncement')}
                     >
-                        <Text style={[styles.addButtonText, { color: colors.buttonTextColor }]}>
-                            + New
-                        </Text>
+                        <Text style={[styles.addButtonText, { color: colors.buttonTextColor }]}>+ Nuevo</Text>
                     </TouchableOpacity>
                 )}
             </View>
 
-            {/* List */}
             <FlatList
                 data={announcements}
                 keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                    <AnnouncementCard
-                        announcement={item}
-                        onPress={() => handleCardPress(item)}
-                        onDelete={canEdit ? () => handleDelete(item.id) : undefined}
-                    />
+                renderItem={renderAnnouncement}
+                refreshing={announcementsQuery.isRefetching}
+                onRefresh={() => void announcementsQuery.refetch()}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={announcementsQuery.isLoading ? (
+                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>Cargando avisos...</Text>
+                ) : announcementsQuery.isError ? (
+                    <View style={styles.errorState}>
+                        <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>No fue posible cargar los avisos.</Text>
+                        <TouchableOpacity
+                            style={[styles.retryButton, { backgroundColor: colors.buttonColor }]}
+                            onPress={() => void announcementsQuery.refetch()}
+                        >
+                            <Text style={{ color: colors.buttonTextColor, fontWeight: '700' }}>Reintentar</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>No hay avisos recientes.</Text>
                 )}
-                refreshing={loading}
-                onRefresh={canEdit ? fetchAdminAnnouncements : fetchPublicAnnouncements}
-                contentContainerStyle={{ paddingBottom: 20 }}
-                ListEmptyComponent={
-                    <Text style={[styles.emptyText, { color: colors.secondaryTextColor }]}>
-                        No recent announcements.
-                    </Text>
-                }
             />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        paddingHorizontal: 20,
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 20,
-        marginTop: 5
-    },
-    statusDot: {
-        position: 'absolute', bottom: 0, left: 52,
-        width: 16, height: 16, borderRadius: 8,
-        borderWidth: 2
-    },
+    container: { flex: 1, paddingHorizontal: 20 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 5 },
     greeting: { fontSize: 16 },
     name: { fontSize: 22, fontWeight: 'bold' },
     avatar: { width: 75, height: 75, borderRadius: 50, borderWidth: 2 },
-    sectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 15,
-    },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     sectionTitle: { fontSize: 20, fontWeight: 'bold' },
     addButton: { paddingHorizontal: 15, paddingVertical: 6, borderRadius: 20 },
     addButtonText: { fontWeight: '600', fontSize: 14 },
-    emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16 }
+    listContent: { paddingBottom: 20, flexGrow: 1 },
+    emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16 },
+    errorState: { alignItems: 'center' },
+    retryButton: { marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 }
 });

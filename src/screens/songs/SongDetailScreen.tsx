@@ -1,37 +1,37 @@
 // src/screens/songs/SongDetailScreen.tsx
-import React, { useEffect, useState, useLayoutEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { useRoute, useNavigation, type NavigationProp, type RouteProp } from '@react-navigation/native';
+
+import React, { useEffect, useLayoutEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
-
-import { useSongsStore } from '../../store/useSongsStore';
+import {
+    useDeleteSongMutation,
+    useSongsQuery
+} from '../../hooks/query/useSongsData';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
-import { getPreviewFromRichText } from '../../utils/textUtils';
 import { RichTextViewer } from '../../components/common/RichTextViewer';
-import type { Song } from '../../types/song';
-
-type SongDetailParams = {
-    SongDetailScreen: { readonly songId: string };
-    CreateSongScreen: { readonly songToEdit: Song };
-};
+import type { SongsStackParamList } from '../../navigation/SongsNavigator';
 
 export const SongDetailScreen = () => {
-    const route = useRoute<RouteProp<SongDetailParams, 'SongDetailScreen'>>();
-    const navigation = useNavigation<NavigationProp<SongDetailParams>>();
-    const { songId } = route.params;
-    const { songs, removeSong } = useSongsStore();
-    const { user } = useAuthStore();
-    const { currentTheme } = useTheme();
-    const colors = currentTheme; // Flat structure
-
+    const route = useRoute<RouteProp<SongsStackParamList, 'SongDetailScreen'>>();
+    const navigation = useNavigation<NativeStackNavigationProp<SongsStackParamList, 'SongDetailScreen'>>();
+    const songsQuery = useSongsQuery();
+    const deleteMutation = useDeleteSongMutation();
+    const user = useAuthStore((state) => state.user);
+    const colors = useTheme().currentTheme;
+    const song = (songsQuery.data ?? []).find((item) => item.id === route.params.songId);
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'EDITOR';
-
-    // Robust finding: ensure IDs match types
-    const song = songs.find(s => s.id.toString() === songId.toString());
-
-    // Audio State
     const [sound, setSound] = useState<Audio.Sound | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoadingAudio, setIsLoadingAudio] = useState(false);
@@ -40,21 +40,22 @@ export const SongDetailScreen = () => {
         navigation.setOptions({
             headerStyle: { backgroundColor: colors.backgroundColor },
             headerTintColor: colors.textColor,
-            title: 'Detalle del Canto'
+            title: 'Detalle del canto'
         });
-    }, [navigation, colors, song]);
+    }, [colors.backgroundColor, colors.textColor, navigation]);
 
-    useEffect(() => {
-        return () => {
-            if (sound) {
-                sound.unloadAsync(); // Cleanup audio on unmount
-            }
-        };
+    useEffect(() => () => {
+        if (sound) {
+            void sound.unloadAsync();
+        }
     }, [sound]);
 
-    const handlePlayPause = async () => {
+    const handlePlayPause = async (): Promise<void> => {
         const audioSource = song?.cachedAudioUrl ?? song?.audioUrl;
-        if (!audioSource) return;
+
+        if (!audioSource) {
+            return;
+        }
 
         try {
             if (sound) {
@@ -65,94 +66,104 @@ export const SongDetailScreen = () => {
                     await sound.playAsync();
                     setIsPlaying(true);
                 }
-            } else {
-                setIsLoadingAudio(true);
-                // Enable Audio on iOS silent mode
-                await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-
-                const { sound: newSound } = await Audio.Sound.createAsync(
-                    { uri: audioSource },
-                    { shouldPlay: true }
-                );
-                setSound(newSound);
-                setIsPlaying(true);
-
-                // Reset state when audio finishes
-                newSound.setOnPlaybackStatusUpdate((status) => {
-                    if (status.isLoaded && status.didJustFinish) {
-                        setIsPlaying(false);
-                        newSound.setPositionAsync(0);
-                    }
-                });
+                return;
             }
+
+            setIsLoadingAudio(true);
+            await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+            const result = await Audio.Sound.createAsync(
+                { uri: audioSource },
+                { shouldPlay: true }
+            );
+            setSound(result.sound);
+            setIsPlaying(true);
+            result.sound.setOnPlaybackStatusUpdate((status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                    setIsPlaying(false);
+                    void result.sound.setPositionAsync(0);
+                }
+            });
         } catch {
-            Alert.alert("Error", "No se pudo reproducir el audio.");
+            Alert.alert('Error', 'No se pudo reproducir el audio.');
         } finally {
             setIsLoadingAudio(false);
         }
     };
 
-    const handleDelete = () => {
-        Alert.alert(
-            "Eliminar Canto",
-            "¿Estás seguro? Esta acción es irreversible.",
-            [
-                { text: "Cancelar", style: "cancel" },
-                {
-                    text: "Eliminar",
-                    style: "destructive",
-                    onPress: async () => {
-                        if (!song) return;
-                        const success = await removeSong(song.id);
-                        if (success) navigation.goBack();
-                    }
+    const handleDelete = (): void => {
+        if (!song) {
+            return;
+        }
+
+        Alert.alert('Eliminar canto', '¿Estás seguro? Esta acción es irreversible.', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Eliminar',
+                style: 'destructive',
+                onPress: () => {
+                    deleteMutation.mutate(song.id, {
+                        onSuccess: () => navigation.goBack(),
+                        onError: () => Alert.alert('Error', 'No fue posible eliminar el canto.')
+                    });
                 }
-            ]
-        );
+            }
+        ]);
     };
 
-    if (!song) return (
-        <View style={[styles.center, { backgroundColor: colors.backgroundColor }]}>
-            <Text style={{ color: colors.textColor }}>Canto no encontrado</Text>
-        </View>
-    );
+    if (songsQuery.isLoading && !song) {
+        return (
+            <View style={[styles.center, { backgroundColor: colors.backgroundColor }]}>
+                <ActivityIndicator color={colors.primaryColor} />
+            </View>
+        );
+    }
 
-    const lyrics = getPreviewFromRichText(song.content, 10000);
+    if (!song) {
+        return (
+            <View style={[styles.center, { backgroundColor: colors.backgroundColor }]}>
+                <Text style={{ color: colors.textColor }}>Canto no encontrado.</Text>
+            </View>
+        );
+    }
 
     return (
         <ScrollView style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-            {/* Header Actions */}
             {isAdmin && (
                 <View style={styles.adminBar}>
                     <TouchableOpacity
                         onPress={() => navigation.navigate('CreateSongScreen', { songToEdit: song })}
-                        style={styles.iconBtn}
+                        style={styles.iconButton}
                     >
                         <Ionicons name="pencil" size={24} color={colors.primaryColor} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleDelete} style={styles.iconBtn}>
-                        <Ionicons name="trash" size={24} color="#E91E63" />
+                    <TouchableOpacity onPress={handleDelete} style={styles.iconButton}>
+                        {deleteMutation.isPending ? (
+                            <ActivityIndicator color="#E91E63" />
+                        ) : (
+                            <Ionicons name="trash" size={24} color="#E91E63" />
+                        )}
                     </TouchableOpacity>
                 </View>
             )}
 
             <Text style={[styles.title, { color: colors.textColor }]}>{song.title}</Text>
-
             {song.composer ? (
-                <Text style={[styles.composer, { color: colors.secondaryTextColor }]}>
-                    Por: {song.composer}
-                </Text>
+                <Text style={[styles.composer, { color: colors.secondaryTextColor }]}>Por: {song.composer}</Text>
             ) : null}
 
-            {/* Audio Player */}
             {(song.cachedAudioUrl || song.audioUrl) && (
-                <View style={[styles.playerContainer, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
-                    <TouchableOpacity onPress={handlePlayPause} disabled={isLoadingAudio}>
+                <View
+                    style={[
+                        styles.playerContainer,
+                        { backgroundColor: colors.cardColor, borderColor: colors.borderColor }
+                    ]}
+                >
+                    <TouchableOpacity onPress={() => void handlePlayPause()} disabled={isLoadingAudio}>
                         {isLoadingAudio ? (
                             <ActivityIndicator color={colors.primaryColor} />
                         ) : (
                             <Ionicons
-                                name={isPlaying ? "pause-circle" : "play-circle"}
+                                name={isPlaying ? 'pause-circle' : 'play-circle'}
                                 size={50}
                                 color={colors.primaryColor}
                             />
@@ -160,19 +171,18 @@ export const SongDetailScreen = () => {
                     </TouchableOpacity>
                     <View style={styles.playerTextContainer}>
                         <Text style={[styles.playerText, { color: colors.textColor }]}>
-                            {isPlaying ? "Reproduciendo..." : "Escuchar Audio"}
+                            {isPlaying ? 'Reproduciendo...' : 'Escuchar audio'}
                         </Text>
                         <Text style={{ color: colors.secondaryTextColor, fontSize: 12 }}>
-                            {isLoadingAudio ? "Cargando..." : "Toque para iniciar"}
+                            {isLoadingAudio ? 'Cargando...' : 'Toca para iniciar'}
                         </Text>
                     </View>
                 </View>
             )}
 
-            <View style={{ marginTop: 20, marginBottom: 30 }}>
+            <View style={styles.lyricsContainer}>
                 <RichTextViewer content={song.content} tight />
             </View>
-
         </ScrollView>
     );
 };
@@ -181,18 +191,20 @@ const styles = StyleSheet.create({
     container: { flex: 1, padding: 20, paddingTop: 10 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     adminBar: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 },
-    iconBtn: { padding: 8, marginLeft: 10 },
+    iconButton: { padding: 8, marginLeft: 10 },
     title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 10 },
     composer: { fontSize: 16, textAlign: 'center', marginBottom: 20, fontStyle: 'italic' },
-
     playerContainer: {
-        flexDirection: 'row', alignItems: 'center',
-        paddingVertical: 7, paddingHorizontal: 15, borderRadius: 12, borderWidth: 1,
-        marginBottom: 25, elevation: 2
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 7,
+        paddingHorizontal: 15,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 25,
+        elevation: 2
     },
     playerTextContainer: { marginLeft: 15 },
     playerText: { fontSize: 16, fontWeight: '600' },
-
-    lyricsContainer: { paddingBottom: 50 },
-    lyrics: { fontSize: 18, lineHeight: 32, textAlign: 'left', marginLeft: 15, marginTop: 10 }
+    lyricsContainer: { marginTop: 20, marginBottom: 50 }
 });

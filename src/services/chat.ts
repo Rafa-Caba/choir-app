@@ -39,9 +39,13 @@ const fallbackAttachmentMetadata = (
     }
 };
 
-export const getChatHistory = async (limit = 50): Promise<readonly RawChatMessage[]> => {
+export const getChatHistory = async (
+    limit = 50,
+    signal?: AbortSignal
+): Promise<readonly RawChatMessage[]> => {
     const response = await choirApi.get<readonly RawChatMessage[]>('/chat/history', {
-        params: { limit }
+        params: { limit },
+        signal
     });
     return response.data;
 };

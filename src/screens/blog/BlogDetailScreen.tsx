@@ -14,18 +14,26 @@ import {
     View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import { MediaViewerModal } from '../../components/shared/MediaViewerModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useBlogStore } from '../../store/useBlogStore';
+import type { BlogStackParamList } from '../../navigation/BlogNavigator';
+import {
+    useBlogPostsQuery,
+    useCommentOnBlogMutation,
+    useToggleBlogLikeMutation
+} from '../../hooks/query/useBlogData';
 import { getPreviewFromRichText } from '../../utils/textUtils';
 
 export const BlogDetailScreen = () => {
     const colors = useTheme().currentTheme;
+    const route = useRoute<RouteProp<BlogStackParamList, 'BlogDetail'>>();
     const user = useAuthStore((state) => state.user);
-    const currentPost = useBlogStore((state) => state.currentPost);
-    const likePost = useBlogStore((state) => state.likePost);
-    const commentOnPost = useBlogStore((state) => state.commentOnPost);
+    const postsQuery = useBlogPostsQuery();
+    const likeMutation = useToggleBlogLikeMutation();
+    const commentMutation = useCommentOnBlogMutation();
+    const currentPost = postsQuery.data?.find((post) => post.id === route.params.postId) ?? null;
     const [comment, setComment] = useState('');
     const [submittingComment, setSubmittingComment] = useState(false);
     const [viewerVisible, setViewerVisible] = useState(false);
@@ -50,7 +58,7 @@ export const BlogDetailScreen = () => {
 
         setSubmittingComment(true);
         try {
-            await commentOnPost(currentPost.id, normalized);
+            await commentMutation.mutateAsync({ id: currentPost.id, text: normalized });
             setComment('');
         } catch {
             Alert.alert('Error', 'No fue posible publicar el comentario.');
@@ -93,7 +101,7 @@ export const BlogDetailScreen = () => {
 
                 <TouchableOpacity
                     style={styles.likeButton}
-                    onPress={() => void likePost(currentPost.id)}
+                    onPress={() => likeMutation.mutate(currentPost.id)}
                 >
                     <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={26} color="#E91E63" />
                     <Text style={[styles.likeText, { color: colors.secondaryTextColor }]}>

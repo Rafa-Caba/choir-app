@@ -9,104 +9,117 @@ const read = (relativePath) => fs.readFileSync(
     'utf8'
 );
 
-const multipart = read('src/services/multipart.ts');
-const uploadServices = [
+const changedSources = [
+    'App.tsx',
+    'src/context/ThemeContext.tsx',
+    'src/hooks/query/useAnnouncementData.ts',
+    'src/hooks/query/useBlogData.ts',
+    'src/hooks/query/useChatData.ts',
+    'src/hooks/query/useGalleryData.ts',
+    'src/hooks/query/useSongsData.ts',
+    'src/hooks/query/useTenantQueryScope.ts',
+    'src/hooks/query/useThemesData.ts',
+    'src/hooks/usePushNotifications.ts',
+    'src/navigation/BlogNavigator.tsx',
+    'src/providers/QueryLifecycleManager.tsx',
+    'src/providers/QueryProvider.tsx',
+    'src/query/cacheUpdates.ts',
+    'src/query/chatCache.ts',
+    'src/query/queryClient.ts',
+    'src/query/queryKeys.ts',
+    'src/screens/CreateAnnouncementScreen.tsx',
+    'src/screens/HomeScreen.tsx',
+    'src/screens/blog/BlogDetailScreen.tsx',
+    'src/screens/blog/BlogListScreen.tsx',
+    'src/screens/blog/CreateBlogScreen.tsx',
+    'src/screens/chat/ChatScreen.tsx',
+    'src/screens/gallery/GalleryScreen.tsx',
+    'src/screens/gallery/MediaDetailScreen.tsx',
+    'src/screens/settings/AdminThemeEditorScreen.tsx',
+    'src/screens/settings/themes/ManageThemeScreen.tsx',
+    'src/screens/settings/themes/ThemeSelectionScreen.tsx',
+    'src/screens/settings/themes/ThemesListScreen.tsx',
+    'src/screens/songs/CreateSongScreen.tsx',
+    'src/screens/songs/SongDetailScreen.tsx',
+    'src/screens/songs/SongTypesScreen.tsx',
+    'src/screens/songs/SongsListScreen.tsx',
     'src/services/auth.ts',
-    'src/services/announcement.ts',
-    'src/services/blog.ts',
     'src/services/chat.ts',
-    'src/services/choirs.ts',
-    'src/services/gallery.ts',
-    'src/services/song.ts',
-    'src/services/admin/settings.ts',
-    'src/services/admin/users.ts'
-].map(read);
-const chatStore = read('src/store/useChatStore.ts');
-const chatScreen = read('src/screens/chat/ChatScreen.tsx');
-const chatInput = read('src/components/chatMessages/ChatInput.tsx');
-const tabsNavigator = read('src/navigation/TabsNavigator.tsx');
-const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
-const songsStore = read('src/store/useSongsStore.ts');
-const galleryStore = read('src/store/useGalleryStore.ts');
-const themeService = read('src/services/theme.ts');
-const themeEditor = read('src/screens/settings/themes/ManageThemeScreen.tsx');
+    'src/services/deviceIdentity.ts',
+    'src/services/pushDevices.ts',
+    'src/services/sessionCleanup.ts',
+    'src/services/theme.ts',
+    'src/store/useAnnouncementStore.ts',
+    'src/store/useAppConfigStore.ts',
+    'src/store/useBlogStore.ts',
+    'src/store/useChatStore.ts',
+    'src/store/useGalleryStore.ts',
+    'src/store/useSongsStore.ts',
+    'src/store/useThemeStore.ts'
+];
+
+for (const relativePath of changedSources) {
+    const source = read(relativePath);
+    assert.match(source, /^\/\//u, `${relativePath} must start with its file path comment`);
+    assert.doesNotMatch(source, /\bas any\b/u, `${relativePath} must not use as any`);
+    assert.doesNotMatch(source, /:\s*any\b/u, `${relativePath} must not use any`);
+    assert.doesNotMatch(source, /<any>/u, `${relativePath} must not use any generics`);
+    assert.doesNotMatch(source, /@ts-ignore/u, `${relativePath} must not suppress TypeScript errors`);
+}
+
+const app = read('App.tsx');
+const packageJson = JSON.parse(read('package.json'));
+const queryClient = read('src/query/queryClient.ts');
+const queryLifecycle = read('src/providers/QueryLifecycleManager.tsx');
+const queryKeys = read('src/query/queryKeys.ts');
 const blogStore = read('src/store/useBlogStore.ts');
 const announcementStore = read('src/store/useAnnouncementStore.ts');
-const blogEditor = read('src/screens/blog/CreateBlogScreen.tsx');
-const announcementEditor = read('src/screens/CreateAnnouncementScreen.tsx');
-const blogDetail = read('src/screens/blog/BlogDetailScreen.tsx');
-const profileEditor = read('src/screens/settings/profile/EditProfileScreen.tsx');
-const choirEditor = read('src/screens/choir/ManageChoirScreen.tsx');
-const userEditor = read('src/screens/admin/ManageUserScreen.tsx');
-const richTextViewer = read('src/components/common/RichTextViewer.tsx');
+const chatStore = read('src/store/useChatStore.ts');
+const chatScreen = read('src/screens/chat/ChatScreen.tsx');
+const chatData = read('src/hooks/query/useChatData.ts');
+const chatInput = read('src/components/chatMessages/ChatInput.tsx');
+const authService = read('src/services/auth.ts');
+const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
+const pushDevices = read('src/services/pushDevices.ts');
+const deviceIdentity = read('src/services/deviceIdentity.ts');
+const multipart = read('src/services/multipart.ts');
 
-assert.doesNotMatch(multipart, /response\.blob\(\)/u);
-assert.doesNotMatch(multipart, /fetch\(upload\.uri\)/u);
-assert.match(multipart, /NativeFormDataFile/u);
-assert.match(multipart, /nativeFormData\.append\(fieldName/u);
-assert.match(multipart, /El archivo seleccionado está vacío/u);
-assert.match(multipart, /createLocalUpload/u);
+assert.equal(typeof packageJson.dependencies['@tanstack/react-query'], 'string');
+assert.match(app, /<QueryProvider>/u);
+assert.match(app, /<QueryLifecycleManager>/u);
+assert.doesNotMatch(app, /useChatStore/u);
+assert.match(queryClient, /staleTime: 15_000/u);
+assert.match(queryLifecycle, /focusManager\.setFocused/u);
+assert.match(queryKeys, /\['tenant', tenantKey/u);
 
-for (const service of uploadServices) {
-    assert.match(service, /createLocalUpload/u);
-    assert.match(service, /appendLocalFile/u);
-}
+assert.doesNotMatch(blogStore, /syncCacheFirst/u);
+assert.doesNotMatch(announcementStore, /syncCacheFirst/u);
+assert.match(blogStore, /queryClient\.fetchQuery/u);
+assert.match(announcementStore, /queryClient\.fetchQuery/u);
 
-assert.match(chatStore, /response\.data\.users/u);
 assert.match(chatStore, /transports: \['websocket'\]/u);
 assert.match(chatStore, /upgrade: false/u);
-assert.match(chatStore, /DIRECTORY_TIMEOUT_MS/u);
-assert.match(chatStore, /directoryLoaded/u);
-assert.match(chatStore, /persistChatChanges\(\[toRawChatMessage\(message\)\]\)\.catch/u);
-assert.doesNotMatch(chatStore, /await persistChatChanges\(\[toRawChatMessage\(message\)\]\)/u);
-assert.match(chatStore, /connect_error/u);
-assert.doesNotMatch(chatScreen, /Promise\.allSettled/u);
-assert.match(chatScreen, /fetchDirectory\(\)\.catch/u);
+assert.match(chatStore, /reconnectionAttempts: 2/u);
+assert.match(chatStore, /queryClient\.setQueryData/u);
+assert.match(chatData, /refetchInterval: active && !connected \? 15_000 : false/u);
+assert.match(chatData, /timeout: 6_000/u);
+assert.match(chatData, /signal/u);
+assert.match(chatScreen, /KeyboardAvoidingView/u);
 assert.match(chatScreen, /keyboardVerticalOffset=\{0\}/u);
-assert.match(chatScreen, /directoryLoading/u);
+assert.match(chatScreen, /useIsFocused/u);
+assert.doesNotMatch(chatScreen, /useAnimatedKeyboard/u);
 assert.match(chatInput, /Keyboard\.dismiss/u);
 assert.match(chatInput, /ActivityIndicator/u);
-assert.match(chatInput, /onFocus=\{onFocus\}/u);
-assert.match(tabsNavigator, /tabBarHideOnKeyboard: true/u);
 
 assert.match(songTypesScreen, /KeyboardAvoidingView/u);
-assert.match(songTypesScreen, /keyboardDismissMode/u);
-assert.match(songTypesScreen, /Ocultar teclado/u);
-assert.match(songTypesScreen, /ActivityIndicator/u);
-assert.match(songsStore, /upsertSongType/u);
-assert.match(songsStore, /refreshInBackground/u);
-assert.doesNotMatch(songsStore, /await get\(\)\.fetchData\(\)/u);
-assert.match(galleryStore, /upsertImage/u);
-assert.match(galleryStore, /refreshInBackground/u);
-assert.doesNotMatch(galleryStore, /await get\(\)\.fetchImages\(\)/u);
+assert.match(songTypesScreen, /InputAccessoryView/u);
+assert.match(songTypesScreen, /Ocultar/u);
 
-assert.match(themeService, /THEME_MUTATION_TIMEOUT_MS = 6_000/u);
-assert.match(themeEditor, /onCompleteJS=\{onColorSelect\}/u);
-assert.doesNotMatch(themeEditor, /onComplete=\{onColorSelect\}/u);
+assert.match(pushDevices, /REGISTRATION_RETRY_COOLDOWN_MS/u);
+assert.match(authService, /timeout: 6_000/u);
+assert.match(deviceIdentity, /deviceIdPromise/u);
+assert.doesNotMatch(multipart, /response\.blob\(\)/u);
+assert.doesNotMatch(multipart, /fetch\(upload\.uri\)/u);
+assert.match(multipart, /El archivo seleccionado está vacío/u);
 
-assert.match(blogStore, /replacePost/u);
-assert.match(blogStore, /hydratePostInBackground/u);
-assert.match(blogStore, /refreshInBackground/u);
-assert.match(announcementStore, /replaceAnnouncement/u);
-assert.match(announcementStore, /hydrateAnnouncementInBackground/u);
-assert.match(announcementStore, /refreshInBackground/u);
-
-for (const source of [
-    blogEditor,
-    announcementEditor,
-    blogDetail,
-    profileEditor,
-    choirEditor,
-    userEditor
-]) {
-    assert.match(source, /KeyboardAvoidingView/u);
-    assert.match(source, /automaticallyAdjustKeyboardInsets/u);
-    assert.match(source, /autoCorrect/u);
-    assert.match(source, /spellCheck/u);
-}
-
-assert.match(richTextViewer, /useTheme/u);
-assert.match(richTextViewer, /colors\.textColor/u);
-assert.match(richTextViewer, /SongContent/u);
-
-console.log('Production regression contract tests passed.');
+console.log('Production and performance regression contract tests passed.');

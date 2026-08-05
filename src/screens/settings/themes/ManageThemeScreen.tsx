@@ -18,7 +18,10 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SettingsStackParamList } from '../../../navigation/SettingsNavigator';
-import { useThemeStore } from '../../../store/useThemeStore';
+import {
+    useCreateThemeMutation,
+    useUpdateThemeMutation
+} from '../../../hooks/query/useThemesData';
 import { useTheme } from '../../../context/ThemeContext';
 import ColorPicker, { Panel1, Preview, HueSlider } from 'reanimated-color-picker';
 
@@ -154,11 +157,11 @@ export const ManageThemeScreen = () => {
 
     const { currentTheme } = useTheme();
     const colors = currentTheme;
-    const { addTheme, editTheme } = useThemeStore();
+    const createThemeMutation = useCreateThemeMutation();
+    const updateThemeMutation = useUpdateThemeMutation();
 
     const [name, setName] = useState(themeToEdit?.name || '');
     const [isDark, setIsDark] = useState(themeToEdit?.isDark || false);
-    const [loading, setLoading] = useState(false);
 
     const [formColors, setFormColors] = useState<FormColors>({
         primaryColor: themeToEdit?.primaryColor || '#6200EE',
@@ -215,26 +218,29 @@ export const ManageThemeScreen = () => {
         []
     );
 
-    const handleSave = async () => {
-        if (!name.trim()) {
+    const handleSave = async (): Promise<void> => {
+        const normalizedName = name.trim();
+
+        if (!normalizedName) {
             Alert.alert('Error', 'El nombre del tema es obligatorio');
             return;
         }
 
-        setLoading(true);
-        const payload = { name, isDark, ...formColors };
+        const payload = { name: normalizedName, isDark, ...formColors };
 
-        let success;
-        if (isEdit) {
-            success = await editTheme(themeToEdit.id, payload);
-        } else {
-            success = await addTheme(payload);
+        try {
+            if (isEdit && themeToEdit) {
+                await updateThemeMutation.mutateAsync({ id: themeToEdit.id, payload });
+            } else {
+                await createThemeMutation.mutateAsync(payload);
+            }
+            navigation.goBack();
+        } catch {
+            Alert.alert('Error', 'No fue posible guardar el tema. Intenta nuevamente.');
         }
-        setLoading(false);
-
-        if (success) navigation.goBack();
-        else Alert.alert('Error', 'No fue posible guardar el tema');
     };
+
+    const loading = createThemeMutation.isPending || updateThemeMutation.isPending;
 
     const colorFields = useMemo(
         () =>
@@ -355,7 +361,7 @@ export const ManageThemeScreen = () => {
 
                 <TouchableOpacity
                     style={[styles.saveBtn, { backgroundColor: colors.buttonColor }]}
-                    onPress={handleSave}
+                    onPress={() => void handleSave()}
                     disabled={loading}
                 >
                     {loading ? (

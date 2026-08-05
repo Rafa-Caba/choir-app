@@ -4,12 +4,14 @@ import { create } from 'zustand';
 import {
     createTheme,
     deleteTheme,
+    getAllThemes,
     updateTheme
 } from '../services/theme';
-import { CACHE_TTL_MS } from '../config/cachePolicy';
-import { syncCacheFirst } from '../services/sync';
 import type { CreateThemePayload, Theme } from '../types/theme';
-import { useAuthStore } from './useAuthStore';
+import { queryClient } from '../query/queryClient';
+import { queryKeys } from '../query/queryKeys';
+import { getTenantQueryScopeSnapshot } from '../hooks/query/useTenantQueryScope';
+import { removeById, upsertById } from '../query/cacheUpdates';
 
 interface ThemeState {
     themes: Theme[];
@@ -23,52 +25,33 @@ interface ThemeState {
     reset: () => void;
 }
 
-const upsertTheme = (
-    themes: readonly Theme[],
-    incoming: Theme
-): Theme[] => {
-    const exists = themes.some((theme) => theme.id === incoming.id);
-
-    if (!exists) {
-        return [...themes, incoming].sort((left, right) => left.name.localeCompare(right.name));
-    }
-
-    return themes
-        .map((theme) => theme.id === incoming.id ? incoming : theme)
-        .sort((left, right) => left.name.localeCompare(right.name));
-};
+const sortThemes = (themes: readonly Theme[]): Theme[] =>
+    [...themes].sort((left, right) => left.name.localeCompare(right.name));
 
 export const useThemeStore = create<ThemeState>((set) => {
-    const syncThemes = async (showLoading: boolean): Promise<void> => {
-        const context = useAuthStore.getState().getTenantContext();
+    const publish = (themes: readonly Theme[]): void => {
+        const sorted = sortThemes(themes);
+        set({ themes: sorted, publicThemes: sorted });
+    };
 
-        if (!context) {
+    const fetchThemes = async (): Promise<void> => {
+        const scope = getTenantQueryScopeSnapshot();
+
+        if (!scope.enabled) {
             return;
         }
 
-        if (showLoading) {
-            set({ loading: true });
-        }
-
+        set({ loading: true });
         try {
-            const result = await syncCacheFirst<readonly Theme[]>({
-                context,
-                resource: 'themes',
-                path: '/themes',
-                ttlMs: CACHE_TTL_MS.themes,
-                onData: (data) => set({ themes: [...data], publicThemes: [...data] })
+            const themes = await queryClient.fetchQuery({
+                queryKey: queryKeys.themes(scope.tenantKey),
+                queryFn: getAllThemes,
+                staleTime: 5 * 60_000
             });
-            set({ themes: [...result.data], publicThemes: [...result.data] });
+            publish(themes);
         } finally {
-            if (showLoading) {
-                set({ loading: false });
-            }
+            set({ loading: false });
         }
-    };
-
-    const fetchThemes = (): Promise<void> => syncThemes(true);
-    const refreshThemesInBackground = (): void => {
-        syncThemes(false).catch(() => undefined);
     };
 
     return {
@@ -78,15 +61,18 @@ export const useThemeStore = create<ThemeState>((set) => {
         fetchThemes,
         fetchPublicThemes: fetchThemes,
         addTheme: async (payload) => {
+            const scope = getTenantQueryScopeSnapshot();
             set({ loading: true });
 
             try {
                 const created = await createTheme(payload);
-                set((state) => ({
-                    themes: upsertTheme(state.themes, created),
-                    publicThemes: upsertTheme(state.publicThemes, created)
-                }));
-                refreshThemesInBackground();
+                const updated = sortThemes(upsertById(
+                    queryClient.getQueryData<readonly Theme[]>(queryKeys.themes(scope.tenantKey)),
+                    created,
+                    'end'
+                ));
+                queryClient.setQueryData(queryKeys.themes(scope.tenantKey), updated);
+                publish(updated);
                 return true;
             } catch {
                 return false;
@@ -95,15 +81,18 @@ export const useThemeStore = create<ThemeState>((set) => {
             }
         },
         editTheme: async (id, payload) => {
+            const scope = getTenantQueryScopeSnapshot();
             set({ loading: true });
 
             try {
-                const updated = await updateTheme(id, payload);
-                set((state) => ({
-                    themes: upsertTheme(state.themes, updated),
-                    publicThemes: upsertTheme(state.publicThemes, updated)
-                }));
-                refreshThemesInBackground();
+                const updatedTheme = await updateTheme(id, payload);
+                const updated = sortThemes(upsertById(
+                    queryClient.getQueryData<readonly Theme[]>(queryKeys.themes(scope.tenantKey)),
+                    updatedTheme,
+                    'end'
+                ));
+                queryClient.setQueryData(queryKeys.themes(scope.tenantKey), updated);
+                publish(updated);
                 return true;
             } catch {
                 return false;
@@ -112,16 +101,22 @@ export const useThemeStore = create<ThemeState>((set) => {
             }
         },
         removeTheme: async (id) => {
+            const scope = getTenantQueryScopeSnapshot();
+            set({ loading: true });
+
             try {
                 await deleteTheme(id);
-                set((state) => ({
-                    themes: state.themes.filter((theme) => theme.id !== id),
-                    publicThemes: state.publicThemes.filter((theme) => theme.id !== id)
-                }));
-                refreshThemesInBackground();
+                const updated = sortThemes(removeById(
+                    queryClient.getQueryData<readonly Theme[]>(queryKeys.themes(scope.tenantKey)),
+                    id
+                ));
+                queryClient.setQueryData(queryKeys.themes(scope.tenantKey), updated);
+                publish(updated);
                 return true;
             } catch {
                 return false;
+            } finally {
+                set({ loading: false });
             }
         },
         reset: () => set({ themes: [], publicThemes: [], loading: false })

@@ -11,11 +11,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { QueryProvider } from './src/providers/QueryProvider';
+import { QueryLifecycleManager } from './src/providers/QueryLifecycleManager';
 import { usePushNotifications } from './src/hooks/usePushNotifications';
 import { useAppConfigStore } from './src/store/useAppConfigStore';
 import { useAuthStore } from './src/store/useAuthStore';
-import { useChatStore } from './src/store/useChatStore';
-import { useTargetChoirStore } from './src/store/useTargetChoirStore';
+import { useTenantQueryScope } from './src/hooks/query/useTenantQueryScope';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -34,14 +35,10 @@ interface AppContentProps {
 const AppContent = ({ onReady }: AppContentProps) => {
     const status = useAuthStore((state) => state.status);
     const requiresPasswordChange = useAuthStore((state) => state.requiresPasswordChange);
-    const userRole = useAuthStore((state) => state.user?.role);
-    const selectedChoir = useTargetChoirStore((state) => state.selectedChoir);
-    const viewMode = useTargetChoirStore((state) => state.viewMode);
     const checkAuth = useAuthStore((state) => state.checkAuth);
     const fetchAppConfig = useAppConfigStore((state) => state.fetchAppConfig);
-    const connect = useChatStore((state) => state.connect);
-    const disconnect = useChatStore((state) => state.disconnect);
     const currentTheme = useTheme().currentTheme;
+    const tenantScope = useTenantQueryScope();
 
     usePushNotifications();
 
@@ -52,28 +49,10 @@ const AppContent = ({ onReady }: AppContentProps) => {
     }, [checkAuth, onReady]);
 
     useEffect(() => {
-        const hasTenantContext = userRole !== 'SUPER_ADMIN' || (
-            viewMode === 'tenant' && selectedChoir !== null
-        );
-
-        if (status === 'authenticated' && !requiresPasswordChange && hasTenantContext) {
+        if (status === 'authenticated' && !requiresPasswordChange && tenantScope.enabled) {
             fetchAppConfig().catch(() => undefined);
-            connect();
-            return disconnect;
         }
-
-        disconnect();
-        return undefined;
-    }, [
-        connect,
-        disconnect,
-        fetchAppConfig,
-        requiresPasswordChange,
-        selectedChoir,
-        status,
-        userRole,
-        viewMode
-    ]);
+    }, [fetchAppConfig, requiresPasswordChange, status, tenantScope.enabled, tenantScope.tenantKey]);
 
     return (
         <NavigationContainer>
@@ -104,11 +83,15 @@ export default function App() {
 
     return (
         <SafeAreaProvider>
-            <ThemeProvider>
-                <View style={styles.container}>
-                    <AppContent onReady={handleReady} />
-                </View>
-            </ThemeProvider>
+            <QueryProvider>
+                <QueryLifecycleManager>
+                    <ThemeProvider>
+                        <View style={styles.container}>
+                            <AppContent onReady={handleReady} />
+                        </View>
+                    </ThemeProvider>
+                </QueryLifecycleManager>
+            </QueryProvider>
         </SafeAreaProvider>
     );
 }

@@ -17,7 +17,10 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 import { useAuthStore } from '../../store/useAuthStore';
-import { useGalleryStore } from '../../store/useGalleryStore';
+import {
+    useDeleteGalleryImageMutation,
+    useSetGalleryFlagsMutation
+} from '../../hooks/query/useGalleryData';
 import { useTheme } from '../../context/ThemeContext';
 import type { GalleryFlag, GalleryImage } from '../../types/gallery';
 
@@ -34,7 +37,8 @@ export const MediaDetailScreen = () => {
     const [media, setMedia] = useState<GalleryImage>(route.params.media);
     const displayMediaUrl = media.cachedImageUrl ?? media.imageUrl;
     const { user } = useAuthStore();
-    const { removeImage, setFlags } = useGalleryStore();
+    const deleteMutation = useDeleteGalleryImageMutation();
+    const flagsMutation = useSetGalleryFlagsMutation();
 
     const [loadingMedia, setLoadingMedia] = useState(false);
     const [settingsVisible, setSettingsVisible] = useState(false);
@@ -87,27 +91,41 @@ export const MediaDetailScreen = () => {
     const handleDelete = () => {
         if (Platform.OS === 'web') {
             if (window.confirm("¿Deseas eliminar este archivo?")) {
-                removeImage(media.id);
-                navigation.goBack();
+                deleteMutation.mutate(media.id, {
+                    onSuccess: () => navigation.goBack(),
+                    onError: () => Alert.alert('Error', 'No fue posible eliminar el archivo.')
+                });
             }
         } else {
             Alert.alert("Eliminar", "¿Seguro que deseas eliminarlo?", [
                 { text: "Cancelar", style: "cancel" },
                 {
                     text: "Eliminar", style: "destructive",
-                    onPress: async () => {
-                        await removeImage(media.id);
-                        navigation.goBack();
+                    onPress: () => {
+                        deleteMutation.mutate(media.id, {
+                            onSuccess: () => navigation.goBack(),
+                            onError: () => Alert.alert('Error', 'No fue posible eliminar el archivo.')
+                        });
                     }
                 }
             ]);
         }
     };
 
-    const toggleFlag = async (key: GalleryFlag, value: boolean) => {
-        const updatedMedia = { ...media, [key]: value };
-        setMedia(updatedMedia);
-        await setFlags(media.id, { [key]: value });
+    const toggleFlag = async (key: GalleryFlag, value: boolean): Promise<void> => {
+        const previous = media;
+        setMedia({ ...media, [key]: value });
+
+        try {
+            const updated = await flagsMutation.mutateAsync({
+                id: media.id,
+                flags: { [key]: value }
+            });
+            setMedia(updated);
+        } catch {
+            setMedia(previous);
+            Alert.alert('Error', 'No fue posible actualizar la configuración.');
+        }
     };
 
     const renderSwitch = (label: string, key: GalleryFlag, value: boolean) => (
@@ -115,9 +133,10 @@ export const MediaDetailScreen = () => {
             <Text style={[styles.switchLabel, { color: colors.textColor }]}>{label}</Text>
             <Switch
                 value={value}
-                onValueChange={(val) => toggleFlag(key, val)}
+                onValueChange={(value) => void toggleFlag(key, value)}
                 trackColor={{ false: "#767577", true: colors.primaryColor }}
-                thumbColor={value ? colors.buttonTextColor : "#f4f3f4"}
+                thumbColor={value ? colors.buttonTextColor : '#f4f3f4'}
+                disabled={flagsMutation.isPending}
             />
         </View>
     );

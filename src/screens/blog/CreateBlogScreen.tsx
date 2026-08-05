@@ -21,7 +21,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../context/ThemeContext';
 import type { BlogStackParamList } from '../../navigation/BlogNavigator';
-import { useBlogStore } from '../../store/useBlogStore';
+import { getApiErrorMessage } from '../../services/auth';
+import {
+    useCreateBlogMutation,
+    useUpdateBlogMutation
+} from '../../hooks/query/useBlogData';
 import { getPreviewFromRichText, plainTextToRichText } from '../../utils/textUtils';
 
 export const CreateBlogScreen = () => {
@@ -30,8 +34,8 @@ export const CreateBlogScreen = () => {
     const postToEdit = route.params?.postToEdit;
     const isEdit = Boolean(postToEdit);
     const colors = useTheme().currentTheme;
-    const addPost = useBlogStore((state) => state.addPost);
-    const updatePost = useBlogStore((state) => state.updatePost);
+    const createMutation = useCreateBlogMutation();
+    const updateMutation = useUpdateBlogMutation();
     const [title, setTitle] = useState(postToEdit?.title ?? '');
     const [content, setContent] = useState(
         postToEdit ? getPreviewFromRichText(postToEdit.content, 20_000) : ''
@@ -77,20 +81,22 @@ export const CreateBlogScreen = () => {
             imageUri: imageUri ?? undefined,
             isPublic
         };
-        const success = postToEdit
-            ? await updatePost(postToEdit.id, payload)
-            : await addPost(payload);
-        setSubmitting(false);
 
-        if (success) {
+        try {
+            if (postToEdit) {
+                await updateMutation.mutateAsync({ id: postToEdit.id, payload });
+            } else {
+                await createMutation.mutateAsync(payload);
+            }
             navigation.goBack();
-            return;
+        } catch (error) {
+            Alert.alert(
+                'No fue posible guardar la publicación',
+                getApiErrorMessage(error instanceof Error ? error : new Error('Request failed'))
+            );
+        } finally {
+            setSubmitting(false);
         }
-
-        Alert.alert(
-            'No fue posible guardar la publicación',
-            useBlogStore.getState().errorMessage ?? 'Verifica tu conexión e inténtalo nuevamente.'
-        );
     };
 
     return (

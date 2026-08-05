@@ -21,7 +21,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../context/ThemeContext';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
-import { useAnnouncementStore } from '../store/useAnnouncementStore';
+import { getApiErrorMessage } from '../services/auth';
+import {
+    useCreateAnnouncementMutation,
+    useUpdateAnnouncementMutation
+} from '../hooks/query/useAnnouncementData';
 import { getPreviewFromRichText, plainTextToRichText } from '../utils/textUtils';
 
 export const CreateAnnouncementScreen = () => {
@@ -30,8 +34,8 @@ export const CreateAnnouncementScreen = () => {
     const announcement = route.params?.announcement;
     const isEdit = Boolean(announcement);
     const colors = useTheme().currentTheme;
-    const addAnnouncement = useAnnouncementStore((state) => state.addAnnouncement);
-    const editAnnouncement = useAnnouncementStore((state) => state.editAnnouncement);
+    const createMutation = useCreateAnnouncementMutation();
+    const updateMutation = useUpdateAnnouncementMutation();
     const [title, setTitle] = useState(announcement?.title ?? '');
     const [content, setContent] = useState(
         announcement ? getPreviewFromRichText(announcement.content, 20_000) : ''
@@ -75,20 +79,22 @@ export const CreateAnnouncementScreen = () => {
             imageUri: imageUri ?? undefined,
             isPublic
         };
-        const success = announcement
-            ? await editAnnouncement(announcement.id, payload)
-            : await addAnnouncement(payload);
-        setLoading(false);
 
-        if (success) {
+        try {
+            if (announcement) {
+                await updateMutation.mutateAsync({ id: announcement.id, payload });
+            } else {
+                await createMutation.mutateAsync(payload);
+            }
             navigation.goBack();
-            return;
+        } catch (error) {
+            Alert.alert(
+                'No se pudo guardar el aviso',
+                getApiErrorMessage(error instanceof Error ? error : new Error('Request failed'))
+            );
+        } finally {
+            setLoading(false);
         }
-
-        Alert.alert(
-            'No se pudo guardar el aviso',
-            useAnnouncementStore.getState().errorMessage ?? 'Verifica tu conexión e inténtalo nuevamente.'
-        );
     };
 
     return (

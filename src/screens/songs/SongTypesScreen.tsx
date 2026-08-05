@@ -6,6 +6,7 @@ import {
     Alert,
     FlatList,
     Keyboard,
+    InputAccessoryView,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -21,12 +22,19 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import type { SongsStackParamList } from '../../navigation/SongsNavigator';
-import { useSongsStore } from '../../store/useSongsStore';
+import {
+    useCreateSongTypeMutation,
+    useDeleteSongTypeMutation,
+    useSongTypesQuery,
+    useUpdateSongTypeMutation
+} from '../../hooks/query/useSongsData';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import type { SongType } from '../../types/song';
 
 type SongTypesNavigation = NativeStackNavigationProp<SongsStackParamList, 'SongTypes'>;
+
+const SONG_TYPE_ACCESSORY_ID = 'song-type-form-accessory';
 
 const sortSongTypes = (left: SongType, right: SongType): number => {
     const orderDifference = left.order - right.order;
@@ -42,12 +50,12 @@ export const SongTypesScreen = () => {
     const navigation = useNavigation<SongTypesNavigation>();
     const nameInputRef = useRef<TextInput>(null);
     const orderInputRef = useRef<TextInput>(null);
-    const songTypes = useSongsStore((state) => state.songTypes);
-    const fetchData = useSongsStore((state) => state.fetchData);
-    const loading = useSongsStore((state) => state.loading);
-    const addType = useSongsStore((state) => state.addType);
-    const editType = useSongsStore((state) => state.editType);
-    const removeType = useSongsStore((state) => state.removeType);
+    const songTypesQuery = useSongTypesQuery();
+    const createTypeMutation = useCreateSongTypeMutation();
+    const updateTypeMutation = useUpdateSongTypeMutation();
+    const deleteTypeMutation = useDeleteSongTypeMutation();
+    const songTypes = songTypesQuery.data ?? [];
+    const loading = songTypesQuery.isLoading || songTypesQuery.isRefetching;
     const user = useAuthStore((state) => state.user);
     const colors = useTheme().currentTheme;
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'EDITOR';
@@ -59,10 +67,6 @@ export const SongTypesScreen = () => {
     const [isParent, setIsParent] = useState(false);
     const [saving, setSaving] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-    useEffect(() => {
-        fetchData().catch(() => undefined);
-    }, [fetchData]);
 
     useEffect(() => {
         const showSubscription = Keyboard.addListener(
@@ -140,21 +144,25 @@ export const SongTypesScreen = () => {
         setSaving(true);
 
         try {
-            const success = editingType
-                ? await editType(editingType.id, normalizedName, parsedOrder, isParent)
-                : await addType(
-                    normalizedName,
-                    parsedOrder,
-                    currentParentId,
-                    currentParentId ? false : isParent
-                );
-
-            if (!success) {
-                Alert.alert('Error', 'No fue posible guardar la categoría.');
-                return;
+            if (editingType) {
+                await updateTypeMutation.mutateAsync({
+                    id: editingType.id,
+                    name: normalizedName,
+                    order: parsedOrder,
+                    isParent
+                });
+            } else {
+                await createTypeMutation.mutateAsync({
+                    name: normalizedName,
+                    order: parsedOrder,
+                    parentId: currentParentId ?? undefined,
+                    isParent: currentParentId ? false : isParent
+                });
             }
 
             setModalVisible(false);
+        } catch {
+            Alert.alert('Error', 'No fue posible guardar la categoría. Intenta nuevamente.');
         } finally {
             setSaving(false);
         }
@@ -165,7 +173,7 @@ export const SongTypesScreen = () => {
             const confirmed = window.confirm(`¿Eliminar la categoría "${item.name}"?`);
 
             if (confirmed) {
-                removeType(item.id).catch(() => undefined);
+                deleteTypeMutation.mutate(item.id);
             }
 
             return;
@@ -180,7 +188,7 @@ export const SongTypesScreen = () => {
                     text: 'Eliminar',
                     style: 'destructive',
                     onPress: () => {
-                        removeType(item.id).catch(() => undefined);
+                        deleteTypeMutation.mutate(item.id);
                     }
                 }
             ]
@@ -231,7 +239,7 @@ export const SongTypesScreen = () => {
                 data={displayedTypes}
                 keyExtractor={(item) => item.id}
                 refreshing={loading}
-                onRefresh={() => void fetchData()}
+                onRefresh={() => void songTypesQuery.refetch()}
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
                     <View style={[styles.card, { backgroundColor: colors.cardColor, borderColor: colors.borderColor }]}>
@@ -317,6 +325,7 @@ export const SongTypesScreen = () => {
                                 returnKeyType="next"
                                 onSubmitEditing={() => orderInputRef.current?.focus()}
                                 editable={!saving}
+                                inputAccessoryViewID={Platform.OS === 'ios' ? SONG_TYPE_ACCESSORY_ID : undefined}
                             />
 
                             <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Orden (1-99)</Text>
@@ -337,6 +346,7 @@ export const SongTypesScreen = () => {
                                 placeholderTextColor={colors.secondaryTextColor}
                                 maxLength={2}
                                 editable={!saving}
+                                inputAccessoryViewID={Platform.OS === 'ios' ? SONG_TYPE_ACCESSORY_ID : undefined}
                             />
 
                             {keyboardVisible && (
@@ -395,6 +405,27 @@ export const SongTypesScreen = () => {
                             </View>
                         </View>
                     </ScrollView>
+                    {Platform.OS === 'ios' && (
+                        <InputAccessoryView nativeID={SONG_TYPE_ACCESSORY_ID}>
+                            <View style={[styles.accessoryBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}>
+                                <TouchableOpacity onPress={Keyboard.dismiss} style={styles.accessoryAction}>
+                                    <Ionicons name="chevron-down" size={20} color={colors.primaryColor} />
+                                    <Text style={[styles.accessoryText, { color: colors.primaryColor }]}>Ocultar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => void handleSave()}
+                                    style={[styles.accessorySave, { backgroundColor: colors.buttonColor }]}
+                                    disabled={saving}
+                                >
+                                    {saving ? (
+                                        <ActivityIndicator size="small" color={colors.buttonTextColor} />
+                                    ) : (
+                                        <Text style={{ color: colors.buttonTextColor, fontWeight: '700' }}>Guardar</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        </InputAccessoryView>
+                    )}
                 </KeyboardAvoidingView>
             </Modal>
         </View>
@@ -468,5 +499,17 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center'
     },
-    disabledButton: { opacity: 0.65 }
+    disabledButton: { opacity: 0.65 },
+    accessoryBar: {
+        minHeight: 48,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+    },
+    accessoryAction: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 },
+    accessoryText: { fontWeight: '600' },
+    accessorySave: { minWidth: 96, minHeight: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }
 });

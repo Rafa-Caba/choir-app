@@ -1,6 +1,7 @@
 // src/services/sessionCleanup.ts
 
 import type { TenantStorageContext } from '../types/sync';
+import { queryClient } from '../query/queryClient';
 import { clearTenantMediaCache } from '../storage/mediaCache';
 import {
     clearLegacyStorage,
@@ -9,6 +10,7 @@ import {
 } from '../storage/tenantStorage';
 
 export const resetApplicationStores = async (): Promise<void> => {
+    queryClient.clear();
     const [
         announcementModule,
         appConfigModule,

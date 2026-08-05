@@ -1,15 +1,17 @@
 // src/screens/gallery/GalleryScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
     View, Text, FlatList, TouchableOpacity, StyleSheet, Image, ScrollView,
     Modal, TextInput, ActivityIndicator, Alert, Platform
 } from 'react-native';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
-import { useGalleryStore } from '../../store/useGalleryStore';
+import {
+    useAddGalleryImageMutation,
+    useGalleryQuery
+} from '../../hooks/query/useGalleryData';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import { LoadingScreen } from '../LoadingScreen';
@@ -22,27 +24,22 @@ type GalleryNavigationParams = {
 
 export const GalleryScreen = () => {
     const navigation = useNavigation<NavigationProp<GalleryNavigationParams>>();
-    const insets = useSafeAreaInsets();
-
     const { currentTheme } = useTheme();
     const colors = currentTheme;
 
-    const { images, fetchImages, addImage, loading } = useGalleryStore();
+    const galleryQuery = useGalleryQuery();
+    const addImageMutation = useAddGalleryImageMutation();
+    const images = galleryQuery.data ?? [];
     const { user } = useAuthStore();
 
     const canEdit = user?.role === 'ADMIN' || user?.role === 'EDITOR';
 
     // --- Modal State ---
     const [modalVisible, setModalVisible] = useState(false);
-    const [uploading, setUploading] = useState(false);
     const [tempUri, setTempUri] = useState<string | null>(null);
     const [tempType, setTempType] = useState<'image' | 'video'>('image');
     const [newTitle, setNewTitle] = useState('');
     const [newDesc, setNewDesc] = useState('');
-
-    useEffect(() => {
-        if (images.length === 0) fetchImages();
-    }, []);
 
     // --- THUMBNAIL HELPER ---
     const getSafeThumbnail = (imageUrl: string, mediaType: string) => {
@@ -80,24 +77,21 @@ export const GalleryScreen = () => {
             return;
         }
 
-        setUploading(true);
-        const success = await addImage({
-            title: newTitle,
-            description: newDesc,
-            imageUri: tempUri,
-            imageGallery: true
-        });
-        setUploading(false);
-
-        if (success) {
+        try {
+            await addImageMutation.mutateAsync({
+                title: newTitle.trim(),
+                description: newDesc.trim(),
+                imageUri: tempUri,
+                imageGallery: true
+            });
             setModalVisible(false);
             setTempUri(null);
-        } else {
-            Alert.alert("Error", "No fue posible subir el archivo.");
+        } catch {
+            Alert.alert('Error', 'No fue posible subir el archivo. Intenta nuevamente.');
         }
     };
 
-    if (loading && images.length === 0) return <LoadingScreen />;
+    if (galleryQuery.isLoading && images.length === 0) return <LoadingScreen />;
 
     // 🆕 Allow both Images AND Videos in Carousel (Top 5)
     const featuredItems = images.slice(0, 5);
@@ -188,12 +182,12 @@ export const GalleryScreen = () => {
                 numColumns={3}
                 contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 5 }}
                 renderItem={renderGridItem}
-                onRefresh={fetchImages}
-                refreshing={loading}
+                onRefresh={() => void galleryQuery.refetch()}
+                refreshing={galleryQuery.isRefetching}
             />
 
             {/* Modal */}
-            <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => !uploading && setModalVisible(false)}>
+            <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => !addImageMutation.isPending && setModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: colors.backgroundColor }]}>
                         <Text style={[styles.modalTitle, { color: colors.textColor }]}>
@@ -226,11 +220,11 @@ export const GalleryScreen = () => {
                             placeholderTextColor={colors.secondaryTextColor}
                         />
 
-                        <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: colors.buttonColor }]} onPress={handleConfirmUpload} disabled={uploading}>
-                            {uploading ? <ActivityIndicator color={colors.buttonTextColor} /> : <Text style={[styles.uploadBtnText, { color: colors.buttonTextColor }]}>Subir</Text>}
+                        <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: colors.buttonColor }]} onPress={handleConfirmUpload} disabled={addImageMutation.isPending}>
+                            {addImageMutation.isPending ? <ActivityIndicator color={colors.buttonTextColor} /> : <Text style={[styles.uploadBtnText, { color: colors.buttonTextColor }]}>Subir</Text>}
                         </TouchableOpacity>
 
-                        {!uploading && (
+                        {!addImageMutation.isPending && (
                             <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}>
                                 <Text style={[styles.cancelText, { color: colors.secondaryTextColor }]}>Cancelar</Text>
                             </TouchableOpacity>

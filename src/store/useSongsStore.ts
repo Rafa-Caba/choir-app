@@ -6,14 +6,16 @@ import {
     createSongType,
     deleteSong,
     deleteSongType,
+    getAllSongs,
+    getSongTypes,
     updateSong,
     updateSongType
 } from '../services/song';
-import { CACHE_TTL_MS } from '../config/cachePolicy';
-import { syncCacheFirst } from '../services/sync';
-import { cacheRemoteMedia } from '../storage/mediaCache';
 import type { CreateSongPayload, Song, SongType } from '../types/song';
-import { useAuthStore } from './useAuthStore';
+import { queryClient } from '../query/queryClient';
+import { queryKeys } from '../query/queryKeys';
+import { getTenantQueryScopeSnapshot } from '../hooks/query/useTenantQueryScope';
+import { removeById, upsertById } from '../query/cacheUpdates';
 
 interface SongsState {
     songs: Song[];
@@ -30,142 +32,60 @@ interface SongsState {
     reset: () => void;
 }
 
-const hydrateSongs = async (songs: readonly Song[]): Promise<Song[]> => {
-    const context = useAuthStore.getState().getTenantContext();
+const sortSongs = (songs: readonly Song[]): Song[] =>
+    [...songs].sort((left, right) => left.title.localeCompare(right.title));
 
-    if (!context) {
-        return [...songs];
-    }
-
-    return Promise.all(songs.map(async (song) => ({
-        ...song,
-        cachedAudioUrl: await cacheRemoteMedia(context, 'songs', song.audioUrl)
-    })));
-};
-
-const sortSongs = (songs: readonly Song[]): Song[] => {
-    return [...songs].sort((left, right) => left.title.localeCompare(right.title));
-};
-
-const sortSongTypes = (types: readonly SongType[]): SongType[] => {
-    return [...types].sort((left, right) => {
-        const orderDifference = left.order - right.order;
-        return orderDifference !== 0
-            ? orderDifference
-            : left.name.localeCompare(right.name);
-    });
-};
-
-const upsertSong = (songs: readonly Song[], incoming: Song): Song[] => {
-    const existing = songs.find((song) => song.id === incoming.id);
-    const merged = existing
-        ? {
-            ...existing,
-            ...incoming,
-            cachedAudioUrl: incoming.cachedAudioUrl ?? (
-                existing.audioUrl === incoming.audioUrl
-                    ? existing.cachedAudioUrl
-                    : null
-            )
-        }
-        : incoming;
-    const next = existing
-        ? songs.map((song) => song.id === incoming.id ? merged : song)
-        : [merged, ...songs];
-
-    return sortSongs(next);
-};
-
-const upsertSongType = (
-    types: readonly SongType[],
-    incoming: SongType
-): SongType[] => {
-    const exists = types.some((type) => type.id === incoming.id);
-    const next = exists
-        ? types.map((type) => type.id === incoming.id ? incoming : type)
-        : [...types, incoming];
-
-    return sortSongTypes(next);
-};
+const sortSongTypes = (types: readonly SongType[]): SongType[] =>
+    [...types].sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
 
 export const useSongsStore = create<SongsState>((set, get) => {
-    const syncData = async (showLoading: boolean): Promise<void> => {
-        const context = useAuthStore.getState().getTenantContext();
-
-        if (!context) {
-            return;
-        }
-
-        if (showLoading) {
-            set({ loading: true });
-        }
-
-        try {
-            const [songsResult, typesResult] = await Promise.all([
-                syncCacheFirst<readonly Song[]>({
-                    context,
-                    resource: 'songs',
-                    path: '/songs',
-                    ttlMs: CACHE_TTL_MS.songs,
-                    onData: (data) => set({ songs: sortSongs(data) })
-                }),
-                syncCacheFirst<readonly SongType[]>({
-                    context,
-                    resource: 'song-types',
-                    path: '/song-types',
-                    ttlMs: CACHE_TTL_MS.songTypes,
-                    onData: (data) => set({ songTypes: sortSongTypes(data) })
-                })
-            ]);
-
-            const rawSongs = sortSongs(songsResult.data);
-            set({
-                songs: rawSongs,
-                songTypes: sortSongTypes(typesResult.data)
-            });
-
-            hydrateSongs(rawSongs)
-                .then((hydrated) => set((state) => ({
-                    songs: hydrated.reduce<Song[]>(
-                        (current, song) => upsertSong(current, song),
-                        state.songs
-                    )
-                })))
-                .catch(() => undefined);
-        } finally {
-            if (showLoading) {
-                set({ loading: false });
-            }
-        }
-    };
-
-    const refreshInBackground = (): void => {
-        syncData(false).catch(() => undefined);
-    };
-
-    const hydrateSongInBackground = (song: Song): void => {
-        hydrateSongs([song])
-            .then(([hydrated]) => set((state) => ({
-                songs: upsertSong(state.songs, hydrated)
-            })))
-            .catch(() => undefined);
-    };
+    const publishSongs = (songs: readonly Song[]): void => set({ songs: sortSongs(songs) });
+    const publishTypes = (types: readonly SongType[]): void => set({ songTypes: sortSongTypes(types) });
 
     return {
         songs: [],
         songTypes: [],
         loading: false,
 
-        fetchData: () => syncData(true),
+        fetchData: async () => {
+            const scope = getTenantQueryScopeSnapshot();
+
+            if (!scope.enabled) {
+                return;
+            }
+
+            set({ loading: true });
+            try {
+                const [songs, types] = await Promise.all([
+                    queryClient.fetchQuery({
+                        queryKey: queryKeys.songs(scope.tenantKey),
+                        queryFn: getAllSongs,
+                        staleTime: 30_000
+                    }),
+                    queryClient.fetchQuery({
+                        queryKey: queryKeys.songTypes(scope.tenantKey),
+                        queryFn: getSongTypes,
+                        staleTime: 5 * 60_000
+                    })
+                ]);
+                publishSongs(songs);
+                publishTypes(types);
+            } finally {
+                set({ loading: false });
+            }
+        },
 
         addSong: async (payload, audioUri) => {
+            const scope = getTenantQueryScopeSnapshot();
             set({ loading: true });
-
             try {
                 const created = await createSong(payload, audioUri);
-                set((state) => ({ songs: upsertSong(state.songs, created) }));
-                hydrateSongInBackground(created);
-                refreshInBackground();
+                const updated = sortSongs(upsertById(
+                    queryClient.getQueryData<readonly Song[]>(queryKeys.songs(scope.tenantKey)),
+                    created
+                ));
+                queryClient.setQueryData(queryKeys.songs(scope.tenantKey), updated);
+                publishSongs(updated);
                 return true;
             } catch {
                 return false;
@@ -175,13 +95,16 @@ export const useSongsStore = create<SongsState>((set, get) => {
         },
 
         editSong: async (id, payload, audioUri) => {
+            const scope = getTenantQueryScopeSnapshot();
             set({ loading: true });
-
             try {
-                const updated = await updateSong(id, payload, audioUri);
-                set((state) => ({ songs: upsertSong(state.songs, updated) }));
-                hydrateSongInBackground(updated);
-                refreshInBackground();
+                const updatedSong = await updateSong(id, payload, audioUri);
+                const updated = sortSongs(upsertById(
+                    queryClient.getQueryData<readonly Song[]>(queryKeys.songs(scope.tenantKey)),
+                    updatedSong
+                ));
+                queryClient.setQueryData(queryKeys.songs(scope.tenantKey), updated);
+                publishSongs(updated);
                 return true;
             } catch {
                 return false;
@@ -191,40 +114,37 @@ export const useSongsStore = create<SongsState>((set, get) => {
         },
 
         removeSong: async (id) => {
+            const scope = getTenantQueryScopeSnapshot();
             try {
                 await deleteSong(id);
-                set((state) => ({
-                    songs: state.songs.filter((song) => song.id !== id)
-                }));
-                refreshInBackground();
+                const updated = sortSongs(removeById(
+                    queryClient.getQueryData<readonly Song[]>(queryKeys.songs(scope.tenantKey)),
+                    id
+                ));
+                queryClient.setQueryData(queryKeys.songs(scope.tenantKey), updated);
+                publishSongs(updated);
                 return true;
             } catch {
                 return false;
             }
         },
 
-        getSongsByType: (typeId) => {
-            if (!typeId) {
-                return get().songs;
-            }
-
-            return get().songs.filter((song) => song.songTypeId === typeId);
-        },
+        getSongsByType: (typeId) => typeId
+            ? get().songs.filter((song) => song.songTypeId === typeId)
+            : get().songs,
 
         addType: async (name, order, parentId, isParent) => {
+            const scope = getTenantQueryScopeSnapshot();
             set({ loading: true });
-
             try {
-                const created = await createSongType(
-                    name,
-                    order,
-                    parentId ?? undefined,
-                    isParent
-                );
-                set((state) => ({
-                    songTypes: upsertSongType(state.songTypes, created)
-                }));
-                refreshInBackground();
+                const created = await createSongType(name, order, parentId ?? undefined, isParent);
+                const updated = sortSongTypes(upsertById(
+                    queryClient.getQueryData<readonly SongType[]>(queryKeys.songTypes(scope.tenantKey)),
+                    created,
+                    'end'
+                ));
+                queryClient.setQueryData(queryKeys.songTypes(scope.tenantKey), updated);
+                publishTypes(updated);
                 return true;
             } catch {
                 return false;
@@ -234,14 +154,17 @@ export const useSongsStore = create<SongsState>((set, get) => {
         },
 
         editType: async (id, name, order, isParent) => {
+            const scope = getTenantQueryScopeSnapshot();
             set({ loading: true });
-
             try {
-                const updated = await updateSongType(id, name, order, isParent);
-                set((state) => ({
-                    songTypes: upsertSongType(state.songTypes, updated)
-                }));
-                refreshInBackground();
+                const updatedType = await updateSongType(id, name, order, isParent);
+                const updated = sortSongTypes(upsertById(
+                    queryClient.getQueryData<readonly SongType[]>(queryKeys.songTypes(scope.tenantKey)),
+                    updatedType,
+                    'end'
+                ));
+                queryClient.setQueryData(queryKeys.songTypes(scope.tenantKey), updated);
+                publishTypes(updated);
                 return true;
             } catch {
                 return false;
@@ -251,12 +174,15 @@ export const useSongsStore = create<SongsState>((set, get) => {
         },
 
         removeType: async (id) => {
+            const scope = getTenantQueryScopeSnapshot();
             try {
                 await deleteSongType(id);
-                set((state) => ({
-                    songTypes: state.songTypes.filter((type) => type.id !== id)
-                }));
-                refreshInBackground();
+                const updated = sortSongTypes(removeById(
+                    queryClient.getQueryData<readonly SongType[]>(queryKeys.songTypes(scope.tenantKey)),
+                    id
+                ));
+                queryClient.setQueryData(queryKeys.songTypes(scope.tenantKey), updated);
+                publishTypes(updated);
                 return true;
             } catch {
                 return false;

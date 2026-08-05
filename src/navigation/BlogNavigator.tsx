@@ -13,7 +13,7 @@ import type { BlogPost } from '../types/blog';
 
 export type BlogStackParamList = {
     BlogList: undefined;
-    BlogDetail: undefined;
+    BlogDetail: { readonly postId: string };
     CreateBlog: { readonly postToEdit?: BlogPost } | undefined;
 };
 

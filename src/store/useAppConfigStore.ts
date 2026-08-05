@@ -1,16 +1,16 @@
 // src/store/useAppConfigStore.ts
 
 import { create } from 'zustand';
-import { CACHE_TTL_MS } from '../config/cachePolicy';
-import { syncCacheFirst } from '../services/sync';
-import { cacheRemoteMedia } from '../storage/mediaCache';
+import { queryClient } from '../query/queryClient';
+import { queryKeys } from '../query/queryKeys';
+import { getSettings } from '../services/admin/settings';
 import type {
     AppSettings,
     HomeLegends,
     RichTextDocument,
     SocialLinks
 } from '../types/settings';
-import { useAuthStore } from './useAuthStore';
+import { getTenantQueryScopeSnapshot } from '../hooks/query/useTenantQueryScope';
 
 const EMPTY_SOCIALS: SocialLinks = {
     facebook: '',
@@ -42,9 +42,9 @@ interface AppConfigState {
     reset: () => void;
 }
 
-const toState = (settings: AppSettings, cachedLogoUrl?: string | null): Partial<AppConfigState> => ({
+const toState = (settings: AppSettings): Partial<AppConfigState> => ({
     appTitle: settings.webTitle || 'Choir App',
-    appLogoUrl: cachedLogoUrl ?? settings.logoUrl ?? null,
+    appLogoUrl: settings.cachedLogoUrl ?? settings.logoUrl ?? null,
     contactPhone: settings.contactPhone || '',
     socialLinks: settings.socials ?? EMPTY_SOCIALS,
     homeLegends: settings.homeLegends ?? EMPTY_LEGENDS,
@@ -61,24 +61,21 @@ export const useAppConfigStore = create<AppConfigState>((set) => ({
     loading: false,
 
     fetchAppConfig: async () => {
-        const context = useAuthStore.getState().getTenantContext();
-        if (!context) return;
+        const scope = getTenantQueryScopeSnapshot();
+
+        if (!scope.enabled) {
+            return;
+        }
+
         set({ loading: true });
 
         try {
-            const result = await syncCacheFirst<AppSettings>({
-                context,
-                resource: 'settings',
-                path: '/settings',
-                ttlMs: CACHE_TTL_MS.settings,
-                onData: (data) => set(toState(data))
+            const settings = await queryClient.fetchQuery({
+                queryKey: queryKeys.settings(scope.tenantKey),
+                queryFn: getSettings,
+                staleTime: 5 * 60_000
             });
-            const cachedLogoUrl = await cacheRemoteMedia(
-                context,
-                'settings',
-                result.data.logoUrl
-            );
-            set(toState(result.data, cachedLogoUrl));
+            set(toState(settings));
         } finally {
             set({ loading: false });
         }
