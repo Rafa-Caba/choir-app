@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import choirApi from '../../api/choirApi';
 import {
     getChatHistory,
+    markChatReceipts,
     sendChatMessage,
     uploadChatMedia,
     type ChatAttachment
 } from '../../services/chat';
 import type {
     ChatMessage,
+    ChatReceiptStatus,
     ChatUserSummary,
     MessageType,
     NewMessagePayload
@@ -27,6 +29,12 @@ interface ChatDirectoryResponse {
 interface SendChatVariables {
     readonly text: string;
     readonly attachment?: ChatAttachment;
+    readonly messageType?: MessageType;
+}
+
+interface MarkChatReceiptsVariables {
+    readonly messageIds: readonly string[];
+    readonly status: ChatReceiptStatus;
 }
 
 const mapAttachmentType = (type: ChatAttachment['type']): MessageType => {
@@ -36,6 +44,16 @@ const mapAttachmentType = (type: ChatAttachment['type']): MessageType => {
         case 'audio': return 'AUDIO';
         case 'file': return 'FILE';
     }
+};
+
+const mergeMessages = (
+    current: readonly ChatMessage[] | undefined,
+    incoming: readonly ChatMessage[]
+): readonly ChatMessage[] => {
+    return incoming.reduce<readonly ChatMessage[]>(
+        (messages, message) => upsertChatMessage(messages, message),
+        current ?? []
+    );
 };
 
 export const useChatHistoryQuery = (active: boolean) => {
@@ -76,19 +94,19 @@ export const useSendChatMessageMutation = () => {
     const replyingTo = useChatStore((state) => state.replyingTo);
 
     return useMutation({
-        mutationFn: async ({ text, attachment }: SendChatVariables): Promise<ChatMessage> => {
+        mutationFn: async ({ text, attachment, messageType }: SendChatVariables): Promise<ChatMessage> => {
             let mediaAssetId: string | undefined;
-            let messageType: MessageType = 'TEXT';
+            let resolvedMessageType: MessageType = messageType ?? 'TEXT';
 
             if (attachment) {
                 const upload = await uploadChatMedia(attachment);
                 mediaAssetId = upload.assetId;
-                messageType = mapAttachmentType(attachment.type);
+                resolvedMessageType = mapAttachmentType(attachment.type);
             }
 
             const payload: NewMessagePayload = {
                 content: text,
-                type: messageType,
+                type: resolvedMessageType,
                 ...(mediaAssetId ? { mediaAssetId } : {}),
                 ...(replyingTo ? { replyTo: replyingTo.id } : {})
             };
@@ -101,6 +119,22 @@ export const useSendChatMessageMutation = () => {
                 (current) => upsertChatMessage(current, created)
             );
             useChatStore.getState().setReplyingTo(null);
+        }
+    });
+};
+
+export const useMarkChatReceiptsMutation = () => {
+    const queryClient = useQueryClient();
+    const scope = useTenantQueryScope();
+
+    return useMutation({
+        mutationFn: ({ messageIds, status }: MarkChatReceiptsVariables) =>
+            markChatReceipts(messageIds, status),
+        onSuccess: (updatedMessages) => {
+            queryClient.setQueryData<readonly ChatMessage[]>(
+                queryKeys.chatHistory(scope.tenantKey),
+                (current) => mergeMessages(current, updatedMessages)
+            );
         }
     });
 };
