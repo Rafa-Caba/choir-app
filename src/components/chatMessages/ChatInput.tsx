@@ -8,6 +8,7 @@ import {
     Keyboard,
     Modal,
     Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -18,18 +19,22 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
+import { CHAT_STICKER_PACKS } from '../../constants/chatStickers';
 import { useTheme } from '../../context/ThemeContext';
 import type { ChatAttachment } from '../../services/chat';
 import { useChatStore } from '../../store/useChatStore';
 import type { MessageType } from '../../types/chat';
 import { getPreviewFromRichText } from '../../utils/textUtils';
 
+export interface ChatInputSendRequest {
+    readonly text: string;
+    readonly attachment?: ChatAttachment;
+    readonly messageType?: MessageType;
+    readonly replyToId?: string;
+}
+
 interface Props {
-    readonly onSend: (
-        text: string,
-        attachment?: ChatAttachment,
-        messageType?: MessageType
-    ) => Promise<void>;
+    readonly onSend: (request: ChatInputSendRequest) => Promise<void>;
     readonly onTyping?: () => void;
     readonly onFocus?: () => void;
 }
@@ -38,43 +43,8 @@ interface SelectedMedia extends ChatAttachment {
     readonly type: 'image' | 'video' | 'file';
 }
 
-interface StickerOption {
-    readonly id: string;
-    readonly value: string;
-    readonly label: string;
-}
-
 type AttachmentPickerAction = 'media' | 'file';
 type RecordingState = 'idle' | 'starting' | 'recording' | 'paused' | 'stopping';
-
-const imageFallback = {
-    filename: 'chat-image.jpg',
-    mimeType: 'image/jpeg'
-} as const;
-
-const videoFallback = {
-    filename: 'chat-video.mp4',
-    mimeType: 'video/mp4'
-} as const;
-
-const stickerOptions: readonly StickerOption[] = [
-    { id: 'smile', value: '😀', label: 'Sonrisa' },
-    { id: 'laugh', value: '😂', label: 'Risa' },
-    { id: 'love', value: '😍', label: 'Me encanta' },
-    { id: 'pray', value: '🙏', label: 'Oración' },
-    { id: 'music', value: '🎶', label: 'Música' },
-    { id: 'microphone', value: '🎤', label: 'Micrófono' },
-    { id: 'notes', value: '🎵', label: 'Notas' },
-    { id: 'heart', value: '❤️', label: 'Corazón' },
-    { id: 'clap', value: '👏', label: 'Aplausos' },
-    { id: 'party', value: '🎉', label: 'Celebración' },
-    { id: 'cross', value: '✝️', label: 'Cruz' },
-    { id: 'coffee', value: '☕', label: 'Café' },
-    { id: 'angel', value: '😇', label: 'Ángel' },
-    { id: 'peace', value: '🕊️', label: 'Paz' },
-    { id: 'sparkles', value: '✨', label: 'Destellos' },
-    { id: 'choir', value: '👥', label: 'Coro' }
-];
 
 const pickerPresentationDelayMs = Platform.OS === 'ios' ? 300 : 80;
 const recordingProgressIntervalMs = 200;
@@ -95,6 +65,9 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
     const [sending, setSending] = useState(false);
     const [showAttachmentModal, setShowAttachmentModal] = useState(false);
     const [showStickerModal, setShowStickerModal] = useState(false);
+    const [selectedStickerPackId, setSelectedStickerPackId] = useState(
+        CHAT_STICKER_PACKS[0]?.id ?? ''
+    );
     const [pendingPickerAction, setPendingPickerAction] = useState<AttachmentPickerAction | null>(null);
     const replyingTo = useChatStore((state) => state.replyingTo);
     const setReplyingTo = useChatStore((state) => state.setReplyingTo);
@@ -102,6 +75,9 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
     const recordingActive = recordingState === 'recording' || recordingState === 'paused';
     const recordingBusy = recordingState === 'starting' || recordingState === 'stopping';
     const recordingPaused = recordingState === 'paused';
+    const selectedStickerPack = CHAT_STICKER_PACKS.find(
+        (pack) => pack.id === selectedStickerPackId
+    ) ?? CHAT_STICKER_PACKS[0];
 
     const waveformHeights = useMemo(
         () => Array.from({ length: 28 }, (_value, index) => {
@@ -287,11 +263,15 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             }
 
             setSending(true);
-            await onSend('', {
-                uri,
-                type: 'audio',
-                filename: 'chat-audio.m4a',
-                mimeType: 'audio/mp4'
+            await onSend({
+                text: '',
+                attachment: {
+                    uri,
+                    type: 'audio',
+                    filename: 'chat-audio.m4a',
+                    mimeType: 'audio/mp4'
+                },
+                replyToId: replyingTo?.id
             });
         } catch (error) {
             console.error('Chat audio recording send failed', error);
@@ -428,26 +408,27 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
         }
 
         const mediaToSend = selectedMedia;
-        const replyToRestore = replyingTo;
 
         setSending(true);
         setMessage('');
         setSelectedMedia(null);
-        setReplyingTo(null);
 
         try {
-            await onSend(textToSend, mediaToSend ?? undefined);
+            await onSend({
+                text: textToSend,
+                attachment: mediaToSend ?? undefined,
+                replyToId: replyingTo?.id
+            });
         } catch {
             setMessage((current) => current.length === 0 ? textToSend : current);
             setSelectedMedia((current) => current ?? mediaToSend);
-            setReplyingTo(replyToRestore);
             Alert.alert('Error', 'No fue posible enviar el mensaje.');
         } finally {
             setSending(false);
         }
     };
 
-    const sendSticker = async (sticker: StickerOption): Promise<void> => {
+    const sendSticker = async (stickerValue: string): Promise<void> => {
         if (sending || recordingState !== 'idle') {
             return;
         }
@@ -456,7 +437,11 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
         setSending(true);
 
         try {
-            await onSend(sticker.value, undefined, 'STICKER');
+            await onSend({
+                text: stickerValue,
+                messageType: 'STICKER',
+                replyToId: replyingTo?.id
+            });
         } catch {
             Alert.alert('Error', 'No fue posible enviar el sticker.');
         } finally {
@@ -483,9 +468,29 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             return '';
         }
 
-        return typeof replyingTo.content === 'string'
+        const contentPreview = (typeof replyingTo.content === 'string'
             ? replyingTo.content
-            : getPreviewFromRichText(replyingTo.content);
+            : getPreviewFromRichText(replyingTo.content)).trim();
+
+        if (contentPreview) {
+            return contentPreview;
+        }
+
+        switch (replyingTo.type) {
+            case 'IMAGE':
+                return '📷 Foto';
+            case 'VIDEO':
+            case 'MEDIA':
+                return '🎥 Video';
+            case 'AUDIO':
+                return '🎤 Nota de voz';
+            case 'FILE':
+                return replyingTo.filename ? `📎 ${replyingTo.filename}` : '📎 Archivo';
+            case 'STICKER':
+                return '✨ Sticker';
+            default:
+                return 'Mensaje original';
+        }
     };
 
     return (
@@ -554,18 +559,62 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                                 <Ionicons name="close" size={24} color={colors.textColor} />
                             </TouchableOpacity>
                         </View>
-                        <View style={styles.stickerGrid}>
-                            {stickerOptions.map((sticker) => (
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.stickerPackTabs}
+                        >
+                            {CHAT_STICKER_PACKS.map((pack) => {
+                                const selected = pack.id === selectedStickerPack?.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={pack.id}
+                                        style={[
+                                            styles.stickerPackTab,
+                                            {
+                                                backgroundColor: selected
+                                                    ? colors.primaryColor
+                                                    : colors.backgroundColor,
+                                                borderColor: colors.borderColor
+                                            }
+                                        ]}
+                                        onPress={() => setSelectedStickerPackId(pack.id)}
+                                        accessibilityLabel={`Abrir stickers de ${pack.label}`}
+                                    >
+                                        <Text style={styles.stickerPackIcon}>{pack.icon}</Text>
+                                        <Text
+                                            style={[
+                                                styles.stickerPackLabel,
+                                                {
+                                                    color: selected
+                                                        ? colors.buttonTextColor
+                                                        : colors.textColor
+                                                }
+                                            ]}
+                                        >
+                                            {pack.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+
+                        <ScrollView
+                            style={styles.stickerGridScroll}
+                            contentContainerStyle={styles.stickerGrid}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {(selectedStickerPack?.stickers ?? []).map((sticker) => (
                                 <TouchableOpacity
                                     key={sticker.id}
                                     style={[styles.stickerButton, { backgroundColor: colors.backgroundColor }]}
-                                    onPress={() => void sendSticker(sticker)}
+                                    onPress={() => void sendSticker(sticker.value)}
                                     accessibilityLabel={`Enviar sticker ${sticker.label}`}
                                 >
                                     <Text style={styles.stickerText}>{sticker.value}</Text>
                                 </TouchableOpacity>
                             ))}
-                        </View>
+                        </ScrollView>
                     </TouchableOpacity>
                 </TouchableOpacity>
             </Modal>
@@ -901,9 +950,30 @@ const styles = StyleSheet.create({
     removeImageBtn: { marginLeft: 10 },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%' },
-    stickerModalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%' },
+    stickerModalContent: {
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        padding: 20,
+        width: '100%',
+        maxHeight: '72%'
+    },
     stickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    stickerGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+    stickerPackTabs: { paddingBottom: 14 },
+    stickerPackTab: {
+        minWidth: 96,
+        marginRight: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 14,
+        borderWidth: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    stickerPackIcon: { fontSize: 18, marginRight: 5 },
+    stickerPackLabel: { fontSize: 12, fontWeight: '700' },
+    stickerGridScroll: { maxHeight: 320 },
+    stickerGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, paddingBottom: 8 },
     stickerButton: {
         width: '23%',
         aspectRatio: 1,
