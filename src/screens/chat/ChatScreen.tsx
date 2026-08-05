@@ -1,11 +1,12 @@
 // src/screens/chat/ChatScreen.tsx
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
     Image,
-    KeyboardAvoidingView,
+    Keyboard,
+    type KeyboardEvent,
     Modal,
     Platform,
     StyleSheet,
@@ -14,7 +15,8 @@ import {
     View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatInput } from '../../components/chatMessages/ChatInput';
 import { ChatMessageItem } from '../../components/chatMessages/ChatMessageItem';
 import { useTheme } from '../../context/ThemeContext';
@@ -31,7 +33,10 @@ export const ChatScreen = () => {
     const flatListRef = useRef<FlatList<ChatMessage>>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showOnlineModal, setShowOnlineModal] = useState(false);
+    const [keyboardOffset, setKeyboardOffset] = useState(0);
+    const [composerHeight, setComposerHeight] = useState(64);
     const colors = useTheme().currentTheme;
+    const insets = useSafeAreaInsets();
     const isFocused = useIsFocused();
     const historyQuery = useChatHistoryQuery(isFocused);
     const directoryQuery = useChatDirectoryQuery(showOnlineModal);
@@ -42,21 +47,40 @@ export const ChatScreen = () => {
     const onlineUsers = useChatStore((state) => state.onlineUsers);
     const typingUsers = useChatStore((state) => state.typingUsers);
     const connect = useChatStore((state) => state.connect);
-    const disconnect = useChatStore((state) => state.disconnect);
     const sendTyping = useChatStore((state) => state.sendTyping);
     const allUsers = directoryQuery.data ?? [];
 
-    useFocusEffect(useCallback(() => {
-        connect();
+    useEffect(() => {
+        if (isFocused) {
+            connect();
+            return;
+        }
+
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+        sendTyping(false);
+    }, [connect, isFocused, sendTyping]);
+
+    useEffect(() => {
+        const updateKeyboardOffset = (event: KeyboardEvent): void => {
+            const nextOffset = Math.max(0, event.endCoordinates.height - insets.bottom);
+            setKeyboardOffset(nextOffset);
+            requestAnimationFrame(() => {
+                flatListRef.current?.scrollToEnd({ animated: true });
+            });
+        };
+        const resetKeyboardOffset = (): void => setKeyboardOffset(0);
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const showSubscription = Keyboard.addListener(showEvent, updateKeyboardOffset);
+        const hideSubscription = Keyboard.addListener(hideEvent, resetKeyboardOffset);
 
         return () => {
-            if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current);
-            }
-            sendTyping(false);
-            disconnect();
+            showSubscription.remove();
+            hideSubscription.remove();
         };
-    }, [connect, disconnect, sendTyping]));
+    }, [insets.bottom]);
 
     useEffect(() => {
         if (messages.length > 0) {
@@ -124,19 +148,18 @@ export const ChatScreen = () => {
                 <Ionicons name="people" size={24} color={colors.primaryColor} />
             </TouchableOpacity>
 
-            <KeyboardAvoidingView
-                style={styles.flexOne}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={0}
-            >
+            <View style={styles.chatBody}>
                 <FlatList
                     ref={flatListRef}
                     style={styles.flexOne}
                     data={messages}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => <ChatMessageItem message={item} />}
-                    contentContainerStyle={styles.listContent}
-                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={[
+                        styles.listContent,
+                        { paddingBottom: composerHeight + 16 }
+                    ]}
+                    keyboardShouldPersistTaps="always"
                     keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                     refreshing={historyQuery.isRefetching && messages.length > 0}
                     onRefresh={() => void historyQuery.refetch()}
@@ -166,21 +189,31 @@ export const ChatScreen = () => {
                     )}
                 />
 
-                {typingUsers.length > 0 && (
-                    <View style={[styles.typingContainer, { backgroundColor: colors.backgroundColor }]}>
-                        <Text style={[styles.typingText, { color: colors.secondaryTextColor }]}>
-                            {typingUsers.length === 1
-                                ? `${typingUsers[0]} está escribiendo...`
-                                : `${typingUsers.length} personas están escribiendo...`}
-                        </Text>
-                    </View>
-                )}
-                <ChatInput
-                    onSend={handleSend}
-                    onTyping={handleTyping}
-                    onFocus={() => requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }))}
-                />
-            </KeyboardAvoidingView>
+                <View
+                    style={[
+                        styles.composerDock,
+                        { bottom: keyboardOffset }
+                    ]}
+                    onLayout={(event) => setComposerHeight(event.nativeEvent.layout.height)}
+                >
+                    {typingUsers.length > 0 && (
+                        <View style={[styles.typingContainer, { backgroundColor: colors.backgroundColor }]}>
+                            <Text style={[styles.typingText, { color: colors.secondaryTextColor }]}>
+                                {typingUsers.length === 1
+                                    ? `${typingUsers[0]} está escribiendo...`
+                                    : `${typingUsers.length} personas están escribiendo...`}
+                            </Text>
+                        </View>
+                    )}
+                    <ChatInput
+                        onSend={handleSend}
+                        onTyping={handleTyping}
+                        onFocus={() => requestAnimationFrame(() => {
+                            flatListRef.current?.scrollToEnd({ animated: true });
+                        })}
+                    />
+                </View>
+            </View>
 
             <Modal
                 visible={showOnlineModal}
@@ -269,6 +302,7 @@ export const ChatScreen = () => {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     flexOne: { flex: 1 },
+    chatBody: { flex: 1, position: 'relative' },
     header: {
         paddingHorizontal: 16,
         paddingVertical: 12,
@@ -280,10 +314,16 @@ const styles = StyleSheet.create({
     statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
     dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
     headerSubtitle: { fontSize: 12, flex: 1 },
-    listContent: { paddingHorizontal: 12, paddingVertical: 12, flexGrow: 1 },
+    listContent: { paddingHorizontal: 12, paddingTop: 12, flexGrow: 1 },
     emptyText: { padding: 24, textAlign: 'center' },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
     loadingText: { marginTop: 10, fontSize: 13 },
+    composerDock: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        zIndex: 10
+    },
     typingContainer: { paddingHorizontal: 16, paddingVertical: 5 },
     typingText: { fontSize: 12, fontStyle: 'italic' },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },

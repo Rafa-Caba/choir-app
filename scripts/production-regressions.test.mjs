@@ -35,6 +35,7 @@ const changedSources = [
     'src/screens/chat/ChatScreen.tsx',
     'src/screens/gallery/GalleryScreen.tsx',
     'src/screens/gallery/MediaDetailScreen.tsx',
+    'src/screens/platform/PlatformProfileScreen.tsx',
     'src/screens/settings/AdminThemeEditorScreen.tsx',
     'src/screens/settings/themes/ManageThemeScreen.tsx',
     'src/screens/settings/themes/ThemeSelectionScreen.tsx',
@@ -80,6 +81,7 @@ const chatData = read('src/hooks/query/useChatData.ts');
 const chatInput = read('src/components/chatMessages/ChatInput.tsx');
 const authService = read('src/services/auth.ts');
 const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
+const platformProfile = read('src/screens/platform/PlatformProfileScreen.tsx');
 const pushDevices = read('src/services/pushDevices.ts');
 const deviceIdentity = read('src/services/deviceIdentity.ts');
 const multipart = read('src/services/multipart.ts');
@@ -87,7 +89,8 @@ const multipart = read('src/services/multipart.ts');
 assert.equal(typeof packageJson.dependencies['@tanstack/react-query'], 'string');
 assert.match(app, /<QueryProvider>/u);
 assert.match(app, /<QueryLifecycleManager>/u);
-assert.doesNotMatch(app, /useChatStore/u);
+assert.match(app, /useChatStore/u);
+assert.match(app, /connectChat\(\)/u);
 assert.match(queryClient, /staleTime: 15_000/u);
 assert.match(queryLifecycle, /focusManager\.setFocused/u);
 assert.match(queryKeys, /\['tenant', tenantKey/u);
@@ -97,23 +100,29 @@ assert.doesNotMatch(announcementStore, /syncCacheFirst/u);
 assert.match(blogStore, /queryClient\.fetchQuery/u);
 assert.match(announcementStore, /queryClient\.fetchQuery/u);
 
-assert.match(chatStore, /transports: \['websocket'\]/u);
-assert.match(chatStore, /upgrade: false/u);
-assert.match(chatStore, /reconnectionAttempts: 2/u);
+assert.match(chatStore, /transports: \['polling', 'websocket'\]/u);
+assert.match(chatStore, /upgrade: true/u);
+assert.match(chatStore, /tryAllTransports: true/u);
+assert.match(chatStore, /connectionKey/u);
 assert.match(chatStore, /queryClient\.setQueryData/u);
 assert.match(chatData, /refetchInterval: active && !connected \? 15_000 : false/u);
 assert.match(chatData, /timeout: 6_000/u);
 assert.match(chatData, /signal/u);
-assert.match(chatScreen, /KeyboardAvoidingView/u);
-assert.match(chatScreen, /keyboardVerticalOffset=\{0\}/u);
+assert.match(chatScreen, /keyboardWillChangeFrame/u);
+assert.match(chatScreen, /composerDock/u);
+assert.match(chatScreen, /useSafeAreaInsets/u);
 assert.match(chatScreen, /useIsFocused/u);
-assert.doesNotMatch(chatScreen, /useAnimatedKeyboard/u);
+assert.doesNotMatch(chatScreen, /KeyboardAvoidingView/u);
 assert.match(chatInput, /Keyboard\.dismiss/u);
 assert.match(chatInput, /ActivityIndicator/u);
 
 assert.match(songTypesScreen, /KeyboardAvoidingView/u);
 assert.match(songTypesScreen, /InputAccessoryView/u);
 assert.match(songTypesScreen, /Ocultar/u);
+
+assert.match(platformProfile, /ImagePicker\.launchImageLibraryAsync/u);
+assert.match(platformProfile, /Cambiar foto de plataforma/u);
+assert.match(platformProfile, /updateUserProfile\(/u);
 
 assert.match(pushDevices, /REGISTRATION_RETRY_COOLDOWN_MS/u);
 assert.match(authService, /timeout: 6_000/u);

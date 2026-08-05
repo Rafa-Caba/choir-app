@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Image,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -13,8 +14,10 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { AccessDeniedScreen } from '../../components/auth/AccessDeniedScreen';
 import { useTheme } from '../../context/ThemeContext';
 import { getUserProfile } from '../../services/auth';
@@ -40,6 +43,9 @@ export const PlatformProfileScreen = () => {
     const [username, setUsername] = useState(user?.username ?? '');
     const [email, setEmail] = useState(user?.email ?? '');
     const [bio, setBio] = useState(user?.bio ?? '');
+    const [imageUri, setImageUri] = useState<string | undefined>(
+        user?.cachedImageUrl ?? user?.imageUrl
+    );
     const [preferredChoirId, setPreferredChoirId] = useState(
         user?.preferredChoirId ?? ''
     );
@@ -52,6 +58,7 @@ export const PlatformProfileScreen = () => {
         setUsername(user?.username ?? '');
         setEmail(user?.email ?? '');
         setBio(user?.bio ?? '');
+        setImageUri(user?.cachedImageUrl ?? user?.imageUrl);
         setPreferredChoirId(user?.preferredChoirId ?? '');
     }, [user]);
 
@@ -73,6 +80,19 @@ export const PlatformProfileScreen = () => {
         return <AccessDeniedScreen />;
     }
 
+    const pickImage = async (): Promise<void> => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.65
+        });
+
+        if (!result.canceled && result.assets[0]) {
+            setImageUri(result.assets[0].uri);
+        }
+    };
+
     const saveProfile = async (): Promise<void> => {
         const normalizedName = name.trim();
         const normalizedUsername = username.trim().toLowerCase();
@@ -86,18 +106,21 @@ export const PlatformProfileScreen = () => {
             return;
         }
 
-        const success = await updateUserProfile({
-            name: normalizedName,
-            username: normalizedUsername,
-            email: normalizedEmail,
-            bio: bio.trim(),
-            preferredChoirId: preferredChoirId || null
-        });
+        const success = await updateUserProfile(
+            {
+                name: normalizedName,
+                username: normalizedUsername,
+                email: normalizedEmail,
+                bio: bio.trim(),
+                preferredChoirId: preferredChoirId || null
+            },
+            imageUri
+        );
 
         if (!success) {
             Alert.alert(
                 'No fue posible guardar',
-                'Revisa los datos e intenta nuevamente.'
+                useAuthStore.getState().errorMessage ?? 'Revisa los datos e intenta nuevamente.'
             );
             return;
         }
@@ -114,7 +137,7 @@ export const PlatformProfileScreen = () => {
 
         Alert.alert(
             'Perfil actualizado',
-            'Tus datos y preferencias se guardaron correctamente.'
+            'Tus datos, foto y preferencias se guardaron correctamente.'
         );
     };
 
@@ -186,12 +209,42 @@ export const PlatformProfileScreen = () => {
                 automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
             >
                 <Text style={[styles.sectionTitle, { color: colors.textColor }]}>Perfil de plataforma</Text>
-                <Text style={[styles.description, { color: colors.secondaryTextColor }]}>
+                {/* <Text style={[styles.description, { color: colors.secondaryTextColor }]}>
                     Tu cuenta continúa siendo global. El coro predeterminado solo selecciona el contexto inicial de la consola; no te agrega como miembro ni te muestra en el directorio del coro. Para aparecer en usuarios y chat, usa una cuenta ADMIN propia de ese coro.
-                </Text>
+                </Text> */}
+
+                <View style={styles.imageContainer}>
+                    <TouchableOpacity onPress={() => void pickImage()} activeOpacity={0.8}>
+                        <Image
+                            source={imageUri
+                                ? { uri: imageUri }
+                                : require('../../../assets/icon.png')}
+                            style={[
+                                styles.avatar,
+                                {
+                                    borderColor: colors.primaryColor,
+                                    backgroundColor: colors.cardColor
+                                }
+                            ]}
+                        />
+                        <View style={[styles.editIconBadge, { backgroundColor: colors.buttonColor }]}>
+                            <Ionicons name="camera" size={20} color={colors.buttonTextColor} />
+                        </View>
+                    </TouchableOpacity>
+                    <Text style={[styles.changePhotoText, { color: colors.primaryColor }]}>
+                        Cambiar foto de plataforma
+                    </Text>
+                </View>
 
                 <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Nombre</Text>
-                <TextInput style={inputStyle} value={name} onChangeText={setName} />
+                <TextInput
+                    style={inputStyle}
+                    value={name}
+                    onChangeText={setName}
+                    autoCorrect
+                    spellCheck
+                    autoCapitalize="words"
+                />
 
                 <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Usuario</Text>
                 <TextInput
@@ -256,7 +309,7 @@ export const PlatformProfileScreen = () => {
 
                 <TouchableOpacity
                     style={[styles.primaryButton, { backgroundColor: colors.buttonColor }]}
-                    onPress={saveProfile}
+                    onPress={() => void saveProfile()}
                     disabled={loading}
                 >
                     {loading ? (
@@ -296,7 +349,7 @@ export const PlatformProfileScreen = () => {
 
                 <TouchableOpacity
                     style={[styles.secondaryButton, { borderColor: colors.primaryColor }]}
-                    onPress={savePassword}
+                    onPress={() => void savePassword()}
                     disabled={loading}
                 >
                     <Text style={[styles.secondaryText, { color: colors.primaryColor }]}>Actualizar contraseña</Text>
@@ -311,6 +364,18 @@ const styles = StyleSheet.create({
     content: { padding: 20, paddingBottom: 48 },
     sectionTitle: { fontSize: 24, fontWeight: '900', marginBottom: 8 },
     description: { fontSize: 14, lineHeight: 20, marginBottom: 18 },
+    imageContainer: { alignItems: 'center', marginBottom: 10 },
+    avatar: { width: 120, height: 120, borderRadius: 60, borderWidth: 3 },
+    editIconBadge: {
+        position: 'absolute',
+        right: 0,
+        bottom: 0,
+        padding: 9,
+        borderRadius: 22,
+        borderWidth: 2,
+        borderColor: '#ffffff'
+    },
+    changePhotoText: { marginTop: 10, fontWeight: '700' },
     label: { fontSize: 14, fontWeight: '700', marginTop: 14, marginBottom: 6 },
     input: {
         borderWidth: 1,

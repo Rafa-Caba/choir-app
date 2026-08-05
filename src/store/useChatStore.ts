@@ -33,9 +33,15 @@ interface ClientToServerEvents {
 
 type ChoirSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+interface SocketAuthPayload {
+    readonly accessToken: string;
+    readonly targetChoirId?: string;
+}
+
 interface ChatState {
     readonly connected: boolean;
     readonly connectionError: string | null;
+    readonly connectionKey: string | null;
     readonly socket: ChoirSocket | null;
     readonly replyingTo: ChatMessage | null;
     readonly onlineUsers: readonly SocketPresenceUser[];
@@ -54,14 +60,28 @@ const disconnectSocket = (socket: ChoirSocket | null): void => {
     socket?.disconnect();
 };
 
-const resolveConnectionError = (message: string): string => {
-    const normalized = message.toLowerCase();
+const resolveConnectionError = (): string => {
+    return 'Tiempo real no disponible; el chat seguirá sincronizando';
+};
 
-    if (normalized.includes('timeout')) {
-        return 'Tiempo real no disponible; el chat seguirá sincronizando';
+const buildSocketContext = (): {
+    readonly auth: SocketAuthPayload;
+    readonly connectionKey: string;
+} | null => {
+    const { token, user, requiresPasswordChange } = useAuthStore.getState();
+    const targetChoirId = useTargetChoirStore.getState().selectedChoir?.id ?? null;
+    const choirId = user?.role === 'SUPER_ADMIN' ? targetChoirId : user?.choirId ?? null;
+
+    if (!token || !user || requiresPasswordChange || !choirId) {
+        return null;
     }
 
-    return 'Tiempo real no disponible; el chat seguirá sincronizando';
+    return {
+        auth: user.role === 'SUPER_ADMIN'
+            ? { accessToken: token, targetChoirId: choirId }
+            : { accessToken: token },
+        connectionKey: `${user.id}:${choirId}:${user.sessionVersion}`
+    };
 };
 
 const updateCachedMessage = (raw: RawChatMessage): void => {
@@ -80,6 +100,7 @@ const updateCachedMessage = (raw: RawChatMessage): void => {
 export const useChatStore = create<ChatState>((set, get) => ({
     connected: false,
     connectionError: null,
+    connectionKey: null,
     socket: null,
     replyingTo: null,
     onlineUsers: [],
@@ -88,56 +109,57 @@ export const useChatStore = create<ChatState>((set, get) => ({
     setReplyingTo: (message) => set({ replyingTo: message }),
 
     connect: () => {
-        const { token, user, requiresPasswordChange } = useAuthStore.getState();
-        const targetChoirId = useTargetChoirStore.getState().selectedChoir?.id ?? null;
+        const context = buildSocketContext();
+
+        if (!context) {
+            get().disconnect();
+            return;
+        }
+
         const existing = get().socket;
 
-        if (
-            !token ||
-            !user ||
-            requiresPasswordChange ||
-            existing?.connected ||
-            existing?.active ||
-            (user.role === 'SUPER_ADMIN' && !targetChoirId)
-        ) {
+        if (existing && get().connectionKey === context.connectionKey) {
+            existing.auth = context.auth;
+
+            if (!existing.connected && !existing.active) {
+                existing.connect();
+            }
             return;
         }
 
         disconnectSocket(existing);
 
-        const socketAuth = user.role === 'SUPER_ADMIN'
-            ? { accessToken: token, targetChoirId }
-            : { accessToken: token };
         const socket: ChoirSocket = io(ENV.SOCKET_URL, {
             path: '/socket.io',
-            auth: socketAuth,
+            auth: context.auth,
             autoConnect: false,
             forceNew: true,
             multiplex: false,
-            transports: ['websocket'],
-            upgrade: false,
-            rememberUpgrade: true,
+            transports: ['polling', 'websocket'],
+            upgrade: true,
+            rememberUpgrade: false,
+            tryAllTransports: true,
             reconnection: true,
-            reconnectionAttempts: 2,
-            reconnectionDelay: 1_500,
-            reconnectionDelayMax: 6_000,
-            randomizationFactor: 0.3,
-            timeout: 8_000
+            reconnectionAttempts: Number.POSITIVE_INFINITY,
+            reconnectionDelay: 1_000,
+            reconnectionDelayMax: 30_000,
+            randomizationFactor: 0.4,
+            timeout: 20_000
         });
 
         socket.on('connect', () => set({
             connected: true,
             connectionError: null
         }));
-        socket.on('connect_error', (error: Error) => set({
+        socket.on('connect_error', () => set({
             connected: false,
-            connectionError: resolveConnectionError(error.message)
+            connectionError: resolveConnectionError()
         }));
         socket.on('disconnect', (reason) => set({
             connected: false,
             connectionError: reason === 'io client disconnect'
                 ? null
-                : 'Tiempo real no disponible; el chat seguirá sincronizando',
+                : resolveConnectionError(),
             onlineUsers: [],
             typingUsers: []
         }));
@@ -152,11 +174,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
         socket.on('session-disconnected', () => {
             useAuthStore.getState().expireSession().catch(() => undefined);
         });
+        socket.io.on('reconnect_attempt', () => {
+            const latestContext = buildSocketContext();
+
+            if (latestContext?.connectionKey === context.connectionKey) {
+                socket.auth = latestContext.auth;
+            }
+        });
 
         set({
             socket,
+            connectionKey: context.connectionKey,
             connected: false,
-            connectionError: null
+            connectionError: null,
+            onlineUsers: [],
+            typingUsers: []
         });
         socket.connect();
     },
@@ -165,6 +197,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         disconnectSocket(get().socket);
         set({
             socket: null,
+            connectionKey: null,
             connected: false,
             connectionError: null,
             onlineUsers: [],
@@ -197,6 +230,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set({
             connected: false,
             connectionError: null,
+            connectionKey: null,
             socket: null,
             replyingTo: null,
             onlineUsers: [],

@@ -16,6 +16,7 @@ import { QueryLifecycleManager } from './src/providers/QueryLifecycleManager';
 import { usePushNotifications } from './src/hooks/usePushNotifications';
 import { useAppConfigStore } from './src/store/useAppConfigStore';
 import { useAuthStore } from './src/store/useAuthStore';
+import { useChatStore } from './src/store/useChatStore';
 import { useTenantQueryScope } from './src/hooks/query/useTenantQueryScope';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -39,6 +40,8 @@ const AppContent = ({ onReady }: AppContentProps) => {
     const fetchAppConfig = useAppConfigStore((state) => state.fetchAppConfig);
     const currentTheme = useTheme().currentTheme;
     const tenantScope = useTenantQueryScope();
+    const connectChat = useChatStore((state) => state.connect);
+    const disconnectChat = useChatStore((state) => state.disconnect);
 
     usePushNotifications();
 
@@ -53,6 +56,26 @@ const AppContent = ({ onReady }: AppContentProps) => {
             fetchAppConfig().catch(() => undefined);
         }
     }, [fetchAppConfig, requiresPasswordChange, status, tenantScope.enabled, tenantScope.tenantKey]);
+
+    useEffect(() => {
+        if (status === 'authenticated' && !requiresPasswordChange && tenantScope.enabled) {
+            connectChat();
+            return;
+        }
+
+        disconnectChat();
+    }, [
+        connectChat,
+        disconnectChat,
+        requiresPasswordChange,
+        status,
+        tenantScope.enabled,
+        tenantScope.tenantKey
+    ]);
+
+    useEffect(() => {
+        return () => disconnectChat();
+    }, [disconnectChat]);
 
     return (
         <NavigationContainer>
