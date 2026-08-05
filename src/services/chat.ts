@@ -17,6 +17,8 @@ import {
 
 export type ChatAttachmentType = 'image' | 'video' | 'audio' | 'file';
 
+const CHAT_UPLOAD_TIMEOUT_MS = 90_000;
+
 export interface ChatAttachment {
     readonly uri: string;
     readonly type: ChatAttachmentType;
@@ -70,7 +72,10 @@ export const uploadChatMedia = async (
     const response = await choirApi.post<ChatUploadResponse>(
         endpoint,
         formData,
-        getMultipartRequestConfig()
+        {
+            ...getMultipartRequestConfig(),
+            timeout: CHAT_UPLOAD_TIMEOUT_MS
+        }
     );
     return response.data;
 };
