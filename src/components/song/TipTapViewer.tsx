@@ -1,74 +1,78 @@
+// src/components/song/TipTapViewer.tsx
+
 import React from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import {
+    StyleSheet,
+    Text,
+    type TextStyle,
+    View
+} from 'react-native';
+import type {
+    TipTapDocument,
+    TipTapMark,
+    TipTapNode
+} from '../../types/tiptap';
 
 interface Props {
-    content: any;
-    textColor?: string;
+    readonly content: TipTapDocument | null | undefined;
+    readonly textColor?: string;
 }
 
-export const TipTapViewer: React.FC<Props> = ({ content, textColor = '#000' }) => {
-    if (!content || content.type !== 'doc') return null;
+const getInlineStyle = (marks: readonly TipTapMark[] | undefined): TextStyle => {
+    const style: TextStyle = {};
 
-    return (
-        <View style={styles.container}>
-            {content.content?.map((block: any, index: number) => {
-                switch (block.type) {
+    for (const mark of marks ?? []) {
+        if (mark.type === 'bold') {
+            style.fontWeight = 'bold';
+        }
+        if (mark.type === 'italic') {
+            style.fontStyle = 'italic';
+        }
+        if (mark.type === 'underline') {
+            style.textDecorationLine = 'underline';
+        }
+        if (mark.type === 'textStyle' && mark.attrs?.color) {
+            style.color = mark.attrs.color;
+        }
+    }
 
-                    // --------------------------
-                    // HEADINGS
-                    // --------------------------
-                    case "heading":
-                        return renderHeading(block, index, textColor);
-
-                    // --------------------------
-                    // PARAGRAPHS
-                    // --------------------------
-                    case "paragraph":
-                        return renderParagraph(block, index, textColor);
-
-                    // --------------------------
-                    // BULLET LIST
-                    // --------------------------
-                    case "bulletList":
-                        return renderBulletList(block, index, textColor);
-
-                    // --------------------------
-                    // ORDERED LIST
-                    // --------------------------
-                    case "orderedList":
-                        return renderOrderedList(block, index, textColor);
-
-                    // --------------------------
-                    // BLOCKQUOTE
-                    // --------------------------
-                    case "blockquote":
-                        return renderBlockquote(block, index, textColor);
-
-                    default:
-                        return null;
-                }
-            })}
-        </View>
-    );
+    return style;
 };
 
-// =========================
-// RENDER HELPERS
-// =========================
+const renderInline = (inlines: readonly TipTapNode[] = []): readonly React.ReactNode[] => {
+    return inlines.map((node, index) => {
+        if (node.type === 'text') {
+            return (
+                <Text key={`${node.type}-${index}`} style={getInlineStyle(node.marks)}>
+                    {node.text ?? ''}
+                </Text>
+            );
+        }
 
-// --- Headings ---
-const renderHeading = (block: any, index: number, textColor: string) => {
+        if (node.type === 'hardBreak') {
+            return <Text key={`${node.type}-${index}`}>{'\n'}</Text>;
+        }
+
+        return null;
+    });
+};
+
+const renderHeading = (
+    block: TipTapNode,
+    index: number,
+    textColor: string
+): React.ReactNode => {
     const level = block.attrs?.level ?? 1;
     const size = level === 1 ? 24 : level === 2 ? 20 : 18;
 
     return (
         <Text
-            key={index}
+            key={`heading-${index}`}
             style={{
                 fontSize: size,
-                fontWeight: "bold",
+                fontWeight: 'bold',
                 color: textColor,
-                marginBottom: 6,
+                marginBottom: 6
             }}
         >
             {renderInline(block.content)}
@@ -76,29 +80,33 @@ const renderHeading = (block: any, index: number, textColor: string) => {
     );
 };
 
-// --- Paragraphs ---
-const renderParagraph = (block: any, index: number, textColor: string) => {
-    const alignment = block.attrs?.textAlign ?? "left";
+const renderParagraph = (
+    block: TipTapNode,
+    index: number,
+    textColor: string
+): React.ReactNode => {
+    const alignment = block.attrs?.textAlign ?? 'left';
+
     return (
         <Text
-            key={index}
-            style={[
-                styles.paragraph,
-                { textAlign: alignment, color: textColor }
-            ]}
+            key={`paragraph-${index}`}
+            style={[styles.paragraph, { textAlign: alignment, color: textColor }]}
         >
             {renderInline(block.content)}
         </Text>
     );
 };
 
-// --- Bullet List ---
-const renderBulletList = (block: any, index: number, textColor: string) => (
-    <View key={index} style={styles.listContainer}>
-        {block.content?.map((item: any, idx: number) => (
-            <View key={idx} style={styles.listRow}>
+const renderBulletList = (
+    block: TipTapNode,
+    index: number,
+    textColor: string
+): React.ReactNode => (
+    <View key={`bullet-list-${index}`} style={styles.listContainer}>
+        {(block.content ?? []).map((item, itemIndex) => (
+            <View key={`bullet-item-${itemIndex}`} style={styles.listRow}>
                 <Text style={[styles.bullet, { color: textColor }]}>•</Text>
-                <Text style={[styles.listText, { color: textColor }]}>
+                <Text style={[styles.listText, { color: textColor }]}> 
                     {renderInline(item.content?.[0]?.content)}
                 </Text>
             </View>
@@ -106,13 +114,16 @@ const renderBulletList = (block: any, index: number, textColor: string) => (
     </View>
 );
 
-// --- Ordered List ---
-const renderOrderedList = (block: any, index: number, textColor: string) => (
-    <View key={index} style={styles.listContainer}>
-        {block.content?.map((item: any, idx: number) => (
-            <View key={idx} style={styles.listRow}>
-                <Text style={[styles.number, { color: textColor }]}>{idx + 1}.</Text>
-                <Text style={[styles.listText, { color: textColor }]}>
+const renderOrderedList = (
+    block: TipTapNode,
+    index: number,
+    textColor: string
+): React.ReactNode => (
+    <View key={`ordered-list-${index}`} style={styles.listContainer}>
+        {(block.content ?? []).map((item, itemIndex) => (
+            <View key={`ordered-item-${itemIndex}`} style={styles.listRow}>
+                <Text style={[styles.number, { color: textColor }]}>{itemIndex + 1}.</Text>
+                <Text style={[styles.listText, { color: textColor }]}> 
                     {renderInline(item.content?.[0]?.content)}
                 </Text>
             </View>
@@ -120,65 +131,74 @@ const renderOrderedList = (block: any, index: number, textColor: string) => (
     </View>
 );
 
-// --- Blockquote ---
-const renderBlockquote = (block: any, index: number, textColor: string) => (
-    <View key={index} style={styles.quoteContainer}>
+const renderBlockquote = (
+    block: TipTapNode,
+    index: number,
+    textColor: string
+): React.ReactNode => (
+    <View key={`blockquote-${index}`} style={styles.quoteContainer}>
         <View style={styles.quoteBar} />
-        <Text style={[styles.quoteText, { color: textColor }]}>
+        <Text style={[styles.quoteText, { color: textColor }]}> 
             {renderInline(block.content?.[0]?.content)}
         </Text>
     </View>
 );
 
-const renderInline = (inlines: any[] = []) => {
-    return inlines.map((node, index) => {
-        if (node.type === 'text') {
-            let style: any = {};
+const renderBlock = (
+    block: TipTapNode,
+    index: number,
+    textColor: string
+): React.ReactNode => {
+    switch (block.type) {
+        case 'heading':
+            return renderHeading(block, index, textColor);
+        case 'paragraph':
+            return renderParagraph(block, index, textColor);
+        case 'bulletList':
+            return renderBulletList(block, index, textColor);
+        case 'orderedList':
+            return renderOrderedList(block, index, textColor);
+        case 'blockquote':
+            return renderBlockquote(block, index, textColor);
+        default:
+            return null;
+    }
+};
 
-            node.marks?.forEach((mark: any) => {
-                if (mark.type === 'bold') style.fontWeight = 'bold';
-                if (mark.type === 'italic') style.fontStyle = 'italic';
-                if (mark.type === 'underline') style.textDecorationLine = 'underline';
-                if (mark.type === 'textStyle' && mark.attrs?.color) {
-                    style.color = mark.attrs.color;
-                }
-            });
-
-            return (
-                <Text key={index} style={style}>
-                    {node.text}
-                </Text>
-            );
-        }
-
-        if (node.type === 'hardBreak') {
-            return <Text key={index}>{'\n'}</Text>;
-        }
-
+export const TipTapViewer = ({ content, textColor = '#000000' }: Props) => {
+    if (!content || content.type !== 'doc') {
         return null;
-    });
+    }
+
+    return (
+        <View style={styles.container}>
+            {content.content.map((block, index) => renderBlock(block, index, textColor))}
+        </View>
+    );
 };
 
 const styles = StyleSheet.create({
-    container: { width: "100%", paddingVertical: 5 },
-
+    container: { width: '100%', paddingVertical: 5 },
     paragraph: {
         marginBottom: 4,
         fontSize: 16,
-        lineHeight: 20,
+        lineHeight: 20
     },
-
     listContainer: { marginBottom: 6 },
-    listRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 3 },
+    listRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 3 },
     bullet: { marginRight: 6, fontSize: 16 },
     number: { marginRight: 6, fontSize: 16 },
     listText: { fontSize: 16, flexShrink: 1 },
-
     quoteContainer: {
-        flexDirection: "row",
+        flexDirection: 'row',
         marginVertical: 6,
-        paddingLeft: 10,
+        paddingLeft: 10
     },
-    quoteBar: { width: 4, backgroundColor: "#888", marginRight: 10, borderRadius: 2 },
-    quoteText: { fontStyle: "italic", flexShrink: 1 },
+    quoteBar: {
+        width: 4,
+        backgroundColor: '#888888',
+        marginRight: 10,
+        borderRadius: 2
+    },
+    quoteText: { fontStyle: 'italic', flexShrink: 1 }
 });
