@@ -33,6 +33,8 @@ const changedSources = [
     'src/screens/blog/BlogListScreen.tsx',
     'src/screens/blog/CreateBlogScreen.tsx',
     'src/components/chatMessages/ChatInput.tsx',
+    'src/components/chatMessages/ChatMessageItem.tsx',
+    'src/components/chatMessages/MessageContent.tsx',
     'src/screens/chat/ChatScreen.tsx',
     'src/screens/gallery/GalleryScreen.tsx',
     'src/screens/gallery/MediaDetailScreen.tsx',
@@ -58,7 +60,9 @@ const changedSources = [
     'src/store/useChatStore.ts',
     'src/store/useGalleryStore.ts',
     'src/store/useSongsStore.ts',
-    'src/store/useThemeStore.ts'
+    'src/store/useThemeStore.ts',
+    'src/types/chat.ts',
+    'src/utils/normalizeChatMessage.ts'
 ];
 
 for (const relativePath of changedSources) {
@@ -81,6 +85,10 @@ const chatStore = read('src/store/useChatStore.ts');
 const chatScreen = read('src/screens/chat/ChatScreen.tsx');
 const chatData = read('src/hooks/query/useChatData.ts');
 const chatInput = read('src/components/chatMessages/ChatInput.tsx');
+const chatMessageItem = read('src/components/chatMessages/ChatMessageItem.tsx');
+const messageContent = read('src/components/chatMessages/MessageContent.tsx');
+const chatTypes = read('src/types/chat.ts');
+const normalizeChatMessage = read('src/utils/normalizeChatMessage.ts');
 const authService = read('src/services/auth.ts');
 const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
 const galleryScreen = read('src/screens/gallery/GalleryScreen.tsx');
@@ -123,10 +131,25 @@ assert.match(chatScreen, /composerDock/u);
 assert.match(chatInput, /Keyboard\.dismiss/u);
 assert.match(chatInput, /pendingPickerAction/u);
 assert.match(chatInput, /prepareToRecordAsync/u);
-assert.match(chatInput, /onPress=\{\(\) => void handleRecordingPress\(\)\}/u);
+assert.match(chatInput, /pauseRecording/u);
+assert.match(chatInput, /resumeRecording/u);
+assert.match(chatInput, /sendRecording/u);
+assert.match(chatInput, /cancelRecording/u);
+assert.match(chatInput, /pickCameraImage/u);
+assert.match(chatInput, /showStickerModal/u);
+assert.match(chatInput, /messageType\?: MessageType/u);
 assert.match(chatInput, /ActivityIndicator/u);
 assert.match(chatInput, /previewThumbnail/u);
 assert.match(chatInput, /Imagen lista para enviar/u);
+assert.doesNotMatch(chatInput, /Ocultar teclado/u);
+assert.match(chatMessageItem, /checkmark-done/u);
+assert.match(chatMessageItem, /message\.readBy/u);
+assert.match(messageContent, /type === 'STICKER'/u);
+assert.match(messageContent, /audioWaveform/u);
+assert.match(chatTypes, /'STICKER'/u);
+assert.match(chatTypes, /deliveredTo/u);
+assert.match(chatTypes, /readBy/u);
+assert.match(normalizeChatMessage, /normalizeReceiptIds/u);
 
 assert.match(songTypesScreen, /KeyboardAvoidingView/u);
 assert.match(songTypesScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
@@ -150,5 +173,11 @@ assert.doesNotMatch(multipart, /response\.blob\(\)/u);
 assert.doesNotMatch(multipart, /fetch\(upload\.uri\)/u);
 assert.match(multipart, /El archivo seleccionado está vacío/u);
 assert.match(chatService, /CHAT_UPLOAD_TIMEOUT_MS = 90_000/u);
+assert.match(chatService, /markChatReceipts/u);
+assert.match(chatData, /useMarkChatReceiptsMutation/u);
+assert.match(chatStore, /markChatReceipts/u);
+assert.match(chatScreen, /status: 'READ'/u);
+assert.match(songService, /normalizeSong/u);
+assert.match(songService, /resolveRawSongTypeId/u);
 
 console.log('Production and performance regression contract tests passed.');
