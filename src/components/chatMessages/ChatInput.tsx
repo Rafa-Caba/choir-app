@@ -1,6 +1,6 @@
 // src/components/chatMessages/ChatInput.tsx
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -21,10 +21,15 @@ import { Audio } from 'expo-av';
 import { useTheme } from '../../context/ThemeContext';
 import type { ChatAttachment } from '../../services/chat';
 import { useChatStore } from '../../store/useChatStore';
+import type { MessageType } from '../../types/chat';
 import { getPreviewFromRichText } from '../../utils/textUtils';
 
 interface Props {
-    readonly onSend: (text: string, attachment?: ChatAttachment) => Promise<void>;
+    readonly onSend: (
+        text: string,
+        attachment?: ChatAttachment,
+        messageType?: MessageType
+    ) => Promise<void>;
     readonly onTyping?: () => void;
     readonly onFocus?: () => void;
 }
@@ -33,8 +38,14 @@ interface SelectedMedia extends ChatAttachment {
     readonly type: 'image' | 'video' | 'file';
 }
 
+interface StickerOption {
+    readonly id: string;
+    readonly value: string;
+    readonly label: string;
+}
+
 type AttachmentPickerAction = 'media' | 'file';
-type RecordingState = 'idle' | 'starting' | 'recording' | 'stopping';
+type RecordingState = 'idle' | 'starting' | 'recording' | 'paused' | 'stopping';
 
 const imageFallback = {
     filename: 'chat-image.jpg',
@@ -46,38 +57,59 @@ const videoFallback = {
     mimeType: 'video/mp4'
 } as const;
 
+const stickerOptions: readonly StickerOption[] = [
+    { id: 'smile', value: '😀', label: 'Sonrisa' },
+    { id: 'laugh', value: '😂', label: 'Risa' },
+    { id: 'love', value: '😍', label: 'Me encanta' },
+    { id: 'pray', value: '🙏', label: 'Oración' },
+    { id: 'music', value: '🎶', label: 'Música' },
+    { id: 'microphone', value: '🎤', label: 'Micrófono' },
+    { id: 'notes', value: '🎵', label: 'Notas' },
+    { id: 'heart', value: '❤️', label: 'Corazón' },
+    { id: 'clap', value: '👏', label: 'Aplausos' },
+    { id: 'party', value: '🎉', label: 'Celebración' },
+    { id: 'cross', value: '✝️', label: 'Cruz' },
+    { id: 'coffee', value: '☕', label: 'Café' },
+    { id: 'angel', value: '😇', label: 'Ángel' },
+    { id: 'peace', value: '🕊️', label: 'Paz' },
+    { id: 'sparkles', value: '✨', label: 'Destellos' },
+    { id: 'choir', value: '👥', label: 'Coro' }
+];
+
 const pickerPresentationDelayMs = Platform.OS === 'ios' ? 300 : 80;
+const recordingProgressIntervalMs = 200;
+
+const formatDuration = (durationMillis: number): string => {
+    const totalSeconds = Math.max(0, Math.floor(durationMillis / 1_000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
 
 export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
     const recordingRef = useRef<Audio.Recording | null>(null);
     const [message, setMessage] = useState('');
     const [selectedMedia, setSelectedMedia] = useState<SelectedMedia | null>(null);
     const [recordingState, setRecordingState] = useState<RecordingState>('idle');
+    const [recordingDurationMillis, setRecordingDurationMillis] = useState(0);
     const [sending, setSending] = useState(false);
-    const [keyboardVisible, setKeyboardVisible] = useState(false);
     const [showAttachmentModal, setShowAttachmentModal] = useState(false);
+    const [showStickerModal, setShowStickerModal] = useState(false);
     const [pendingPickerAction, setPendingPickerAction] = useState<AttachmentPickerAction | null>(null);
     const replyingTo = useChatStore((state) => state.replyingTo);
     const setReplyingTo = useChatStore((state) => state.setReplyingTo);
     const colors = useTheme().currentTheme;
-    const isRecording = recordingState === 'recording';
+    const recordingActive = recordingState === 'recording' || recordingState === 'paused';
     const recordingBusy = recordingState === 'starting' || recordingState === 'stopping';
+    const recordingPaused = recordingState === 'paused';
 
-    useEffect(() => {
-        const showSubscription = Keyboard.addListener(
-            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-            () => setKeyboardVisible(true)
-        );
-        const hideSubscription = Keyboard.addListener(
-            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-            () => setKeyboardVisible(false)
-        );
-
-        return () => {
-            showSubscription.remove();
-            hideSubscription.remove();
-        };
-    }, []);
+    const waveformHeights = useMemo(
+        () => Array.from({ length: 28 }, (_value, index) => {
+            const phase = Math.floor(recordingDurationMillis / recordingProgressIntervalMs) + index;
+            return 7 + ((phase * 7 + index * 3) % 20);
+        }),
+        [recordingDurationMillis]
+    );
 
     useEffect(() => {
         return () => {
@@ -127,12 +159,19 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
         });
     };
 
+    const resetRecordingState = (): void => {
+        recordingRef.current = null;
+        setRecordingDurationMillis(0);
+        setRecordingState('idle');
+    };
+
     const startRecording = async (): Promise<void> => {
         if (recordingState !== 'idle' || sending) {
             return;
         }
 
         setRecordingState('starting');
+        setRecordingDurationMillis(0);
         Keyboard.dismiss();
 
         try {
@@ -156,6 +195,12 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             });
 
             const nextRecording = new Audio.Recording();
+            nextRecording.setProgressUpdateInterval(recordingProgressIntervalMs);
+            nextRecording.setOnRecordingStatusUpdate((status) => {
+                if (status.canRecord) {
+                    setRecordingDurationMillis(status.durationMillis);
+                }
+            });
             await nextRecording.prepareToRecordAsync(
                 Audio.RecordingOptionsPresets.HIGH_QUALITY
             );
@@ -163,18 +208,69 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             recordingRef.current = nextRecording;
             setRecordingState('recording');
         } catch (error) {
-            recordingRef.current = null;
-            setRecordingState('idle');
+            resetRecordingState();
             await resetAudioMode().catch(() => undefined);
             console.error('Chat audio recording start failed', error);
             Alert.alert('Error', 'No fue posible iniciar la grabación. Intenta nuevamente.');
         }
     };
 
-    const stopRecording = async (): Promise<void> => {
+    const pauseRecording = async (): Promise<void> => {
         const activeRecording = recordingRef.current;
 
-        if (recordingState !== 'recording' || !activeRecording || sending) {
+        if (recordingState !== 'recording' || !activeRecording) {
+            return;
+        }
+
+        try {
+            await activeRecording.pauseAsync();
+            setRecordingState('paused');
+        } catch (error) {
+            console.error('Chat audio recording pause failed', error);
+            Alert.alert('Error', 'No fue posible pausar la grabación.');
+        }
+    };
+
+    const resumeRecording = async (): Promise<void> => {
+        const activeRecording = recordingRef.current;
+
+        if (recordingState !== 'paused' || !activeRecording) {
+            return;
+        }
+
+        try {
+            await activeRecording.startAsync();
+            setRecordingState('recording');
+        } catch (error) {
+            console.error('Chat audio recording resume failed', error);
+            Alert.alert('Error', 'No fue posible continuar la grabación.');
+        }
+    };
+
+    const cancelRecording = async (): Promise<void> => {
+        const activeRecording = recordingRef.current;
+
+        if (!recordingActive || !activeRecording) {
+            return;
+        }
+
+        recordingRef.current = null;
+        setRecordingState('stopping');
+
+        try {
+            await activeRecording.stopAndUnloadAsync();
+        } catch (error) {
+            console.warn('Chat audio recording discard failed', error);
+        } finally {
+            resetRecordingState();
+            await resetAudioMode().catch(() => undefined);
+        }
+    };
+
+    const sendRecording = async (): Promise<void> => {
+        const activeRecording = recordingRef.current;
+
+        if (!recordingActive || !activeRecording || sending) {
             return;
         }
 
@@ -202,18 +298,9 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             Alert.alert('Error', 'No fue posible enviar la nota de voz.');
         } finally {
             setSending(false);
-            setRecordingState('idle');
+            resetRecordingState();
             await resetAudioMode().catch(() => undefined);
         }
-    };
-
-    const handleRecordingPress = async (): Promise<void> => {
-        if (isRecording) {
-            await stopRecording();
-            return;
-        }
-
-        await startRecording();
     };
 
     async function pickMedia(): Promise<void> {
@@ -243,6 +330,47 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             Alert.alert('Error', 'No fue posible abrir la galería del dispositivo.');
         }
     }
+
+    const pickCameraImage = async (): Promise<void> => {
+        if (sending || recordingState !== 'idle') {
+            return;
+        }
+
+        Keyboard.dismiss();
+
+        try {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+            if (permission.status !== 'granted') {
+                Alert.alert(
+                    'Permiso requerido',
+                    'Activa el permiso de la cámara para tomar una foto.'
+                );
+                return;
+            }
+
+            const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                quality: 0.7,
+                presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
+            });
+
+            if (result.canceled) {
+                return;
+            }
+
+            const asset = result.assets[0];
+            setSelectedMedia({
+                uri: asset.uri,
+                type: 'image',
+                filename: asset.fileName ?? imageFallback.filename,
+                mimeType: asset.mimeType ?? imageFallback.mimeType
+            });
+        } catch (error) {
+            console.error('Chat camera capture failed', error);
+            Alert.alert('Error', 'No fue posible abrir la cámara.');
+        }
+    };
 
     async function pickFile(): Promise<void> {
         try {
@@ -319,6 +447,23 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
         }
     };
 
+    const sendSticker = async (sticker: StickerOption): Promise<void> => {
+        if (sending || recordingState !== 'idle') {
+            return;
+        }
+
+        setShowStickerModal(false);
+        setSending(true);
+
+        try {
+            await onSend(sticker.value, undefined, 'STICKER');
+        } catch {
+            Alert.alert('Error', 'No fue posible enviar el sticker.');
+        } finally {
+            setSending(false);
+        }
+    };
+
     const handleTextChange = (text: string): void => {
         setMessage(text);
         onTyping?.();
@@ -388,14 +533,51 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                 </TouchableOpacity>
             </Modal>
 
+            <Modal
+                visible={showStickerModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowStickerModal(false)}
+            >
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setShowStickerModal(false)}
+                >
+                    <TouchableOpacity
+                        activeOpacity={1}
+                        style={[styles.stickerModalContent, { backgroundColor: colors.cardColor }]}
+                    >
+                        <View style={styles.stickerHeader}>
+                            <Text style={[styles.modalTitle, { color: colors.textColor }]}>Stickers</Text>
+                            <TouchableOpacity onPress={() => setShowStickerModal(false)}>
+                                <Ionicons name="close" size={24} color={colors.textColor} />
+                            </TouchableOpacity>
+                        </View>
+                        <View style={styles.stickerGrid}>
+                            {stickerOptions.map((sticker) => (
+                                <TouchableOpacity
+                                    key={sticker.id}
+                                    style={[styles.stickerButton, { backgroundColor: colors.backgroundColor }]}
+                                    onPress={() => void sendSticker(sticker)}
+                                    accessibilityLabel={`Enviar sticker ${sticker.label}`}
+                                >
+                                    <Text style={styles.stickerText}>{sticker.value}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </TouchableOpacity>
+                </TouchableOpacity>
+            </Modal>
+
             {replyingTo && (
-                <View style={[styles.replyBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}>
+                <View style={[styles.replyBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}> 
                     <View style={[styles.replyBarLine, { backgroundColor: colors.primaryColor }]} />
                     <View style={styles.flexOne}>
-                        <Text style={[styles.replyBarName, { color: colors.primaryColor }]}>
+                        <Text style={[styles.replyBarName, { color: colors.primaryColor }]}> 
                             Respondiendo a {replyingTo.author.name.split(' ')[0] || 'Usuario'}
                         </Text>
-                        <Text numberOfLines={2} style={[styles.replyBarText, { color: colors.secondaryTextColor }]}>
+                        <Text numberOfLines={2} style={[styles.replyBarText, { color: colors.secondaryTextColor }]}> 
                             {getReplyingPreview()}
                         </Text>
                     </View>
@@ -406,7 +588,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             )}
 
             {selectedMedia && (
-                <View style={[styles.imagePreviewBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}>
+                <View style={[styles.imagePreviewBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}> 
                     <View style={styles.previewRow}>
                         {selectedMedia.type === 'image' ? (
                             <Image
@@ -415,7 +597,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                                 resizeMode="cover"
                             />
                         ) : (
-                            <View style={[styles.previewFallback, { backgroundColor: colors.backgroundColor }]}>
+                            <View style={[styles.previewFallback, { backgroundColor: colors.backgroundColor }]}> 
                                 <Ionicons
                                     name={getPreviewIcon()}
                                     size={24}
@@ -427,7 +609,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                             <Text style={[styles.previewText, { color: colors.textColor }]} numberOfLines={1}>
                                 {selectedMedia.filename}
                             </Text>
-                            <Text style={[styles.previewType, { color: colors.secondaryTextColor }]}>
+                            <Text style={[styles.previewType, { color: colors.secondaryTextColor }]}> 
                                 {selectedMedia.type === 'image'
                                     ? 'Imagen lista para enviar'
                                     : selectedMedia.type === 'video'
@@ -442,102 +624,165 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                 </View>
             )}
 
-            <View style={[styles.container, { backgroundColor: colors.primaryColor }]}>
-                <View style={styles.itemInput}>
-                    {!isRecording && (
+            <View style={[styles.container, { backgroundColor: colors.primaryColor }]}> 
+                {recordingActive || recordingBusy ? (
+                    <View style={styles.recordingToolbar}>
                         <TouchableOpacity
-                            onPress={() => setShowAttachmentModal(true)}
-                            style={styles.attachBtn}
-                            disabled={sending || recordingBusy}
-                            activeOpacity={0.7}
+                            style={styles.recordingAction}
+                            onPress={() => void cancelRecording()}
+                            disabled={recordingBusy || sending}
+                            accessibilityLabel="Eliminar nota de voz"
                         >
-                            <Ionicons name="add-circle-outline" size={32} color={colors.buttonTextColor} />
+                            <Ionicons name="trash-outline" size={26} color="#ff3b30" />
                         </TouchableOpacity>
-                    )}
 
-                    {isRecording ? (
-                        <View style={[styles.recordingContainer, { backgroundColor: colors.cardColor }]}>
-                            <Text style={styles.recordingText}>Grabando... toca el micrófono para enviar</Text>
+                        <View style={[styles.recordingTrack, { backgroundColor: colors.cardColor }]}> 
+                            <Text style={[styles.recordingDuration, { color: colors.textColor }]}> 
+                                {formatDuration(recordingDurationMillis)}
+                            </Text>
+                            <View style={styles.waveform}>
+                                {waveformHeights.map((height, index) => (
+                                    <View
+                                        key={`${index}-${height}`}
+                                        style={[
+                                            styles.waveformBar,
+                                            {
+                                                height,
+                                                backgroundColor: recordingPaused
+                                                    ? colors.secondaryTextColor
+                                                    : colors.primaryColor
+                                            }
+                                        ]}
+                                    />
+                                ))}
+                            </View>
                         </View>
-                    ) : (
-                        <TextInput
-                            style={[
-                                styles.input,
-                                {
-                                    backgroundColor: colors.isDark
-                                        ? 'rgba(0,0,0,0.3)'
-                                        : 'rgba(255,255,255,0.2)',
-                                    color: colors.buttonTextColor
-                                }
-                            ]}
-                            placeholder="Mensaje..."
-                            placeholderTextColor="rgba(255,255,255,0.7)"
-                            multiline
-                            textAlignVertical="top"
-                            value={message}
-                            onChangeText={handleTextChange}
-                            onFocus={onFocus}
-                            autoCorrect
-                            spellCheck
-                            autoCapitalize="sentences"
-                            keyboardType="default"
-                            keyboardAppearance={colors.isDark ? 'dark' : 'light'}
-                            editable={!sending && !recordingBusy}
-                            blurOnSubmit={false}
-                            scrollEnabled
-                        />
-                    )}
 
-                    {keyboardVisible && !isRecording && (
                         <TouchableOpacity
-                            style={styles.keyboardButton}
-                            onPress={Keyboard.dismiss}
-                            disabled={sending || recordingBusy}
-                            activeOpacity={0.7}
-                            accessibilityLabel="Ocultar teclado"
+                            style={styles.recordingAction}
+                            onPress={() => void (recordingPaused ? resumeRecording() : pauseRecording())}
+                            disabled={recordingBusy || sending}
+                            accessibilityLabel={recordingPaused ? 'Continuar grabación' : 'Pausar grabación'}
                         >
-                            <Ionicons
-                                name="chevron-down-circle-outline"
-                                color={colors.buttonTextColor}
-                                size={25}
-                            />
-                        </TouchableOpacity>
-                    )}
-
-                    {message.trim().length > 0 || selectedMedia ? (
-                        <TouchableOpacity
-                            style={styles.iconSend}
-                            onPress={() => void onSubmit()}
-                            disabled={sending || recordingBusy}
-                            activeOpacity={0.7}
-                            accessibilityLabel="Enviar mensaje"
-                        >
-                            {sending ? (
-                                <ActivityIndicator size="small" color={colors.buttonTextColor} />
-                            ) : (
-                                <Ionicons name="send" color={colors.buttonTextColor} size={24} />
-                            )}
-                        </TouchableOpacity>
-                    ) : (
-                        <TouchableOpacity
-                            style={styles.iconSend}
-                            onPress={() => void handleRecordingPress()}
-                            disabled={sending || recordingBusy}
-                            activeOpacity={0.7}
-                            accessibilityLabel={isRecording ? 'Detener y enviar nota de voz' : 'Iniciar nota de voz'}
-                        >
-                            {sending || recordingBusy ? (
+                            {recordingBusy ? (
                                 <ActivityIndicator size="small" color={colors.buttonTextColor} />
                             ) : (
                                 <Ionicons
-                                    name={isRecording ? 'stop-circle' : 'mic-outline'}
-                                    color={isRecording ? '#ff3b30' : colors.buttonTextColor}
-                                    size={26}
+                                    name={recordingPaused ? 'play' : 'pause'}
+                                    size={24}
+                                    color={colors.buttonTextColor}
                                 />
                             )}
                         </TouchableOpacity>
-                    )}
-                </View>
+
+                        <TouchableOpacity
+                            style={[styles.recordingSend, { backgroundColor: colors.buttonTextColor }]}
+                            onPress={() => void sendRecording()}
+                            disabled={recordingBusy || sending}
+                            accessibilityLabel="Enviar nota de voz"
+                        >
+                            {sending ? (
+                                <ActivityIndicator size="small" color={colors.primaryColor} />
+                            ) : (
+                                <Ionicons name="send" size={23} color={colors.primaryColor} />
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <View style={styles.itemInput}>
+                        <TouchableOpacity
+                            onPress={() => setShowAttachmentModal(true)}
+                            style={styles.attachBtn}
+                            disabled={sending}
+                            activeOpacity={0.7}
+                            accessibilityLabel="Adjuntar contenido"
+                        >
+                            <Ionicons name="add-circle-outline" size={32} color={colors.buttonTextColor} />
+                        </TouchableOpacity>
+
+                        <View
+                            style={[
+                                styles.inputShell,
+                                {
+                                    backgroundColor: colors.isDark
+                                        ? 'rgba(0,0,0,0.3)'
+                                        : 'rgba(255,255,255,0.2)'
+                                }
+                            ]}
+                        >
+                            <TextInput
+                                style={[styles.input, { color: colors.buttonTextColor }]}
+                                placeholder="Mensaje..."
+                                placeholderTextColor="rgba(255,255,255,0.7)"
+                                multiline
+                                textAlignVertical="top"
+                                value={message}
+                                onChangeText={handleTextChange}
+                                onFocus={onFocus}
+                                autoCorrect
+                                spellCheck
+                                autoCapitalize="sentences"
+                                keyboardType="default"
+                                keyboardAppearance={colors.isDark ? 'dark' : 'light'}
+                                editable={!sending}
+                                blurOnSubmit={false}
+                                scrollEnabled
+                            />
+                            <TouchableOpacity
+                                style={styles.stickerIcon}
+                                onPress={() => {
+                                    Keyboard.dismiss();
+                                    setShowStickerModal(true);
+                                }}
+                                disabled={sending}
+                                accessibilityLabel="Abrir stickers"
+                            >
+                                <Ionicons name="happy-outline" size={24} color={colors.buttonTextColor} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {message.trim().length > 0 || selectedMedia ? (
+                            <TouchableOpacity
+                                style={styles.iconSend}
+                                onPress={() => void onSubmit()}
+                                disabled={sending}
+                                activeOpacity={0.7}
+                                accessibilityLabel="Enviar mensaje"
+                            >
+                                {sending ? (
+                                    <ActivityIndicator size="small" color={colors.buttonTextColor} />
+                                ) : (
+                                    <Ionicons name="send" color={colors.buttonTextColor} size={25} />
+                                )}
+                            </TouchableOpacity>
+                        ) : (
+                            <>
+                                <TouchableOpacity
+                                    style={styles.compactAction}
+                                    onPress={() => void pickCameraImage()}
+                                    disabled={sending}
+                                    activeOpacity={0.7}
+                                    accessibilityLabel="Tomar foto"
+                                >
+                                    <Ionicons name="camera-outline" color={colors.buttonTextColor} size={25} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.compactAction}
+                                    onPress={() => void startRecording()}
+                                    disabled={sending}
+                                    activeOpacity={0.7}
+                                    accessibilityLabel="Iniciar nota de voz"
+                                >
+                                    {sending ? (
+                                        <ActivityIndicator size="small" color={colors.buttonTextColor} />
+                                    ) : (
+                                        <Ionicons name="mic-outline" color={colors.buttonTextColor} size={26} />
+                                    )}
+                                </TouchableOpacity>
+                            </>
+                        )}
+                    </View>
+                )}
             </View>
         </View>
     );
@@ -547,40 +792,88 @@ const styles = StyleSheet.create({
     flexOne: { flex: 1 },
     container: {
         width: '100%',
-        paddingBottom: Platform.OS === 'ios' ? 12 : 8,
+        paddingBottom: 8,
         paddingHorizontal: 10,
         paddingTop: 8
     },
     itemInput: { flexDirection: 'row', alignItems: 'flex-end' },
+    inputShell: {
+        flex: 1,
+        minHeight: 42,
+        maxHeight: 112,
+        marginLeft: 5,
+        borderRadius: 25,
+        flexDirection: 'row',
+        alignItems: 'flex-end'
+    },
     input: {
         flex: 1,
         fontSize: 16,
         paddingTop: 10,
         paddingBottom: 10,
-        paddingHorizontal: 15,
-        borderRadius: 25,
-        maxHeight: 112,
-        marginLeft: 5,
-        minHeight: 42
+        paddingLeft: 15,
+        paddingRight: 4,
+        minHeight: 42,
+        maxHeight: 112
+    },
+    stickerIcon: {
+        width: 38,
+        minHeight: 42,
+        justifyContent: 'center',
+        alignItems: 'center'
     },
     attachBtn: { marginVertical: 'auto', paddingHorizontal: 3 },
-    keyboardButton: { marginLeft: 6, marginVertical: 'auto', padding: 4 },
     iconSend: {
-        minWidth: 40,
-        minHeight: 40,
+        minWidth: 42,
+        minHeight: 42,
         marginLeft: 6,
         justifyContent: 'center',
         alignItems: 'center'
     },
-    recordingContainer: {
-        flex: 1,
+    compactAction: {
+        width: 38,
         minHeight: 42,
-        borderRadius: 25,
+        marginLeft: 3,
         justifyContent: 'center',
-        paddingHorizontal: 14,
-        marginLeft: 5
+        alignItems: 'center'
     },
-    recordingText: { color: '#ff3b30', fontWeight: 'bold', textAlign: 'center' },
+    recordingToolbar: {
+        minHeight: 54,
+        flexDirection: 'row',
+        alignItems: 'center'
+    },
+    recordingAction: {
+        width: 42,
+        height: 42,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    recordingTrack: {
+        flex: 1,
+        minHeight: 44,
+        borderRadius: 22,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12
+    },
+    recordingDuration: { width: 42, fontSize: 13, fontWeight: '700' },
+    waveform: {
+        flex: 1,
+        height: 30,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        overflow: 'hidden'
+    },
+    waveformBar: { width: 2, borderRadius: 1, opacity: 0.8 },
+    recordingSend: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        marginLeft: 4,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
     replyBar: { flexDirection: 'row', alignItems: 'center', padding: 10, borderTopWidth: 1 },
     replyBarLine: { width: 4, height: '100%', marginRight: 10, borderRadius: 2 },
     replyBarName: { fontWeight: 'bold', fontSize: 12, marginBottom: 2 },
@@ -608,6 +901,18 @@ const styles = StyleSheet.create({
     removeImageBtn: { marginLeft: 10 },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%' },
+    stickerModalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%' },
+    stickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    stickerGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+    stickerButton: {
+        width: '23%',
+        aspectRatio: 1,
+        margin: '1%',
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    stickerText: { fontSize: 38 },
     modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
     modalOption: { flexDirection: 'row', paddingVertical: 15, alignItems: 'center' },
     modalOptionText: { marginLeft: 15, fontSize: 16 },
