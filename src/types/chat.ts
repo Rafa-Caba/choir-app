@@ -29,6 +29,7 @@ export interface MessageReaction {
 
 export interface ReplyPreview {
     readonly id: string;
+    readonly authorName: string;
     readonly username: string;
     readonly textPreview: string;
 }
@@ -70,6 +71,8 @@ export interface RawReplyMessage {
     readonly id?: string;
     readonly _id?: string;
     readonly content?: JsonValue;
+    readonly type?: MessageType;
+    readonly filename?: string;
     readonly author?: RawChatUser;
 }
 
@@ -92,7 +95,7 @@ export interface RawChatMessage {
     readonly audioUrl?: string;
     readonly imagePublicId?: string;
     readonly reactions?: readonly RawReaction[];
-    readonly replyTo?: RawReplyMessage | null;
+    readonly replyTo?: RawReplyMessage | string | null;
     readonly deliveredTo?: readonly RawReceiptValue[];
     readonly readBy?: readonly RawReceiptValue[];
     readonly createdAt?: string;
