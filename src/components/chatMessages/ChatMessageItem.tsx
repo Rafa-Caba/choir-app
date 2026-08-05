@@ -19,6 +19,8 @@ import { MediaViewerModal } from '../shared/MediaViewerModal';
 
 interface Props {
     readonly message: ChatMessage;
+    readonly highlighted?: boolean;
+    readonly onReplyPress?: (messageId: string) => void;
 }
 
 const getReactionKey = (reaction: MessageReaction, index: number): string => {
@@ -28,7 +30,11 @@ const getReactionKey = (reaction: MessageReaction, index: number): string => {
     return `${reaction.emoji}:${userId}:${index}`;
 };
 
-export const ChatMessageItem = ({ message }: Props) => {
+export const ChatMessageItem = ({
+    message,
+    highlighted = false,
+    onReplyPress
+}: Props) => {
     const user = useAuthStore((state) => state.user);
     const setReplyingTo = useChatStore((state) => state.setReplyingTo);
     const reactToMessage = useChatStore((state) => state.reactToMessage);
@@ -79,6 +85,14 @@ export const ChatMessageItem = ({ message }: Props) => {
         );
     };
 
+    const handleReplyPress = (): void => {
+        const replyMessageId = message.replyTo?.id ?? '';
+
+        if (replyMessageId) {
+            onReplyPress?.(replyMessageId);
+        }
+    };
+
     return (
         <View style={[styles.container, isMe ? styles.containerRight : styles.containerLeft]}>
             <MediaViewerModal
@@ -102,6 +116,16 @@ export const ChatMessageItem = ({ message }: Props) => {
                 style={[
                     styles.bubble,
                     isSticker ? styles.stickerBubble : undefined,
+                    highlighted
+                        ? {
+                            borderColor: colors.accentColor,
+                            borderWidth: 2,
+                            shadowColor: colors.accentColor,
+                            shadowOpacity: 0.35,
+                            shadowRadius: 8,
+                            elevation: 5
+                        }
+                        : undefined,
                     {
                         backgroundColor: bubbleBackground,
                         borderBottomRightRadius: isMe ? 4 : 16,
@@ -110,7 +134,12 @@ export const ChatMessageItem = ({ message }: Props) => {
                 ]}
             >
                 {message.replyTo && (
-                    <View
+                    <TouchableOpacity
+                        activeOpacity={message.replyTo.id ? 0.75 : 1}
+                        disabled={!message.replyTo.id || !onReplyPress}
+                        onPress={handleReplyPress}
+                        accessibilityRole="button"
+                        accessibilityLabel="Ir al mensaje original"
                         style={[
                             styles.quoteBlock,
                             {
@@ -133,7 +162,7 @@ export const ChatMessageItem = ({ message }: Props) => {
                                     { color: isMe ? colors.buttonTextColor : colors.primaryColor }
                                 ]}
                             >
-                                {message.replyTo.username}
+                                {message.replyTo.authorName || message.replyTo.username}
                             </Text>
                             <Text
                                 numberOfLines={2}
@@ -145,7 +174,15 @@ export const ChatMessageItem = ({ message }: Props) => {
                                 {message.replyTo.textPreview}
                             </Text>
                         </View>
-                    </View>
+                        {message.replyTo.id ? (
+                            <Ionicons
+                                name="arrow-up"
+                                size={14}
+                                color={isMe ? colors.buttonTextColor : colors.primaryColor}
+                                style={styles.quoteJumpIcon}
+                            />
+                        ) : null}
+                    </TouchableOpacity>
                 )}
 
                 <MessageContent
@@ -253,14 +290,16 @@ const styles = StyleSheet.create({
     receiptIcon: { marginLeft: 3 },
     quoteBlock: {
         marginBottom: 8,
-        borderRadius: 6,
-        padding: 6,
+        borderRadius: 8,
+        padding: 7,
         flexDirection: 'row',
+        alignItems: 'center',
         minWidth: 120
     },
-    quoteLine: { width: 3, marginRight: 8, borderRadius: 2 },
+    quoteLine: { width: 3, alignSelf: 'stretch', marginRight: 8, borderRadius: 2 },
     quoteAuthor: { fontWeight: 'bold', fontSize: 11, marginBottom: 2 },
     quoteText: { fontSize: 11 },
+    quoteJumpIcon: { marginLeft: 6 },
     reactionsContainer: {
         position: 'absolute',
         bottom: -12,
