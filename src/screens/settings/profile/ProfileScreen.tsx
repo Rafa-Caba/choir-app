@@ -1,45 +1,57 @@
+// src/screens/settings/profile/ProfileScreen.tsx
+
 import React from 'react';
-import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
+import {
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View
+} from 'react-native';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useTheme } from '../../../context/ThemeContext';
+import type { Theme } from '../../../types/theme';
 
-export const ProfileScreen = () => {
-    const { user } = useAuthStore();
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
+interface InfoItemProps {
+    readonly label: string;
+    readonly value: string | null | undefined;
+    readonly colors: Theme;
+}
 
-    const username = user?.name || 'User';
-    const instrument = user?.instrument || 'Voice';
-    const photoURL = user?.imageUrl || 'https://via.placeholder.com/150';
-    const userRole = user?.role;
-
-    return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-            <View style={styles.content}>
-                <View style={styles.avatarContainer}>
-                    <Image
-                        source={{ uri: photoURL }}
-                        style={[styles.avatar, { borderColor: colors.primaryColor }]}
-                    />
-                </View>
-
-                <InfoItem label="Name" value={username} colors={colors} />
-                <InfoItem label="Username" value={user?.username} colors={colors} />
-                <InfoItem label="Email" value={user?.email} colors={colors} />
-                <InfoItem label="Instrument" value={instrument} colors={colors} />
-                {user?.bio && <InfoItem label="Bio" value={user.bio} colors={colors} />}
-                <InfoItem label="Role" value={userRole} colors={colors} />
-            </View>
-        </ScrollView>
-    );
-};
-
-const InfoItem = ({ label, value, colors }: any) => (
+const InfoItem = ({ label, value, colors }: InfoItemProps) => (
     <View style={styles.infoItem}>
         <Text style={[styles.label, { color: colors.secondaryTextColor }]}>{label}:</Text>
         <Text style={[styles.value, { color: colors.textColor }]}>{value || '-'}</Text>
     </View>
 );
+
+export const ProfileScreen = () => {
+    const user = useAuthStore((state) => state.user);
+    const colors = useTheme().currentTheme;
+    const username = user?.name || 'Usuario';
+    const instrument = user?.instrument || 'Voz';
+    const photoUrl = user?.cachedImageUrl || user?.imageUrl || 'https://via.placeholder.com/150';
+
+    return (
+        <ScrollView style={[styles.container, { backgroundColor: colors.backgroundColor }]}> 
+            <View style={styles.content}>
+                <View style={styles.avatarContainer}>
+                    <Image
+                        source={{ uri: photoUrl }}
+                        style={[styles.avatar, { borderColor: colors.primaryColor }]}
+                    />
+                </View>
+
+                <InfoItem label="Nombre" value={username} colors={colors} />
+                <InfoItem label="Usuario" value={user?.username} colors={colors} />
+                <InfoItem label="Correo" value={user?.email} colors={colors} />
+                <InfoItem label="Instrumento" value={instrument} colors={colors} />
+                {user?.bio ? <InfoItem label="Biografía" value={user.bio} colors={colors} /> : null}
+                <InfoItem label="Rol" value={user?.role} colors={colors} />
+            </View>
+        </ScrollView>
+    );
+};
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
