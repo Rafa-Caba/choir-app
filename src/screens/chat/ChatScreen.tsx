@@ -20,11 +20,13 @@ import { ChatInput } from '../../components/chatMessages/ChatInput';
 import { ChatMessageItem } from '../../components/chatMessages/ChatMessageItem';
 import { useTheme } from '../../context/ThemeContext';
 import type { ChatAttachment } from '../../services/chat';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useChatStore } from '../../store/useChatStore';
-import type { ChatMessage } from '../../types/chat';
+import type { ChatMessage, MessageType } from '../../types/chat';
 import {
     useChatDirectoryQuery,
     useChatHistoryQuery,
+    useMarkChatReceiptsMutation,
     useSendChatMessageMutation
 } from '../../hooks/query/useChatData';
 
@@ -34,6 +36,7 @@ export const ChatScreen = () => {
     const composerShiftRef = useRef(0);
     const keyboardTopRef = useRef<number | null>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pendingReadKeyRef = useRef('');
     const [showOnlineModal, setShowOnlineModal] = useState(false);
     const [composerHeight, setComposerHeight] = useState(0);
     const [composerShift, setComposerShift] = useState(0);
@@ -42,7 +45,9 @@ export const ChatScreen = () => {
     const historyQuery = useChatHistoryQuery(isFocused);
     const directoryQuery = useChatDirectoryQuery(showOnlineModal);
     const sendMutation = useSendChatMessageMutation();
+    const receiptMutation = useMarkChatReceiptsMutation();
     const messages = historyQuery.data ?? [];
+    const currentUserId = useAuthStore((state) => state.user?.id ?? '');
     const connected = useChatStore((state) => state.connected);
     const connectionError = useChatStore((state) => state.connectionError);
     const onlineUsers = useChatStore((state) => state.onlineUsers);
@@ -66,7 +71,7 @@ export const ChatScreen = () => {
     const measureComposerOverlap = useCallback((keyboardTop: number): void => {
         requestAnimationFrame(() => {
             composerRef.current?.measureInWindow((_x, y, _width, height) => {
-                const desiredGap = 8;
+                const desiredGap = 0;
                 const unshiftedBottom = y + height + composerShiftRef.current;
                 const overlap = Math.max(0, unshiftedBottom - keyboardTop + desiredGap);
                 composerShiftRef.current = overlap;
@@ -111,6 +116,36 @@ export const ChatScreen = () => {
         }
     }, [messages.length]);
 
+
+    useEffect(() => {
+        if (!isFocused || !currentUserId || receiptMutation.isPending) {
+            return;
+        }
+
+        const unreadMessageIds = messages
+            .filter((message) =>
+                message.author.id !== currentUserId &&
+                !message.readBy.includes(currentUserId)
+            )
+            .map((message) => message.id)
+            .filter(Boolean);
+        const readKey = unreadMessageIds.join(':');
+
+        if (!readKey || pendingReadKeyRef.current === readKey) {
+            return;
+        }
+
+        pendingReadKeyRef.current = readKey;
+        receiptMutation.mutate(
+            { messageIds: unreadMessageIds, status: 'READ' },
+            {
+                onError: () => {
+                    pendingReadKeyRef.current = '';
+                }
+            }
+        );
+    }, [currentUserId, isFocused, messages, receiptMutation]);
+
     const sortedUsers = useMemo(() => [...allUsers]
         .map((user) => ({
             ...user,
@@ -123,8 +158,12 @@ export const ChatScreen = () => {
             return left.isOnline ? -1 : 1;
         }), [allUsers, onlineUsers]);
 
-    const handleSend = async (text: string, attachment?: ChatAttachment): Promise<void> => {
-        await sendMutation.mutateAsync({ text, attachment });
+    const handleSend = async (
+        text: string,
+        attachment?: ChatAttachment,
+        messageType?: MessageType
+    ): Promise<void> => {
+        await sendMutation.mutateAsync({ text, attachment, messageType });
         requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
     };
 
