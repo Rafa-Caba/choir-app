@@ -1,12 +1,12 @@
 // src/screens/chat/ChatScreen.tsx
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
     Image,
     Keyboard,
-    KeyboardAvoidingView,
+    type KeyboardEvent,
     Modal,
     Platform,
     StyleSheet,
@@ -30,8 +30,13 @@ import {
 
 export const ChatScreen = () => {
     const flatListRef = useRef<FlatList<ChatMessage>>(null);
+    const composerRef = useRef<View>(null);
+    const composerShiftRef = useRef(0);
+    const keyboardTopRef = useRef<number | null>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showOnlineModal, setShowOnlineModal] = useState(false);
+    const [composerHeight, setComposerHeight] = useState(0);
+    const [composerShift, setComposerShift] = useState(0);
     const colors = useTheme().currentTheme;
     const isFocused = useIsFocused();
     const historyQuery = useChatHistoryQuery(isFocused);
@@ -57,6 +62,48 @@ export const ChatScreen = () => {
         }
         sendTyping(false);
     }, [connect, isFocused, sendTyping]);
+
+    const measureComposerOverlap = useCallback((keyboardTop: number): void => {
+        requestAnimationFrame(() => {
+            composerRef.current?.measureInWindow((_x, y, _width, height) => {
+                const desiredGap = 8;
+                const unshiftedBottom = y + height + composerShiftRef.current;
+                const overlap = Math.max(0, unshiftedBottom - keyboardTop + desiredGap);
+                composerShiftRef.current = overlap;
+                setComposerShift(overlap);
+
+                requestAnimationFrame(() => {
+                    flatListRef.current?.scrollToEnd({ animated: true });
+                });
+            });
+        });
+    }, []);
+
+    useEffect(() => {
+        const handleKeyboardFrame = (event: KeyboardEvent): void => {
+            const keyboardTop = event.endCoordinates.screenY;
+            keyboardTopRef.current = keyboardTop;
+            measureComposerOverlap(keyboardTop);
+        };
+        const handleKeyboardHide = (): void => {
+            keyboardTopRef.current = null;
+            composerShiftRef.current = 0;
+            setComposerShift(0);
+        };
+        const frameEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const frameSubscription = Keyboard.addListener(frameEvent, handleKeyboardFrame);
+        const hideSubscription = Keyboard.addListener(hideEvent, handleKeyboardHide);
+        const didShowSubscription = Platform.OS === 'ios'
+            ? Keyboard.addListener('keyboardDidShow', handleKeyboardFrame)
+            : null;
+
+        return () => {
+            frameSubscription.remove();
+            hideSubscription.remove();
+            didShowSubscription?.remove();
+        };
+    }, [measureComposerOverlap]);
 
     useEffect(() => {
         if (messages.length > 0) {
@@ -130,18 +177,17 @@ export const ChatScreen = () => {
                 <Ionicons name="people" size={24} color={colors.primaryColor} />
             </TouchableOpacity>
 
-            <KeyboardAvoidingView
-                style={styles.chatBody}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={0}
-            >
+            <View style={styles.chatBody}>
                 <FlatList
                     ref={flatListRef}
                     style={styles.flexOne}
                     data={messages}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => <ChatMessageItem message={item} />}
-                    contentContainerStyle={styles.listContent}
+                    contentContainerStyle={[
+                        styles.listContent,
+                        { paddingBottom: composerHeight + composerShift + 16 }
+                    ]}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                     onScrollBeginDrag={Keyboard.dismiss}
@@ -179,22 +225,38 @@ export const ChatScreen = () => {
                     )}
                 />
 
-                {typingUsers.length > 0 && (
-                    <View style={[styles.typingContainer, { backgroundColor: colors.backgroundColor }]}>
-                        <Text style={[styles.typingText, { color: colors.secondaryTextColor }]}>
-                            {typingUsers.length === 1
-                                ? `${typingUsers[0]} está escribiendo...`
-                                : `${typingUsers.length} personas están escribiendo...`}
-                        </Text>
-                    </View>
-                )}
+                <View
+                    ref={composerRef}
+                    collapsable={false}
+                    style={[
+                        styles.composerDock,
+                        { transform: [{ translateY: -composerShift }] }
+                    ]}
+                    onLayout={(event) => {
+                        setComposerHeight(event.nativeEvent.layout.height);
 
-                <ChatInput
-                    onSend={handleSend}
-                    onTyping={handleTyping}
-                    onFocus={scrollToLatestMessage}
-                />
-            </KeyboardAvoidingView>
+                        if (keyboardTopRef.current !== null) {
+                            measureComposerOverlap(keyboardTopRef.current);
+                        }
+                    }}
+                >
+                    {typingUsers.length > 0 && (
+                        <View style={[styles.typingContainer, { backgroundColor: colors.backgroundColor }]}>
+                            <Text style={[styles.typingText, { color: colors.secondaryTextColor }]}>
+                                {typingUsers.length === 1
+                                    ? `${typingUsers[0]} está escribiendo...`
+                                    : `${typingUsers.length} personas están escribiendo...`}
+                            </Text>
+                        </View>
+                    )}
+
+                    <ChatInput
+                        onSend={handleSend}
+                        onTyping={handleTyping}
+                        onFocus={scrollToLatestMessage}
+                    />
+                </View>
+            </View>
 
             <Modal
                 visible={showOnlineModal}
@@ -283,7 +345,7 @@ export const ChatScreen = () => {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     flexOne: { flex: 1 },
-    chatBody: { flex: 1 },
+    chatBody: { flex: 1, position: 'relative' },
     header: {
         paddingHorizontal: 16,
         paddingVertical: 12,
@@ -299,6 +361,7 @@ const styles = StyleSheet.create({
     emptyText: { padding: 24, textAlign: 'center' },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
     loadingText: { marginTop: 10, fontSize: 13 },
+    composerDock: { zIndex: 20 },
     typingContainer: { paddingHorizontal: 16, paddingVertical: 5 },
     typingText: { fontSize: 12, fontStyle: 'italic' },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
