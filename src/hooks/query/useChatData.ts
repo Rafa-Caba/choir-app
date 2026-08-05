@@ -30,6 +30,7 @@ interface SendChatVariables {
     readonly text: string;
     readonly attachment?: ChatAttachment;
     readonly messageType?: MessageType;
+    readonly replyToId?: string;
 }
 
 interface MarkChatReceiptsVariables {
@@ -91,10 +92,13 @@ export const useChatDirectoryQuery = (enabledByModal: boolean) => {
 export const useSendChatMessageMutation = () => {
     const queryClient = useQueryClient();
     const scope = useTenantQueryScope();
-    const replyingTo = useChatStore((state) => state.replyingTo);
-
     return useMutation({
-        mutationFn: async ({ text, attachment, messageType }: SendChatVariables): Promise<ChatMessage> => {
+        mutationFn: async ({
+            text,
+            attachment,
+            messageType,
+            replyToId
+        }: SendChatVariables): Promise<ChatMessage> => {
             let mediaAssetId: string | undefined;
             let resolvedMessageType: MessageType = messageType ?? 'TEXT';
 
@@ -108,7 +112,7 @@ export const useSendChatMessageMutation = () => {
                 content: text,
                 type: resolvedMessageType,
                 ...(mediaAssetId ? { mediaAssetId } : {}),
-                ...(replyingTo ? { replyTo: replyingTo.id } : {})
+                ...(replyToId ? { replyTo: replyToId } : {})
             };
 
             return sendChatMessage(payload);
