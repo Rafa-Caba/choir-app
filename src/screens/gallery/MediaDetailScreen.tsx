@@ -1,4 +1,5 @@
 // src/screens/gallery/MediaDetailScreen.tsx
+
 import React, { useState, useRef } from 'react';
 import {
     View, Image, TouchableOpacity, StyleSheet, Text,
@@ -12,6 +13,7 @@ import {
     type RouteProp
 } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Video, ResizeMode } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -33,6 +35,7 @@ export const MediaDetailScreen = () => {
     const route = useRoute<RouteProp<MediaDetailParams, 'MediaDetailScreen'>>();
     const { currentTheme } = useTheme();
     const colors = currentTheme;
+    const insets = useSafeAreaInsets();
 
     const [media, setMedia] = useState<GalleryImage>(route.params.media);
     const displayMediaUrl = media.cachedImageUrl ?? media.imageUrl;
@@ -130,14 +133,23 @@ export const MediaDetailScreen = () => {
 
     const renderSwitch = (label: string, key: GalleryFlag, value: boolean) => (
         <View style={styles.switchRow}>
-            <Text style={[styles.switchLabel, { color: colors.textColor }]}>{label}</Text>
-            <Switch
-                value={value}
-                onValueChange={(value) => void toggleFlag(key, value)}
-                trackColor={{ false: "#767577", true: colors.primaryColor }}
-                thumbColor={value ? colors.buttonTextColor : '#f4f3f4'}
-                disabled={flagsMutation.isPending}
-            />
+            <Text
+                numberOfLines={2}
+                style={[styles.switchLabel, { color: colors.textColor }]}
+            >
+                {label}
+            </Text>
+            <View style={styles.switchControlContainer}>
+                <Switch
+                    style={styles.switchControl}
+                    value={value}
+                    onValueChange={(nextValue) => void toggleFlag(key, nextValue)}
+                    trackColor={{ false: '#767577', true: colors.primaryColor }}
+                    thumbColor={value ? colors.buttonTextColor : '#f4f3f4'}
+                    ios_backgroundColor="#767577"
+                    disabled={flagsMutation.isPending}
+                />
+            </View>
         </View>
     );
 
@@ -226,7 +238,15 @@ export const MediaDetailScreen = () => {
                 onRequestClose={() => setSettingsVisible(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
+                    <View
+                        style={[
+                            styles.modalContent,
+                            {
+                                backgroundColor: colors.cardColor,
+                                paddingBottom: Math.max(insets.bottom, 20)
+                            }
+                        ]}
+                    >
                         <View style={styles.modalHeader}>
                             <Text style={[styles.modalTitle, { color: colors.textColor }]}>Configuración de imagen</Text>
                             <TouchableOpacity onPress={() => setSettingsVisible(false)}>
@@ -234,7 +254,10 @@ export const MediaDetailScreen = () => {
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView>
+                        <ScrollView
+                            contentContainerStyle={styles.settingsScrollContent}
+                            showsVerticalScrollIndicator={false}
+                        >
                             <Text style={[styles.sectionTitle, { color: colors.primaryColor }]}>Ubicación</Text>
                             {renderSwitch("Logo de la app", "imageLogo", media.imageLogo)}
                             {renderSwitch("Pantalla de inicio", "imageStart", media.imageStart)}
@@ -270,10 +293,46 @@ const styles = StyleSheet.create({
     title: { color: 'white', fontSize: 18, fontWeight: 'bold' },
     desc: { color: '#ddd', marginTop: 4, fontSize: 14 },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-    modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '50%', elevation: 10 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    modalContent: {
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingTop: 20,
+        paddingHorizontal: 24,
+        height: '52%',
+        width: '100%',
+        elevation: 10
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20
+    },
     modalTitle: { fontSize: 20, fontWeight: 'bold' },
-    sectionTitle: { fontSize: 14, fontWeight: 'bold', marginBottom: 10, textTransform: 'uppercase', opacity: 0.7 },
-    switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingVertical: 5 },
-    switchLabel: { fontSize: 16, fontWeight: '500' }
+    sectionTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        marginBottom: 10,
+        textTransform: 'uppercase',
+        opacity: 0.7
+    },
+    settingsScrollContent: { paddingBottom: 8 },
+    switchRow: {
+        width: '100%',
+        minHeight: 48,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+        paddingVertical: 4
+    },
+    switchLabel: { fontSize: 16, fontWeight: '500', flex: 1, paddingRight: 16 },
+    switchControlContainer: {
+        width: 64,
+        minHeight: 44,
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        paddingRight: 4
+    },
+    switchControl: { transform: [{ scaleX: 0.92 }, { scaleY: 0.92 }] }
 });
