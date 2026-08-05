@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { io, type Socket } from 'socket.io-client';
 import ENV from '../config/env';
-import { toggleReaction } from '../services/chat';
+import { markChatReceipts, toggleReaction } from '../services/chat';
 import type {
     ChatMessage,
     RawChatMessage,
@@ -84,7 +84,22 @@ const buildSocketContext = (): {
     };
 };
 
-const updateCachedMessage = (raw: RawChatMessage): void => {
+const updateCachedMessage = (raw: RawChatMessage): ChatMessage | null => {
+    const scope = getTenantQueryScopeSnapshot();
+
+    if (!scope.enabled) {
+        return null;
+    }
+
+    const normalized = normalizeChatMessage(raw);
+    queryClient.setQueryData<readonly ChatMessage[]>(
+        queryKeys.chatHistory(scope.tenantKey),
+        (current) => upsertChatMessage(current, normalized)
+    );
+    return normalized;
+};
+
+const updateCachedMessages = (messages: readonly ChatMessage[]): void => {
     const scope = getTenantQueryScopeSnapshot();
 
     if (!scope.enabled) {
@@ -93,9 +108,26 @@ const updateCachedMessage = (raw: RawChatMessage): void => {
 
     queryClient.setQueryData<readonly ChatMessage[]>(
         queryKeys.chatHistory(scope.tenantKey),
-        (current) => upsertChatMessage(current, normalizeChatMessage(raw))
+        (current) => messages.reduce<readonly ChatMessage[]>(
+            (cached, message) => upsertChatMessage(cached, message),
+            current ?? []
+        )
     );
 };
+
+const handleIncomingMessage = (raw: RawChatMessage): void => {
+    const message = updateCachedMessage(raw);
+    const currentUserId = useAuthStore.getState().user?.id ?? '';
+
+    if (!message || !currentUserId || message.author.id === currentUserId) {
+        return;
+    }
+
+    void markChatReceipts([message.id], 'DELIVERED')
+        .then(updateCachedMessages)
+        .catch(() => undefined);
+};
+
 
 export const useChatStore = create<ChatState>((set, get) => ({
     connected: false,
@@ -163,7 +195,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             onlineUsers: [],
             typingUsers: []
         }));
-        socket.on('new-message', updateCachedMessage);
+        socket.on('new-message', handleIncomingMessage);
         socket.on('message-updated', updateCachedMessage);
         socket.on('online-users', (users) => set({ onlineUsers: users }));
         socket.on('user-typing', ({ username, isTyping }) => set((state) => ({
