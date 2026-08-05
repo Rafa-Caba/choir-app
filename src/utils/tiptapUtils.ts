@@ -1,59 +1,57 @@
-// Convert TipTap-style JSON -> plain text (each paragraph becomes a line)
-export const tiptapToPlainText = (jsonContent: any): string => {
-    if (!jsonContent || jsonContent.type !== 'doc' || !Array.isArray(jsonContent.content)) {
+// src/utils/tiptapUtils.ts
+
+import type {
+    TipTapDocument,
+    TipTapNode
+} from '../types/tiptap';
+
+const inlineNodesToText = (nodes: readonly TipTapNode[] | undefined): string => {
+    return (nodes ?? []).map((node) => {
+        if (node.type === 'text') {
+            return node.text ?? '';
+        }
+
+        if (node.type === 'hardBreak') {
+            return '\n';
+        }
+
+        return inlineNodesToText(node.content);
+    }).join('');
+};
+
+export const tiptapToPlainText = (
+    document: TipTapDocument | null | undefined
+): string => {
+    if (!document || document.type !== 'doc') {
         return '';
     }
 
-    const lines: string[] = [];
-
-    jsonContent.content.forEach((block: any) => {
-        if (block.type !== 'paragraph') return;
-
-        if (!block.content || !Array.isArray(block.content) || block.content.length === 0) {
-            lines.push('');
-            return;
+    return document.content.map((block) => {
+        if (block.type === 'paragraph' || block.type === 'heading') {
+            return inlineNodesToText(block.content);
         }
 
-        let line = '';
-        block.content.forEach((inline: any) => {
-            if (inline.type === 'text' && inline.text) {
-                line += inline.text;
-            } else if (inline.type === 'hardBreak') {
-                line += '\n';
-            }
-        });
-
-        lines.push(line);
-    });
-
-    return lines.join('\n');
-};
-
-export const plainTextToTiptap = (text: string) => {
-    const paragraphs = text.split('\n').map((line) => {
-        const trimmed = line.trim();
-        if (!trimmed) {
-            return {
-                type: 'paragraph',
-                attrs: { textAlign: 'left' },
-                content: [],
-            };
+        if (block.type === 'bulletList' || block.type === 'orderedList') {
+            return (block.content ?? [])
+                .map((item) => inlineNodesToText(item.content?.[0]?.content))
+                .join('\n');
         }
 
-        return {
-            type: 'paragraph',
-            attrs: { textAlign: 'left' },
-            content: [
-                {
-                    type: 'text',
-                    text: line,
-                },
-            ],
-        };
-    });
+        if (block.type === 'blockquote') {
+            return inlineNodesToText(block.content?.[0]?.content);
+        }
 
-    return {
-        type: 'doc',
-        content: paragraphs,
-    };
+        return inlineNodesToText(block.content);
+    }).join('\n');
 };
+
+export const plainTextToTiptap = (text: string): TipTapDocument => ({
+    type: 'doc',
+    content: text.split('\n').map((line): TipTapNode => ({
+        type: 'paragraph',
+        attrs: { textAlign: 'left' },
+        content: line.length > 0
+            ? [{ type: 'text', text: line }]
+            : []
+    }))
+});
