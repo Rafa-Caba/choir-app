@@ -32,6 +32,7 @@ const changedSources = [
     'src/screens/blog/BlogDetailScreen.tsx',
     'src/screens/blog/BlogListScreen.tsx',
     'src/screens/blog/CreateBlogScreen.tsx',
+    'src/components/chatMessages/ChatInput.tsx',
     'src/screens/chat/ChatScreen.tsx',
     'src/screens/gallery/GalleryScreen.tsx',
     'src/screens/gallery/MediaDetailScreen.tsx',
@@ -88,6 +89,7 @@ const platformProfile = read('src/screens/platform/PlatformProfileScreen.tsx');
 const pushDevices = read('src/services/pushDevices.ts');
 const deviceIdentity = read('src/services/deviceIdentity.ts');
 const multipart = read('src/services/multipart.ts');
+const chatService = read('src/services/chat.ts');
 
 assert.equal(typeof packageJson.dependencies['@tanstack/react-query'], 'string');
 assert.match(app, /<QueryProvider>/u);
@@ -111,16 +113,20 @@ assert.match(chatStore, /queryClient\.setQueryData/u);
 assert.match(chatData, /refetchInterval: active && !connected \? 15_000 : false/u);
 assert.match(chatData, /timeout: 6_000/u);
 assert.match(chatData, /signal/u);
-assert.match(chatScreen, /KeyboardAvoidingView/u);
-assert.match(chatScreen, /keyboardVerticalOffset=\{0\}/u);
+assert.doesNotMatch(chatScreen, /KeyboardAvoidingView/u);
+assert.match(chatScreen, /measureInWindow/u);
+assert.match(chatScreen, /composerShift/u);
+assert.match(chatScreen, /keyboardWillChangeFrame/u);
 assert.match(chatScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
 assert.match(chatScreen, /useIsFocused/u);
-assert.doesNotMatch(chatScreen, /composerDock/u);
+assert.match(chatScreen, /composerDock/u);
 assert.match(chatInput, /Keyboard\.dismiss/u);
 assert.match(chatInput, /pendingPickerAction/u);
 assert.match(chatInput, /prepareToRecordAsync/u);
 assert.match(chatInput, /onPress=\{\(\) => void handleRecordingPress\(\)\}/u);
 assert.match(chatInput, /ActivityIndicator/u);
+assert.match(chatInput, /previewThumbnail/u);
+assert.match(chatInput, /Imagen lista para enviar/u);
 
 assert.match(songTypesScreen, /KeyboardAvoidingView/u);
 assert.match(songTypesScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
@@ -143,5 +149,6 @@ assert.match(deviceIdentity, /deviceIdPromise/u);
 assert.doesNotMatch(multipart, /response\.blob\(\)/u);
 assert.doesNotMatch(multipart, /fetch\(upload\.uri\)/u);
 assert.match(multipart, /El archivo seleccionado está vacío/u);
+assert.match(chatService, /CHAT_UPLOAD_TIMEOUT_MS = 90_000/u);
 
 console.log('Production and performance regression contract tests passed.');
