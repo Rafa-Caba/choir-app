@@ -1,7 +1,7 @@
 // src/services/song.ts
 
 import choirApi from '../api/choirApi';
-import type { CreateSongPayload, Song, SongType } from '../types/song';
+import type { CreateSongPayload, Song, SongContent, SongType } from '../types/song';
 import {
     appendLocalFile,
     createLocalUpload,
@@ -11,6 +11,7 @@ import {
 interface RawSongTypeParent {
     readonly _id?: string;
     readonly id?: string;
+    readonly name?: string;
 }
 
 interface RawSongType {
@@ -20,6 +21,20 @@ interface RawSongType {
     readonly order: number;
     readonly parentId?: string | RawSongTypeParent | null;
     readonly isParent: boolean;
+    readonly updatedAt?: string;
+}
+
+interface RawSong {
+    readonly _id?: string;
+    readonly id?: string;
+    readonly title: string;
+    readonly composer?: string;
+    readonly content: SongContent;
+    readonly songTypeId?: string | RawSongTypeParent | null;
+    readonly songTypeName?: string;
+    readonly audioUrl?: string;
+    readonly cachedAudioUrl?: string | null;
+    readonly createdAt?: string;
     readonly updatedAt?: string;
 }
 
@@ -47,6 +62,32 @@ const resolveParentId = (
     return parentId.id ?? parentId._id ?? null;
 };
 
+const resolveRawSongTypeId = (
+    songTypeId: RawSong['songTypeId']
+): string | null => {
+    if (!songTypeId) {
+        return null;
+    }
+
+    if (typeof songTypeId === 'string') {
+        return songTypeId;
+    }
+
+    return songTypeId.id ?? songTypeId._id ?? null;
+};
+
+const resolveRawSongTypeName = (song: RawSong): string => {
+    if (song.songTypeName) {
+        return song.songTypeName;
+    }
+
+    if (song.songTypeId && typeof song.songTypeId !== 'string') {
+        return song.songTypeId.name ?? '';
+    }
+
+    return '';
+};
+
 const normalizeSongType = (songType: RawSongType): SongType => ({
     id: resolveSongTypeId(songType),
     name: songType.name,
@@ -55,6 +96,29 @@ const normalizeSongType = (songType: RawSongType): SongType => ({
     isParent: songType.isParent,
     updatedAt: songType.updatedAt
 });
+
+const normalizeSong = (song: RawSong): Song => {
+    const id = song.id ?? song._id;
+
+    if (!id) {
+        throw new Error('Song response does not include an id');
+    }
+
+    const createdAt = song.createdAt ?? new Date().toISOString();
+
+    return {
+        id,
+        title: song.title,
+        composer: song.composer,
+        content: song.content,
+        songTypeId: resolveRawSongTypeId(song.songTypeId),
+        songTypeName: resolveRawSongTypeName(song),
+        audioUrl: song.audioUrl,
+        cachedAudioUrl: song.cachedAudioUrl,
+        createdAt,
+        updatedAt: song.updatedAt ?? createdAt
+    };
+};
 
 const createSongFormData = async (
     payload: Partial<CreateSongPayload>,
@@ -113,8 +177,8 @@ export const deleteSongType = async (id: string): Promise<void> => {
 };
 
 export const getAllSongs = async (): Promise<readonly Song[]> => {
-    const response = await choirApi.get<readonly Song[]>('/songs');
-    return response.data;
+    const response = await choirApi.get<readonly RawSong[]>('/songs');
+    return response.data.map(normalizeSong);
 };
 
 export const createSong = async (
@@ -122,8 +186,8 @@ export const createSong = async (
     audioUri?: string
 ): Promise<Song> => {
     const formData = await createSongFormData(payload, audioUri);
-    const response = await choirApi.post<Song>('/songs', formData, getMultipartRequestConfig());
-    return response.data;
+    const response = await choirApi.post<RawSong>('/songs', formData, getMultipartRequestConfig());
+    return normalizeSong(response.data);
 };
 
 export const updateSong = async (
@@ -132,8 +196,8 @@ export const updateSong = async (
     audioUri?: string
 ): Promise<Song> => {
     const formData = await createSongFormData(payload, audioUri);
-    const response = await choirApi.put<Song>(`/songs/${id}`, formData, getMultipartRequestConfig());
-    return response.data;
+    const response = await choirApi.put<RawSong>(`/songs/${id}`, formData, getMultipartRequestConfig());
+    return normalizeSong(response.data);
 };
 
 export const deleteSong = async (id: string): Promise<void> => {
