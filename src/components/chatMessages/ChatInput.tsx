@@ -1,6 +1,6 @@
 // src/components/chatMessages/ChatInput.tsx
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -32,6 +32,9 @@ interface SelectedMedia extends ChatAttachment {
     readonly type: 'image' | 'video' | 'file';
 }
 
+type AttachmentPickerAction = 'media' | 'file';
+type RecordingState = 'idle' | 'starting' | 'recording' | 'stopping';
+
 const imageFallback = {
     filename: 'chat-image.jpg',
     mimeType: 'image/jpeg'
@@ -42,17 +45,22 @@ const videoFallback = {
     mimeType: 'video/mp4'
 } as const;
 
+const pickerPresentationDelayMs = Platform.OS === 'ios' ? 300 : 80;
+
 export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
+    const recordingRef = useRef<Audio.Recording | null>(null);
     const [message, setMessage] = useState('');
     const [selectedMedia, setSelectedMedia] = useState<SelectedMedia | null>(null);
-    const [recording, setRecording] = useState<Audio.Recording | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
+    const [recordingState, setRecordingState] = useState<RecordingState>('idle');
     const [sending, setSending] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const [showAttachmentModal, setShowAttachmentModal] = useState(false);
+    const [pendingPickerAction, setPendingPickerAction] = useState<AttachmentPickerAction | null>(null);
     const replyingTo = useChatStore((state) => state.replyingTo);
     const setReplyingTo = useChatStore((state) => state.setReplyingTo);
     const colors = useTheme().currentTheme;
+    const isRecording = recordingState === 'recording';
+    const recordingBusy = recordingState === 'starting' || recordingState === 'stopping';
 
     useEffect(() => {
         const showSubscription = Keyboard.addListener(
@@ -72,15 +80,65 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
 
     useEffect(() => {
         return () => {
-            recording?.stopAndUnloadAsync().catch(() => undefined);
+            const activeRecording = recordingRef.current;
+            recordingRef.current = null;
+
+            if (activeRecording) {
+                void activeRecording.stopAndUnloadAsync().catch(() => undefined);
+            }
+
+            void Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false
+            }).catch(() => undefined);
         };
-    }, [recording]);
+    }, []);
+
+    useEffect(() => {
+        if (showAttachmentModal || !pendingPickerAction) {
+            return undefined;
+        }
+
+        const action = pendingPickerAction;
+        const timeout = setTimeout(() => {
+            setPendingPickerAction(null);
+
+            if (action === 'media') {
+                void pickMedia();
+            } else {
+                void pickFile();
+            }
+        }, pickerPresentationDelayMs);
+
+        return () => clearTimeout(timeout);
+    }, [pendingPickerAction, showAttachmentModal]);
+
+    const resetAudioMode = async (): Promise<void> => {
+        await Audio.setAudioModeAsync({
+            allowsRecordingIOS: false,
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: false,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false
+        });
+    };
 
     const startRecording = async (): Promise<void> => {
+        if (recordingState !== 'idle' || sending) {
+            return;
+        }
+
+        setRecordingState('starting');
+        Keyboard.dismiss();
+
         try {
             const permission = await Audio.requestPermissionsAsync();
 
             if (permission.status !== 'granted') {
+                setRecordingState('idle');
                 Alert.alert(
                     'Permiso requerido',
                     'Activa el permiso del micrófono para grabar notas de voz.'
@@ -90,29 +148,42 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
 
             await Audio.setAudioModeAsync({
                 allowsRecordingIOS: true,
-                playsInSilentModeIOS: true
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false
             });
-            const created = await Audio.Recording.createAsync(
+
+            const nextRecording = new Audio.Recording();
+            await nextRecording.prepareToRecordAsync(
                 Audio.RecordingOptionsPresets.HIGH_QUALITY
             );
-            setRecording(created.recording);
-            setIsRecording(true);
-        } catch {
-            Alert.alert('Error', 'No fue posible iniciar la grabación.');
+            await nextRecording.startAsync();
+            recordingRef.current = nextRecording;
+            setRecordingState('recording');
+        } catch (error) {
+            recordingRef.current = null;
+            setRecordingState('idle');
+            await resetAudioMode().catch(() => undefined);
+            console.error('Chat audio recording start failed', error);
+            Alert.alert('Error', 'No fue posible iniciar la grabación. Intenta nuevamente.');
         }
     };
 
     const stopRecording = async (): Promise<void> => {
-        setIsRecording(false);
+        const activeRecording = recordingRef.current;
 
-        if (!recording) {
+        if (recordingState !== 'recording' || !activeRecording || sending) {
             return;
         }
 
+        recordingRef.current = null;
+        setRecordingState('stopping');
+
         try {
-            await recording.stopAndUnloadAsync();
-            const uri = recording.getURI();
-            setRecording(null);
+            await activeRecording.stopAndUnloadAsync();
+            const uri = activeRecording.getURI();
+            await resetAudioMode();
 
             if (!uri) {
                 throw new Error('Audio URI unavailable');
@@ -125,70 +196,105 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                 filename: 'chat-audio.m4a',
                 mimeType: 'audio/mp4'
             });
-        } catch {
+        } catch (error) {
+            console.error('Chat audio recording send failed', error);
             Alert.alert('Error', 'No fue posible enviar la nota de voz.');
         } finally {
             setSending(false);
+            setRecordingState('idle');
+            await resetAudioMode().catch(() => undefined);
         }
     };
 
-    const pickMedia = async (): Promise<void> => {
-        setShowAttachmentModal(false);
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.All,
-            quality: 0.7,
-            videoMaxDuration: 60
-        });
-
-        if (result.canceled) {
+    const handleRecordingPress = async (): Promise<void> => {
+        if (isRecording) {
+            await stopRecording();
             return;
         }
 
-        const asset = result.assets[0];
-        const isVideo = asset.type === 'video';
-        const fallback = isVideo ? videoFallback : imageFallback;
-        setSelectedMedia({
-            uri: asset.uri,
-            type: isVideo ? 'video' : 'image',
-            filename: asset.fileName ?? fallback.filename,
-            mimeType: asset.mimeType ?? fallback.mimeType
-        });
+        await startRecording();
     };
 
-    const pickFile = async (): Promise<void> => {
-        setShowAttachmentModal(false);
-        const result = await DocumentPicker.getDocumentAsync({
-            type: [
-                'application/pdf',
-                'text/plain',
-                'application/msword',
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'application/vnd.ms-excel',
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'application/vnd.ms-powerpoint',
-                'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-            ],
-            copyToCacheDirectory: true,
-            multiple: false
-        });
+    async function pickMedia(): Promise<void> {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.All,
+                quality: 0.7,
+                videoMaxDuration: 60,
+                presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
+            });
 
-        if (result.canceled) {
+            if (result.canceled) {
+                return;
+            }
+
+            const asset = result.assets[0];
+            const isVideo = asset.type === 'video';
+            const fallback = isVideo ? videoFallback : imageFallback;
+            setSelectedMedia({
+                uri: asset.uri,
+                type: isVideo ? 'video' : 'image',
+                filename: asset.fileName ?? fallback.filename,
+                mimeType: asset.mimeType ?? fallback.mimeType
+            });
+        } catch (error) {
+            console.error('Chat media picker failed', error);
+            Alert.alert('Error', 'No fue posible abrir la galería del dispositivo.');
+        }
+    }
+
+    async function pickFile(): Promise<void> {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: [
+                    'application/pdf',
+                    'text/plain',
+                    'application/msword',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'application/vnd.ms-excel',
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'application/vnd.ms-powerpoint',
+                    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+                ],
+                copyToCacheDirectory: true,
+                multiple: false
+            });
+
+            if (result.canceled) {
+                return;
+            }
+
+            const asset = result.assets[0];
+            setSelectedMedia({
+                uri: asset.uri,
+                type: 'file',
+                filename: asset.name,
+                mimeType: asset.mimeType ?? 'application/octet-stream'
+            });
+        } catch (error) {
+            console.error('Chat document picker failed', error);
+            Alert.alert('Error', 'No fue posible abrir el selector de archivos.');
+        }
+    }
+
+    const requestAttachmentPicker = (action: AttachmentPickerAction): void => {
+        if (sending || recordingState !== 'idle') {
             return;
         }
 
-        const asset = result.assets[0];
-        setSelectedMedia({
-            uri: asset.uri,
-            type: 'file',
-            filename: asset.name,
-            mimeType: asset.mimeType ?? 'application/pdf'
-        });
+        setPendingPickerAction(action);
+        setShowAttachmentModal(false);
+    };
+
+    const closeAttachmentModal = (): void => {
+        setPendingPickerAction(null);
+        setShowAttachmentModal(false);
     };
 
     const onSubmit = async (): Promise<void> => {
         const textToSend = message.trim();
 
-        if (sending || (textToSend.length === 0 && !selectedMedia)) {
+        if (sending || recordingState !== 'idle' || (textToSend.length === 0 && !selectedMedia)) {
             return;
         }
 
@@ -242,30 +348,43 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                 visible={showAttachmentModal}
                 transparent
                 animationType="fade"
-                onRequestClose={() => setShowAttachmentModal(false)}
+                onRequestClose={closeAttachmentModal}
             >
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={closeAttachmentModal}
+                >
+                    <TouchableOpacity
+                        activeOpacity={1}
+                        style={[styles.modalContent, { backgroundColor: colors.cardColor }]}
+                    >
                         <Text style={[styles.modalTitle, { color: colors.textColor }]}>Adjuntar contenido</Text>
 
-                        <TouchableOpacity style={styles.modalOption} onPress={() => void pickMedia()}>
+                        <TouchableOpacity
+                            style={styles.modalOption}
+                            onPress={() => requestAttachmentPicker('media')}
+                        >
                             <Ionicons name="images-outline" size={24} color={colors.primaryColor} />
                             <Text style={[styles.modalOptionText, { color: colors.textColor }]}>Imagen o video</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.modalOption} onPress={() => void pickFile()}>
+                        <TouchableOpacity
+                            style={styles.modalOption}
+                            onPress={() => requestAttachmentPicker('file')}
+                        >
                             <Ionicons name="document-attach-outline" size={24} color={colors.primaryColor} />
                             <Text style={[styles.modalOptionText, { color: colors.textColor }]}>Documento</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
                             style={[styles.modalCancel, { borderColor: colors.borderColor }]}
-                            onPress={() => setShowAttachmentModal(false)}
+                            onPress={closeAttachmentModal}
                         >
                             <Text style={[styles.modalCancelText, { color: colors.secondaryTextColor }]}>Cancelar</Text>
                         </TouchableOpacity>
-                    </View>
-                </View>
+                    </TouchableOpacity>
+                </TouchableOpacity>
             </Modal>
 
             {replyingTo && (
@@ -310,7 +429,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                         <TouchableOpacity
                             onPress={() => setShowAttachmentModal(true)}
                             style={styles.attachBtn}
-                            disabled={sending}
+                            disabled={sending || recordingBusy}
                             activeOpacity={0.7}
                         >
                             <Ionicons name="add-circle-outline" size={32} color={colors.buttonTextColor} />
@@ -319,7 +438,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
 
                     {isRecording ? (
                         <View style={[styles.recordingContainer, { backgroundColor: colors.cardColor }]}>
-                            <Text style={styles.recordingText}>Grabando audio...</Text>
+                            <Text style={styles.recordingText}>Grabando... toca el micrófono para enviar</Text>
                         </View>
                     ) : (
                         <TextInput
@@ -344,7 +463,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                             autoCapitalize="sentences"
                             keyboardType="default"
                             keyboardAppearance={colors.isDark ? 'dark' : 'light'}
-                            editable={!sending}
+                            editable={!sending && !recordingBusy}
                             blurOnSubmit={false}
                             scrollEnabled
                         />
@@ -354,7 +473,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                         <TouchableOpacity
                             style={styles.keyboardButton}
                             onPress={Keyboard.dismiss}
-                            disabled={sending}
+                            disabled={sending || recordingBusy}
                             activeOpacity={0.7}
                             accessibilityLabel="Ocultar teclado"
                         >
@@ -370,7 +489,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                         <TouchableOpacity
                             style={styles.iconSend}
                             onPress={() => void onSubmit()}
-                            disabled={sending}
+                            disabled={sending || recordingBusy}
                             activeOpacity={0.7}
                             accessibilityLabel="Enviar mensaje"
                         >
@@ -383,19 +502,18 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                     ) : (
                         <TouchableOpacity
                             style={styles.iconSend}
-                            onPressIn={() => void startRecording()}
-                            onPressOut={() => void stopRecording()}
-                            disabled={sending}
+                            onPress={() => void handleRecordingPress()}
+                            disabled={sending || recordingBusy}
                             activeOpacity={0.7}
-                            accessibilityLabel="Grabar nota de voz"
+                            accessibilityLabel={isRecording ? 'Detener y enviar nota de voz' : 'Iniciar nota de voz'}
                         >
-                            {sending ? (
+                            {sending || recordingBusy ? (
                                 <ActivityIndicator size="small" color={colors.buttonTextColor} />
                             ) : (
                                 <Ionicons
-                                    name={isRecording ? 'mic' : 'mic-outline'}
+                                    name={isRecording ? 'stop-circle' : 'mic-outline'}
                                     color={isRecording ? '#ff3b30' : colors.buttonTextColor}
-                                    size={24}
+                                    size={26}
                                 />
                             )}
                         </TouchableOpacity>
@@ -410,7 +528,7 @@ const styles = StyleSheet.create({
     flexOne: { flex: 1 },
     container: {
         width: '100%',
-        paddingBottom: Platform.OS === 'ios' ? 10 : 8,
+        paddingBottom: Platform.OS === 'ios' ? 12 : 8,
         paddingHorizontal: 10,
         paddingTop: 8
     },
@@ -422,28 +540,28 @@ const styles = StyleSheet.create({
         paddingBottom: 10,
         paddingHorizontal: 15,
         borderRadius: 25,
-        maxHeight: 100,
+        maxHeight: 112,
         marginLeft: 5,
-        minHeight: 40
+        minHeight: 42
     },
     attachBtn: { marginVertical: 'auto', paddingHorizontal: 3 },
     keyboardButton: { marginLeft: 6, marginVertical: 'auto', padding: 4 },
     iconSend: {
-        minWidth: 38,
-        minHeight: 38,
+        minWidth: 40,
+        minHeight: 40,
         marginLeft: 6,
         justifyContent: 'center',
         alignItems: 'center'
     },
     recordingContainer: {
         flex: 1,
-        height: 40,
+        minHeight: 42,
         borderRadius: 25,
         justifyContent: 'center',
-        alignItems: 'center',
+        paddingHorizontal: 14,
         marginLeft: 5
     },
-    recordingText: { color: '#ff3b30', fontWeight: 'bold' },
+    recordingText: { color: '#ff3b30', fontWeight: 'bold', textAlign: 'center' },
     replyBar: { flexDirection: 'row', alignItems: 'center', padding: 10, borderTopWidth: 1 },
     replyBarLine: { width: 4, height: '100%', marginRight: 10, borderRadius: 2 },
     replyBarName: { fontWeight: 'bold', fontSize: 12, marginBottom: 2 },

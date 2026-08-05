@@ -1,12 +1,11 @@
 // src/screens/songs/SongTypesScreen.tsx
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
     FlatList,
     Keyboard,
-    InputAccessoryView,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -33,8 +32,6 @@ import { useTheme } from '../../context/ThemeContext';
 import type { SongType } from '../../types/song';
 
 type SongTypesNavigation = NativeStackNavigationProp<SongsStackParamList, 'SongTypes'>;
-
-const SONG_TYPE_ACCESSORY_ID = 'song-type-form-accessory';
 
 const sortSongTypes = (left: SongType, right: SongType): number => {
     const orderDifference = left.order - right.order;
@@ -66,23 +63,6 @@ export const SongTypesScreen = () => {
     const [typeOrder, setTypeOrder] = useState('');
     const [isParent, setIsParent] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-    useEffect(() => {
-        const showSubscription = Keyboard.addListener(
-            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-            () => setKeyboardVisible(true)
-        );
-        const hideSubscription = Keyboard.addListener(
-            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-            () => setKeyboardVisible(false)
-        );
-
-        return () => {
-            showSubscription.remove();
-            hideSubscription.remove();
-        };
-    }, []);
 
     const displayedTypes = useMemo(() => {
         return songTypes
@@ -297,6 +277,7 @@ export const SongTypesScreen = () => {
                         contentContainerStyle={styles.modalScrollContent}
                         keyboardShouldPersistTaps="handled"
                         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                        onScrollBeginDrag={Keyboard.dismiss}
                         showsVerticalScrollIndicator={false}
                     >
                         <View style={[styles.modalContent, { backgroundColor: colors.cardColor }]}>
@@ -325,7 +306,6 @@ export const SongTypesScreen = () => {
                                 returnKeyType="next"
                                 onSubmitEditing={() => orderInputRef.current?.focus()}
                                 editable={!saving}
-                                inputAccessoryViewID={Platform.OS === 'ios' ? SONG_TYPE_ACCESSORY_ID : undefined}
                             />
 
                             <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Orden (1-99)</Text>
@@ -346,20 +326,8 @@ export const SongTypesScreen = () => {
                                 placeholderTextColor={colors.secondaryTextColor}
                                 maxLength={2}
                                 editable={!saving}
-                                inputAccessoryViewID={Platform.OS === 'ios' ? SONG_TYPE_ACCESSORY_ID : undefined}
                             />
 
-                            {keyboardVisible && (
-                                <TouchableOpacity
-                                    style={styles.dismissKeyboardButton}
-                                    onPress={Keyboard.dismiss}
-                                >
-                                    <Ionicons name="chevron-down" size={18} color={colors.primaryColor} />
-                                    <Text style={[styles.dismissKeyboardText, { color: colors.primaryColor }]}>
-                                        Ocultar teclado
-                                    </Text>
-                                </TouchableOpacity>
-                            )}
 
                             {!currentParentId && !editingType && (
                                 <View style={styles.switchRow}>
@@ -405,27 +373,6 @@ export const SongTypesScreen = () => {
                             </View>
                         </View>
                     </ScrollView>
-                    {Platform.OS === 'ios' && (
-                        <InputAccessoryView nativeID={SONG_TYPE_ACCESSORY_ID}>
-                            <View style={[styles.accessoryBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}>
-                                <TouchableOpacity onPress={Keyboard.dismiss} style={styles.accessoryAction}>
-                                    <Ionicons name="chevron-down" size={20} color={colors.primaryColor} />
-                                    <Text style={[styles.accessoryText, { color: colors.primaryColor }]}>Ocultar</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    onPress={() => void handleSave()}
-                                    style={[styles.accessorySave, { backgroundColor: colors.buttonColor }]}
-                                    disabled={saving}
-                                >
-                                    {saving ? (
-                                        <ActivityIndicator size="small" color={colors.buttonTextColor} />
-                                    ) : (
-                                        <Text style={{ color: colors.buttonTextColor, fontWeight: '700' }}>Guardar</Text>
-                                    )}
-                                </TouchableOpacity>
-                            </View>
-                        </InputAccessoryView>
-                    )}
                 </KeyboardAvoidingView>
             </Modal>
         </View>
@@ -477,15 +424,6 @@ const styles = StyleSheet.create({
     modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
     label: { marginBottom: 5 },
     input: { borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 15 },
-    dismissKeyboardButton: {
-        alignSelf: 'flex-end',
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: -4,
-        marginBottom: 14,
-        paddingVertical: 6
-    },
-    dismissKeyboardText: { marginLeft: 5, fontWeight: '600' },
     switchRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
     switchLabel: { flex: 1, paddingRight: 12 },
     modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 },
@@ -499,17 +437,5 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center'
     },
-    disabledButton: { opacity: 0.65 },
-    accessoryBar: {
-        minHeight: 48,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between'
-    },
-    accessoryAction: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 },
-    accessoryText: { fontWeight: '600' },
-    accessorySave: { minWidth: 96, minHeight: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }
+    disabledButton: { opacity: 0.65 }
 });

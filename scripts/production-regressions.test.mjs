@@ -49,6 +49,7 @@ const changedSources = [
     'src/services/deviceIdentity.ts',
     'src/services/pushDevices.ts',
     'src/services/sessionCleanup.ts',
+    'src/services/song.ts',
     'src/services/theme.ts',
     'src/store/useAnnouncementStore.ts',
     'src/store/useAppConfigStore.ts',
@@ -81,6 +82,8 @@ const chatData = read('src/hooks/query/useChatData.ts');
 const chatInput = read('src/components/chatMessages/ChatInput.tsx');
 const authService = read('src/services/auth.ts');
 const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
+const galleryScreen = read('src/screens/gallery/GalleryScreen.tsx');
+const songService = read('src/services/song.ts');
 const platformProfile = read('src/screens/platform/PlatformProfileScreen.tsx');
 const pushDevices = read('src/services/pushDevices.ts');
 const deviceIdentity = read('src/services/deviceIdentity.ts');
@@ -100,25 +103,35 @@ assert.doesNotMatch(announcementStore, /syncCacheFirst/u);
 assert.match(blogStore, /queryClient\.fetchQuery/u);
 assert.match(announcementStore, /queryClient\.fetchQuery/u);
 
-assert.match(chatStore, /transports: \['polling', 'websocket'\]/u);
-assert.match(chatStore, /upgrade: true/u);
-assert.match(chatStore, /tryAllTransports: true/u);
+assert.match(chatStore, /transports: \['polling'\]/u);
+assert.match(chatStore, /upgrade: false/u);
+assert.match(chatStore, /tryAllTransports: false/u);
 assert.match(chatStore, /connectionKey/u);
 assert.match(chatStore, /queryClient\.setQueryData/u);
 assert.match(chatData, /refetchInterval: active && !connected \? 15_000 : false/u);
 assert.match(chatData, /timeout: 6_000/u);
 assert.match(chatData, /signal/u);
-assert.match(chatScreen, /keyboardWillChangeFrame/u);
-assert.match(chatScreen, /composerDock/u);
-assert.match(chatScreen, /useSafeAreaInsets/u);
+assert.match(chatScreen, /KeyboardAvoidingView/u);
+assert.match(chatScreen, /keyboardVerticalOffset=\{0\}/u);
+assert.match(chatScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
 assert.match(chatScreen, /useIsFocused/u);
-assert.doesNotMatch(chatScreen, /KeyboardAvoidingView/u);
+assert.doesNotMatch(chatScreen, /composerDock/u);
 assert.match(chatInput, /Keyboard\.dismiss/u);
+assert.match(chatInput, /pendingPickerAction/u);
+assert.match(chatInput, /prepareToRecordAsync/u);
+assert.match(chatInput, /onPress=\{\(\) => void handleRecordingPress\(\)\}/u);
 assert.match(chatInput, /ActivityIndicator/u);
 
 assert.match(songTypesScreen, /KeyboardAvoidingView/u);
-assert.match(songTypesScreen, /InputAccessoryView/u);
-assert.match(songTypesScreen, /Ocultar/u);
+assert.match(songTypesScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
+assert.doesNotMatch(songTypesScreen, /InputAccessoryView/u);
+assert.doesNotMatch(songTypesScreen, /Ocultar teclado/u);
+
+assert.match(galleryScreen, /KeyboardAvoidingView/u);
+assert.match(galleryScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
+assert.match(galleryScreen, /maxHeight: '90%'/u);
+assert.match(songService, /normalizeSongType/u);
+assert.match(songService, /resolveParentId/u);
 
 assert.match(platformProfile, /ImagePicker\.launchImageLibraryAsync/u);
 assert.match(platformProfile, /Cambiar foto de plataforma/u);

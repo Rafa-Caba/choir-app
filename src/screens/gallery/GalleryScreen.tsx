@@ -1,13 +1,26 @@
 // src/screens/gallery/GalleryScreen.tsx
+
 import React, { useState } from 'react';
 import {
-    View, Text, FlatList, TouchableOpacity, StyleSheet, Image, ScrollView,
-    Modal, TextInput, ActivityIndicator, Alert, Platform
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-
 import {
     useAddGalleryImageMutation,
     useGalleryQuery
@@ -19,63 +32,84 @@ import { getCloudinaryThumbnail } from '../../utils/mediaUtils';
 import type { GalleryImage } from '../../types/gallery';
 
 type GalleryNavigationParams = {
-    MediaDetailScreen: { readonly media: GalleryImage };
+    readonly MediaDetailScreen: { readonly media: GalleryImage };
 };
 
 export const GalleryScreen = () => {
     const navigation = useNavigation<NavigationProp<GalleryNavigationParams>>();
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
+    const colors = useTheme().currentTheme;
     const galleryQuery = useGalleryQuery();
     const addImageMutation = useAddGalleryImageMutation();
     const images = galleryQuery.data ?? [];
-    const { user } = useAuthStore();
-
+    const user = useAuthStore((state) => state.user);
     const canEdit = user?.role === 'ADMIN' || user?.role === 'EDITOR';
-
-    // --- Modal State ---
     const [modalVisible, setModalVisible] = useState(false);
     const [tempUri, setTempUri] = useState<string | null>(null);
     const [tempType, setTempType] = useState<'image' | 'video'>('image');
     const [newTitle, setNewTitle] = useState('');
     const [newDesc, setNewDesc] = useState('');
 
-    // --- THUMBNAIL HELPER ---
-    const getSafeThumbnail = (imageUrl: string, mediaType: string) => {
-        if (!imageUrl) return 'https://via.placeholder.com/150';
+    const getSafeThumbnail = (imageUrl: string, mediaType: string): string => {
+        if (!imageUrl) {
+            return 'https://via.placeholder.com/150';
+        }
 
         if (mediaType === 'VIDEO') {
-            // 🛠️ FIX: Ensure we get a JPG. 
-            // If it's Cloudinary, we can also append transformations here if needed.
-            return imageUrl.replace(/\.(mp4|mov|3gp|m4v|webm)$/i, '.jpg');
+            return imageUrl.replace(/\.(mp4|mov|3gp|m4v|webm)$/iu, '.jpg');
         }
 
         return getCloudinaryThumbnail(imageUrl) || imageUrl;
     };
 
-    const handlePickMedia = async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.All,
-            quality: 0.7,
-            videoMaxDuration: 60,
-        });
+    const resetUploadForm = (): void => {
+        setTempUri(null);
+        setTempType('image');
+        setNewTitle('');
+        setNewDesc('');
+    };
 
-        if (!result.canceled) {
+    const closeUploadModal = (): void => {
+        if (addImageMutation.isPending) {
+            return;
+        }
+
+        Keyboard.dismiss();
+        setModalVisible(false);
+        resetUploadForm();
+    };
+
+    const handlePickMedia = async (): Promise<void> => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.All,
+                quality: 0.7,
+                videoMaxDuration: 60,
+                presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
+            });
+
+            if (result.canceled) {
+                return;
+            }
+
             const asset = result.assets[0];
             setTempUri(asset.uri);
             setTempType(asset.type === 'video' ? 'video' : 'image');
             setNewTitle('');
             setNewDesc('');
             setModalVisible(true);
+        } catch (error) {
+            console.error('Gallery picker failed', error);
+            Alert.alert('Error', 'No fue posible abrir la galería del dispositivo.');
         }
     };
 
-    const handleConfirmUpload = async () => {
+    const handleConfirmUpload = async (): Promise<void> => {
         if (!newTitle.trim() || !tempUri) {
-            Alert.alert("Datos incompletos", "Agrega un título.");
+            Alert.alert('Datos incompletos', 'Agrega un título.');
             return;
         }
+
+        Keyboard.dismiss();
 
         try {
             await addImageMutation.mutateAsync({
@@ -85,15 +119,16 @@ export const GalleryScreen = () => {
                 imageGallery: true
             });
             setModalVisible(false);
-            setTempUri(null);
+            resetUploadForm();
         } catch {
             Alert.alert('Error', 'No fue posible subir el archivo. Intenta nuevamente.');
         }
     };
 
-    if (galleryQuery.isLoading && images.length === 0) return <LoadingScreen />;
+    if (galleryQuery.isLoading && images.length === 0) {
+        return <LoadingScreen />;
+    }
 
-    // 🆕 Allow both Images AND Videos in Carousel (Top 5)
     const featuredItems = images.slice(0, 5);
 
     const renderGridItem = ({ item }: { readonly item: GalleryImage }) => {
@@ -123,21 +158,26 @@ export const GalleryScreen = () => {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-
             <View style={styles.header}>
                 <Text style={[styles.title, { color: colors.textColor }]}>Galería</Text>
                 {canEdit && (
-                    <TouchableOpacity onPress={handlePickMedia} style={[styles.addBtn, { backgroundColor: colors.buttonColor }]}>
+                    <TouchableOpacity
+                        onPress={() => void handlePickMedia()}
+                        style={[styles.addBtn, { backgroundColor: colors.buttonColor }]}
+                    >
                         <Ionicons name="add" size={24} color={colors.buttonTextColor} />
                         <Text style={[styles.addBtnText, { color: colors.buttonTextColor }]}>Agregar</Text>
                     </TouchableOpacity>
                 )}
             </View>
 
-            {/* Featured Carousel */}
             {featuredItems.length > 0 && (
                 <View style={[styles.featuredContainer, { backgroundColor: colors.cardColor }]}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10 }}>
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.featuredScrollContent}
+                    >
                         {featuredItems.map((item, index) => {
                             const displayUrl = item.mediaType === 'VIDEO'
                                 ? item.imageUrl
@@ -155,7 +195,7 @@ export const GalleryScreen = () => {
                                         {
                                             transform: [{ rotate: index % 2 === 0 ? '-2deg' : '2deg' }],
                                             borderColor: colors.backgroundColor,
-                                            backgroundColor: colors.cardColor // Fallback bg
+                                            backgroundColor: colors.cardColor
                                         }
                                     ]}>
                                         <Image
@@ -164,7 +204,7 @@ export const GalleryScreen = () => {
                                             resizeMode="cover"
                                         />
                                         {item.mediaType === 'VIDEO' && (
-                                            <View style={[styles.videoOverlay, { borderRadius: 15 }]}>
+                                            <View style={[styles.videoOverlay, styles.featuredVideoOverlay]}>
                                                 <Ionicons name="play-circle" size={40} color="rgba(255,255,255,0.8)" />
                                             </View>
                                         )}
@@ -178,59 +218,119 @@ export const GalleryScreen = () => {
 
             <FlatList
                 data={images}
-                keyExtractor={(item: GalleryImage) => item.id}
+                keyExtractor={(item) => item.id}
                 numColumns={3}
-                contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 5 }}
+                contentContainerStyle={styles.gridContent}
                 renderItem={renderGridItem}
                 onRefresh={() => void galleryQuery.refetch()}
                 refreshing={galleryQuery.isRefetching}
             />
 
-            {/* Modal */}
-            <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => !addImageMutation.isPending && setModalVisible(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.backgroundColor }]}>
-                        <Text style={[styles.modalTitle, { color: colors.textColor }]}>
-                            {tempType === 'video' ? 'Nuevo video' : 'Nueva imagen'}
-                        </Text>
+            <Modal
+                visible={modalVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={closeUploadModal}
+            >
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={0}
+                >
+                    <Pressable style={styles.modalBackdrop} onPress={closeUploadModal}>
+                        <Pressable
+                            style={[styles.modalShell, { backgroundColor: colors.backgroundColor }]}
+                            onPress={(event) => event.stopPropagation()}
+                        >
+                            <ScrollView
+                                contentContainerStyle={styles.modalScrollContent}
+                                keyboardShouldPersistTaps="handled"
+                                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                                onScrollBeginDrag={Keyboard.dismiss}
+                                showsVerticalScrollIndicator={false}
+                            >
+                                <Text style={[styles.modalTitle, { color: colors.textColor }]}>
+                                    {tempType === 'video' ? 'Nuevo video' : 'Nueva imagen'}
+                                </Text>
 
-                        {tempUri && (
-                            <View>
-                                {tempType === 'video' ? (
-                                    <View style={[styles.previewThumb, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
-                                        <Ionicons name="videocam" size={60} color="white" />
-                                    </View>
-                                ) : (
-                                    <Image source={{ uri: tempUri }} style={styles.previewThumb} />
+                                {tempUri && (
+                                    tempType === 'video' ? (
+                                        <View style={[styles.previewThumb, styles.videoPreview]}>
+                                            <Ionicons name="videocam" size={60} color="white" />
+                                        </View>
+                                    ) : (
+                                        <Image source={{ uri: tempUri }} style={styles.previewThumb} />
+                                    )
                                 )}
-                            </View>
-                        )}
 
-                        <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Título</Text>
-                        <TextInput
-                            style={[styles.input, { backgroundColor: colors.cardColor, color: colors.textColor }]}
-                            value={newTitle} onChangeText={setNewTitle}
-                            placeholderTextColor={colors.secondaryTextColor}
-                        />
+                                <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Título</Text>
+                                <TextInput
+                                    style={[
+                                        styles.input,
+                                        {
+                                            backgroundColor: colors.cardColor,
+                                            color: colors.textColor,
+                                            borderColor: colors.borderColor
+                                        }
+                                    ]}
+                                    value={newTitle}
+                                    onChangeText={setNewTitle}
+                                    placeholder="Título de la imagen"
+                                    placeholderTextColor={colors.secondaryTextColor}
+                                    autoCorrect
+                                    spellCheck
+                                    autoCapitalize="sentences"
+                                    returnKeyType="next"
+                                    editable={!addImageMutation.isPending}
+                                />
 
-                        <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Descripción</Text>
-                        <TextInput
-                            style={[styles.input, { height: 60, backgroundColor: colors.cardColor, color: colors.textColor }]}
-                            value={newDesc} onChangeText={setNewDesc} multiline
-                            placeholderTextColor={colors.secondaryTextColor}
-                        />
+                                <Text style={[styles.label, { color: colors.secondaryTextColor }]}>Descripción</Text>
+                                <TextInput
+                                    style={[
+                                        styles.input,
+                                        styles.descriptionInput,
+                                        {
+                                            backgroundColor: colors.cardColor,
+                                            color: colors.textColor,
+                                            borderColor: colors.borderColor
+                                        }
+                                    ]}
+                                    value={newDesc}
+                                    onChangeText={setNewDesc}
+                                    multiline
+                                    textAlignVertical="top"
+                                    placeholder="Descripción opcional"
+                                    placeholderTextColor={colors.secondaryTextColor}
+                                    autoCorrect
+                                    spellCheck
+                                    autoCapitalize="sentences"
+                                    editable={!addImageMutation.isPending}
+                                />
 
-                        <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: colors.buttonColor }]} onPress={handleConfirmUpload} disabled={addImageMutation.isPending}>
-                            {addImageMutation.isPending ? <ActivityIndicator color={colors.buttonTextColor} /> : <Text style={[styles.uploadBtnText, { color: colors.buttonTextColor }]}>Subir</Text>}
-                        </TouchableOpacity>
-
-                        {!addImageMutation.isPending && (
-                            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}>
-                                <Text style={[styles.cancelText, { color: colors.secondaryTextColor }]}>Cancelar</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                </View>
+                                <View style={styles.modalActions}>
+                                    <TouchableOpacity
+                                        onPress={closeUploadModal}
+                                        style={styles.cancelBtn}
+                                        disabled={addImageMutation.isPending}
+                                    >
+                                        <Text style={[styles.cancelText, { color: colors.secondaryTextColor }]}>Cancelar</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.uploadBtn, { backgroundColor: colors.buttonColor }]}
+                                        onPress={() => void handleConfirmUpload()}
+                                        disabled={addImageMutation.isPending}
+                                    >
+                                        {addImageMutation.isPending ? (
+                                            <ActivityIndicator color={colors.buttonTextColor} />
+                                        ) : (
+                                            <Text style={[styles.uploadBtnText, { color: colors.buttonTextColor }]}>Subir</Text>
+                                        )}
+                                    </TouchableOpacity>
+                                </View>
+                            </ScrollView>
+                        </Pressable>
+                    </Pressable>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );
@@ -238,32 +338,75 @@ export const GalleryScreen = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginTop: 10, marginBottom: 10 },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        marginTop: 10,
+        marginBottom: 10
+    },
     title: { fontSize: 28, fontWeight: 'bold' },
-    addBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+    addBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20
+    },
     addBtnText: { fontWeight: '600', marginLeft: 3 },
-
     featuredContainer: { height: 220, marginBottom: 20, justifyContent: 'center', paddingVertical: 10 },
-    // Wrapper handles the border and rotation now
+    featuredScrollContent: { paddingHorizontal: 20, paddingTop: 10 },
     featuredImageWrapper: {
-        width: 250, height: 180, borderRadius: 15, marginRight: 15, borderWidth: 4,
-        overflow: 'hidden' // Critical to clip image to border radius
+        width: 250,
+        height: 180,
+        borderRadius: 15,
+        marginRight: 15,
+        borderWidth: 4,
+        overflow: 'hidden'
     },
     featuredImage: { width: '100%', height: '100%' },
-
+    featuredVideoOverlay: { borderRadius: 15 },
+    gridContent: { paddingBottom: 20, paddingHorizontal: 5 },
     gridItem: { flex: 1, margin: 2, aspectRatio: 1, position: 'relative' },
     gridImage: { width: '100%', height: '100%', borderRadius: 4 },
-    videoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)' },
-
-    // Modal
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-    modalContent: { borderRadius: 20, padding: 20, alignItems: 'stretch' },
+    videoOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.2)'
+    },
+    modalOverlay: { flex: 1 },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        padding: 20
+    },
+    modalShell: {
+        width: '100%',
+        maxWidth: 520,
+        maxHeight: '90%',
+        alignSelf: 'center',
+        borderRadius: 20,
+        overflow: 'hidden'
+    },
+    modalScrollContent: { padding: 20 },
     modalTitle: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
     previewThumb: { width: '100%', height: 200, borderRadius: 10, marginBottom: 20 },
+    videoPreview: { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
     label: { fontWeight: '600', marginBottom: 5 },
-    input: { borderRadius: 8, padding: 10, marginBottom: 15, fontSize: 16 },
-    uploadBtn: { padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
+    input: {
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: 8,
+        padding: 10,
+        marginBottom: 15,
+        fontSize: 16
+    },
+    descriptionInput: { minHeight: 96 },
+    modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 },
+    uploadBtn: { minWidth: 110, padding: 15, borderRadius: 10, alignItems: 'center' },
     uploadBtnText: { fontWeight: 'bold', fontSize: 16 },
-    cancelBtn: { alignItems: 'center', padding: 15 },
+    cancelBtn: { alignItems: 'center', padding: 15, marginRight: 8 },
     cancelText: { fontWeight: '600' }
 });

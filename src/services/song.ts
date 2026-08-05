@@ -8,6 +8,54 @@ import {
     getMultipartRequestConfig
 } from './multipart';
 
+interface RawSongTypeParent {
+    readonly _id?: string;
+    readonly id?: string;
+}
+
+interface RawSongType {
+    readonly _id?: string;
+    readonly id?: string;
+    readonly name: string;
+    readonly order: number;
+    readonly parentId?: string | RawSongTypeParent | null;
+    readonly isParent: boolean;
+    readonly updatedAt?: string;
+}
+
+const resolveSongTypeId = (songType: RawSongType): string => {
+    const id = songType.id ?? songType._id;
+
+    if (!id) {
+        throw new Error('Song type response does not include an id');
+    }
+
+    return id;
+};
+
+const resolveParentId = (
+    parentId: RawSongType['parentId']
+): string | null => {
+    if (!parentId) {
+        return null;
+    }
+
+    if (typeof parentId === 'string') {
+        return parentId;
+    }
+
+    return parentId.id ?? parentId._id ?? null;
+};
+
+const normalizeSongType = (songType: RawSongType): SongType => ({
+    id: resolveSongTypeId(songType),
+    name: songType.name,
+    order: songType.order,
+    parentId: resolveParentId(songType.parentId),
+    isParent: songType.isParent,
+    updatedAt: songType.updatedAt
+});
+
 const createSongFormData = async (
     payload: Partial<CreateSongPayload>,
     audioUri?: string
@@ -27,8 +75,8 @@ const createSongFormData = async (
 };
 
 export const getSongTypes = async (): Promise<readonly SongType[]> => {
-    const response = await choirApi.get<readonly SongType[]>('/song-types');
-    return response.data;
+    const response = await choirApi.get<readonly RawSongType[]>('/song-types');
+    return response.data.map(normalizeSongType);
 };
 
 export const createSongType = async (
@@ -37,13 +85,13 @@ export const createSongType = async (
     parentId?: string,
     isParent?: boolean
 ): Promise<SongType> => {
-    const response = await choirApi.post<SongType>('/song-types', {
+    const response = await choirApi.post<RawSongType>('/song-types', {
         name,
         order,
         parentId,
         isParent
     });
-    return response.data;
+    return normalizeSongType(response.data);
 };
 
 export const updateSongType = async (
@@ -52,12 +100,12 @@ export const updateSongType = async (
     order: number,
     isParent?: boolean
 ): Promise<SongType> => {
-    const response = await choirApi.put<SongType>(`/song-types/${id}`, {
+    const response = await choirApi.put<RawSongType>(`/song-types/${id}`, {
         name,
         order,
         isParent
     });
-    return response.data;
+    return normalizeSongType(response.data);
 };
 
 export const deleteSongType = async (id: string): Promise<void> => {
