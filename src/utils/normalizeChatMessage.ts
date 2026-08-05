@@ -6,6 +6,7 @@ import type {
     MessageReaction,
     RawChatMessage,
     RawChatUser,
+    RawReceiptValue,
     ReplyPreview
 } from '../types/chat';
 
@@ -22,6 +23,18 @@ const normalizeReactionUser = (rawUser: RawChatUser | string | undefined): ChatU
     }
 
     return normalizeUser(rawUser);
+};
+
+const normalizeReceiptId = (value: RawReceiptValue): string => {
+    if (typeof value === 'string') {
+        return value;
+    }
+
+    return value.id ?? value._id ?? '';
+};
+
+const normalizeReceiptIds = (values?: readonly RawReceiptValue[]): readonly string[] => {
+    return [...new Set((values ?? []).map(normalizeReceiptId).filter(Boolean))];
 };
 
 const normalizeReply = (raw: RawChatMessage['replyTo']): ReplyPreview | null => {
@@ -60,6 +73,8 @@ export const normalizeChatMessage = (raw: RawChatMessage): ChatMessage => {
         imagePublicId: raw.imagePublicId,
         reactions,
         replyTo: normalizeReply(raw.replyTo),
+        deliveredTo: normalizeReceiptIds(raw.deliveredTo),
+        readBy: normalizeReceiptIds(raw.readBy),
         createdAt,
         updatedAt: raw.updatedAt ?? createdAt
     };
