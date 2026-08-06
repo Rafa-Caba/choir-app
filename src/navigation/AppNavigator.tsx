@@ -16,6 +16,7 @@ import {
     type DrawerContentComponentProps
 } from '@react-navigation/drawer';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { useAuthStore } from '../store/useAuthStore';
 import { useChatStore } from '../store/useChatStore';
@@ -24,7 +25,7 @@ import { useTargetChoirStore } from '../store/useTargetChoirStore';
 import { ChangePasswordScreen } from '../screens/auth/ChangePasswordScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { LoadingScreen } from '../screens/LoadingScreen';
-import { TabsNavigator } from './TabsNavigator';
+import { TabsNavigator, type TabsParamList } from './TabsNavigator';
 import { PlatformNavigator } from './PlatformNavigator';
 
 type RootStackParamList = {
@@ -34,7 +35,7 @@ type RootStackParamList = {
 };
 
 type DrawerParamList = {
-    Root: undefined;
+    Root: NavigatorScreenParams<TabsParamList> | undefined;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -71,6 +72,18 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
     const colors = useTheme().currentTheme;
     const online = connectionMode === 'online' && connected;
 
+    const navigateToRoot = (): void => {
+        if (user?.role !== 'SUPER_ADMIN' || isPlatformTenantView) {
+            navigation.navigate('Root', {
+                screen: 'HomeTab',
+                params: { screen: 'HomeScreen' }
+            });
+            return;
+        }
+
+        navigation.navigate('Root');
+    };
+
     return (
         <DrawerContentScrollView style={{ backgroundColor: colors.navColor }}>
             <View style={[styles.profileHeader, { borderBottomColor: colors.borderColor }]}>
@@ -101,7 +114,7 @@ const MenuInterno = ({ navigation }: DrawerContentComponentProps) => {
                     icon="home-outline"
                     text={rootLabel}
                     color={colors.textColor}
-                    onPress={() => navigation.navigate('Root')}
+                    onPress={navigateToRoot}
                 />
                 {isPlatformTenantView && (
                     <MenuItem

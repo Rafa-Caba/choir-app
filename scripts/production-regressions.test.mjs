@@ -36,6 +36,9 @@ const changedSources = [
     'src/constants/chatStickers.ts',
     'src/components/chatMessages/ChatMessageItem.tsx',
     'src/components/chatMessages/MessageContent.tsx',
+    'src/components/shared/MediaViewerModal.tsx',
+    'src/navigation/AppNavigator.tsx',
+    'src/navigation/TabsNavigator.tsx',
     'src/screens/chat/ChatScreen.tsx',
     'src/screens/gallery/GalleryScreen.tsx',
     'src/screens/gallery/MediaDetailScreen.tsx',
@@ -94,6 +97,9 @@ const chatData = read('src/hooks/query/useChatData.ts');
 const chatInput = read('src/components/chatMessages/ChatInput.tsx');
 const chatMessageItem = read('src/components/chatMessages/ChatMessageItem.tsx');
 const messageContent = read('src/components/chatMessages/MessageContent.tsx');
+const mediaViewerModal = read('src/components/shared/MediaViewerModal.tsx');
+const appNavigator = read('src/navigation/AppNavigator.tsx');
+const tabsNavigator = read('src/navigation/TabsNavigator.tsx');
 const chatTypes = read('src/types/chat.ts');
 const normalizeChatMessage = read('src/utils/normalizeChatMessage.ts');
 const chatStickers = read('src/constants/chatStickers.ts');
@@ -142,7 +148,10 @@ assert.match(chatScreen, /translateY: -composerShift/u);
 assert.doesNotMatch(chatScreen, /composerHeight \+ composerShift/u);
 assert.match(chatScreen, /scrollToIndex/u);
 assert.match(chatScreen, /onReplyPress=\{scrollToReply\}/u);
-assert.match(chatScreen, /onScrollBeginDrag=\{Keyboard\.dismiss\}/u);
+assert.match(chatScreen, /onContentSizeChange=\{pinChatToLatest\}/u);
+assert.match(chatScreen, /onScrollBeginDrag=\{handleListScrollBeginDrag\}/u);
+assert.match(chatScreen, /initialScrollPendingRef/u);
+assert.match(chatScreen, /initialScrollSettleTimeoutRef/u);
 assert.match(chatScreen, /useIsFocused/u);
 assert.match(chatScreen, /composerDock/u);
 assert.match(chatInput, /Keyboard\.dismiss/u);
@@ -177,6 +186,17 @@ assert.doesNotMatch(chatData, /const replyingTo = useChatStore/u);
 assert.match(chatStickers, /CHAT_STICKER_PACKS/u);
 assert.match(mediaDetail, /switchControlContainer/u);
 assert.match(mediaDetail, /useSafeAreaInsets/u);
+assert.match(mediaDetail, /PanResponder\.create/u);
+assert.match(mediaDetail, /transitionToMedia/u);
+assert.match(mediaDetail, /hasPrevious/u);
+assert.match(mediaDetail, /hasNext/u);
+assert.match(mediaDetail, /dismissViewer/u);
+assert.match(mediaViewerModal, /PanResponder\.create/u);
+assert.match(mediaViewerModal, /dismissViewer/u);
+assert.match(mediaViewerModal, /translateY/u);
+assert.match(appNavigator, /screen: 'HomeTab'/u);
+assert.match(appNavigator, /params: \{ screen: 'HomeScreen' \}/u);
+assert.match(tabsNavigator, /NavigatorScreenParams<HomeStackParamList>/u);
 assert.match(testflightEnv, /https:\/\/choirs-api-production\.up\.railway\.app/u);
 assert.doesNotMatch(testflightEnv, /https:\/\/https:\/\//u);
 assert.doesNotMatch(testflightEnv, /chiors/u);

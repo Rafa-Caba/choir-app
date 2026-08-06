@@ -2,17 +2,18 @@
 
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { HomeNavigator } from './HomeNavigator';
+import { HomeNavigator, type HomeStackParamList } from './HomeNavigator';
 import { ChatNavigator } from './ChatNavigator';
 import { SongsNavigator } from './SongsNavigator';
 import { GalleryNavigator } from './GalleryNavigator';
 import { BlogNavigator } from './BlogNavigator';
 import { SettingsNavigator } from './SettingsNavigator';
 
-type TabsParamList = {
-    readonly HomeTab: undefined;
+export type TabsParamList = {
+    readonly HomeTab: NavigatorScreenParams<HomeStackParamList> | undefined;
     readonly ChatTab: undefined;
     readonly SongsTab: undefined;
     readonly GalleryTab: undefined;

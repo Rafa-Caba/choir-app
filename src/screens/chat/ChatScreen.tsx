@@ -54,6 +54,9 @@ export const ChatScreen = () => {
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const initialScrollSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const initialScrollPendingRef = useRef(true);
+    const messageCountRef = useRef(0);
     const pendingReadKeyRef = useRef('');
     const [showOnlineModal, setShowOnlineModal] = useState(false);
     const [showActionsModal, setShowActionsModal] = useState(false);
@@ -75,6 +78,37 @@ export const ChatScreen = () => {
     const connect = useChatStore((state) => state.connect);
     const sendTyping = useChatStore((state) => state.sendTyping);
     const allUsers = directoryQuery.data ?? [];
+    const latestMessageId = messages[messages.length - 1]?.id ?? '';
+    messageCountRef.current = messages.length;
+
+    const stopInitialScrollPinning = useCallback((): void => {
+        initialScrollPendingRef.current = false;
+
+        if (initialScrollSettleTimeoutRef.current) {
+            clearTimeout(initialScrollSettleTimeoutRef.current);
+            initialScrollSettleTimeoutRef.current = null;
+        }
+    }, []);
+
+    const pinChatToLatest = useCallback((): void => {
+        if (!isFocused || !initialScrollPendingRef.current || messageCountRef.current === 0) {
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            flatListRef.current?.scrollToEnd({ animated: false });
+
+            if (initialScrollSettleTimeoutRef.current) {
+                clearTimeout(initialScrollSettleTimeoutRef.current);
+            }
+
+            initialScrollSettleTimeoutRef.current = setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: false });
+                initialScrollPendingRef.current = false;
+                initialScrollSettleTimeoutRef.current = null;
+            }, 220);
+        });
+    }, [isFocused]);
 
     const resetComposerShift = useCallback((): void => {
         keyboardVisibleRef.current = false;
@@ -112,6 +146,8 @@ export const ChatScreen = () => {
 
     useEffect(() => {
         if (isFocused) {
+            initialScrollPendingRef.current = true;
+            pinChatToLatest();
             connect();
             return;
         }
@@ -119,9 +155,17 @@ export const ChatScreen = () => {
         if (typingTimeoutRef.current) {
             clearTimeout(typingTimeoutRef.current);
         }
+        stopInitialScrollPinning();
         sendTyping(false);
         resetComposerShift();
-    }, [connect, isFocused, resetComposerShift, sendTyping]);
+    }, [
+        connect,
+        isFocused,
+        pinChatToLatest,
+        resetComposerShift,
+        sendTyping,
+        stopInitialScrollPinning
+    ]);
 
     useEffect(() => {
         const handleKeyboardFrame = (event: KeyboardEvent): void => {
@@ -167,14 +211,20 @@ export const ChatScreen = () => {
             if (scrollRetryTimeoutRef.current) {
                 clearTimeout(scrollRetryTimeoutRef.current);
             }
+            if (initialScrollSettleTimeoutRef.current) {
+                clearTimeout(initialScrollSettleTimeoutRef.current);
+            }
         };
     }, []);
 
     useEffect(() => {
-        if (messages.length > 0) {
-            requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: false }));
+        if (!isFocused || !latestMessageId) {
+            return;
         }
-    }, [messages.length]);
+
+        initialScrollPendingRef.current = true;
+        pinChatToLatest();
+    }, [isFocused, latestMessageId, pinChatToLatest]);
 
     useEffect(() => {
         if (!isFocused || !currentUserId || receiptMutation.isPending) {
@@ -233,9 +283,15 @@ export const ChatScreen = () => {
     };
 
     const scrollToLatestMessage = (): void => {
+        stopInitialScrollPinning();
         requestAnimationFrame(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
         });
+    };
+
+    const handleListScrollBeginDrag = (): void => {
+        stopInitialScrollPinning();
+        Keyboard.dismiss();
     };
 
     const highlightMessage = useCallback((messageId: string): void => {
@@ -357,7 +413,9 @@ export const ChatScreen = () => {
                     ]}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                    onScrollBeginDrag={Keyboard.dismiss}
+                    onLayout={pinChatToLatest}
+                    onContentSizeChange={pinChatToLatest}
+                    onScrollBeginDrag={handleListScrollBeginDrag}
                     onTouchStart={Keyboard.dismiss}
                     refreshing={historyQuery.isRefetching && messages.length > 0}
                     onRefresh={() => void historyQuery.refetch()}

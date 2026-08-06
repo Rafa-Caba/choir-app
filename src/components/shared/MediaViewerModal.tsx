@@ -1,10 +1,19 @@
 // src/components/shared/MediaViewerModal.tsx
 
-import React, { useRef, useState } from 'react';
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState
+} from 'react';
 import {
     ActivityIndicator,
+    Animated,
+    Dimensions,
     Image,
     Modal,
+    PanResponder,
     Platform,
     ScrollView,
     StyleSheet,
@@ -30,6 +39,9 @@ interface MediaViewerModalProps {
     readonly actionsEnabled?: boolean;
 }
 
+const dismissDistance = 120;
+const dismissVelocity = 1.05;
+
 export const MediaViewerModal = ({
     visible,
     onClose,
@@ -44,6 +56,8 @@ export const MediaViewerModal = ({
     const [scale, setScale] = useState(1);
     const [actionsVisible, setActionsVisible] = useState(false);
     const lastTap = useRef<number | null>(null);
+    const translateY = useRef(new Animated.Value(0)).current;
+    const screenHeight = Dimensions.get('window').height;
     const resource = useMediaResource({
         remoteUrl: mediaUrl ?? '',
         filename,
@@ -52,9 +66,25 @@ export const MediaViewerModal = ({
         category
     });
 
-    if (!mediaUrl) {
-        return null;
-    }
+    const viewerOpacity = useMemo(
+        () => translateY.interpolate({
+            inputRange: [0, screenHeight * 0.7],
+            outputRange: [1, 0.35],
+            extrapolate: 'clamp'
+        }),
+        [screenHeight, translateY]
+    );
+
+    const resetDismissPosition = useCallback((): void => {
+        translateY.stopAnimation();
+        translateY.setValue(0);
+    }, [translateY]);
+
+    useEffect(() => {
+        if (visible) {
+            resetDismissPosition();
+        }
+    }, [resetDismissPosition, visible]);
 
     const handleDoubleTap = (): void => {
         const now = Date.now();
@@ -67,20 +97,78 @@ export const MediaViewerModal = ({
         lastTap.current = now;
     };
 
-    const handleClose = (): void => {
+    const handleClose = useCallback((): void => {
         setActionsVisible(false);
         setScale(1);
+        resetDismissPosition();
         onClose();
-    };
+    }, [onClose, resetDismissPosition]);
+
+    const restoreViewerPosition = useCallback((): void => {
+        Animated.spring(translateY, {
+            toValue: 0,
+            damping: 20,
+            stiffness: 220,
+            mass: 0.8,
+            useNativeDriver: true
+        }).start();
+    }, [translateY]);
+
+    const dismissViewer = useCallback((): void => {
+        Animated.timing(translateY, {
+            toValue: screenHeight,
+            duration: 190,
+            useNativeDriver: true
+        }).start(({ finished }) => {
+            if (finished) {
+                handleClose();
+            }
+        });
+    }, [handleClose, screenHeight, translateY]);
+
+    const dismissPanResponder = useMemo(
+        () => PanResponder.create({
+            onMoveShouldSetPanResponder: (_event, gestureState) => {
+                const verticalDistance = Math.abs(gestureState.dy);
+                const horizontalDistance = Math.abs(gestureState.dx);
+
+                return visible &&
+                    scale <= 1 &&
+                    gestureState.dy > 10 &&
+                    verticalDistance > horizontalDistance * 1.2;
+            },
+            onPanResponderMove: (_event, gestureState) => {
+                translateY.setValue(Math.max(0, gestureState.dy));
+            },
+            onPanResponderRelease: (_event, gestureState) => {
+                if (
+                    gestureState.dy >= dismissDistance ||
+                    gestureState.vy >= dismissVelocity
+                ) {
+                    dismissViewer();
+                    return;
+                }
+
+                restoreViewerPosition();
+            },
+            onPanResponderTerminate: restoreViewerPosition
+        }),
+        [dismissViewer, restoreViewerPosition, scale, translateY, visible]
+    );
 
     const handleOpenActions = (): void => {
         setScale(1);
+        resetDismissPosition();
         onClose();
 
         setTimeout(() => {
             setActionsVisible(true);
         }, Platform.OS === 'ios' ? 280 : 80);
     };
+
+    if (!mediaUrl) {
+        return null;
+    }
 
     return (
         <>
@@ -90,7 +178,16 @@ export const MediaViewerModal = ({
                 animationType="fade"
                 onRequestClose={handleClose}
             >
-                <View style={styles.container}>
+                <Animated.View
+                    style={[
+                        styles.container,
+                        {
+                            opacity: viewerOpacity,
+                            transform: [{ translateY }]
+                        }
+                    ]}
+                    {...dismissPanResponder.panHandlers}
+                >
                     <View style={styles.topBar}>
                         <TouchableOpacity
                             onPress={handleClose}
@@ -157,7 +254,7 @@ export const MediaViewerModal = ({
                             </ScrollView>
                         )}
                     </View>
-                </View>
+                </Animated.View>
             </Modal>
 
             {actionsEnabled && (

@@ -12,6 +12,7 @@ const targets = [
     'src/components/auth/AccessDeniedScreen.tsx',
     'src/components/chatMessages/ChatInput.tsx',
     'src/components/common/RichTextViewer.tsx',
+    'src/components/shared/MediaViewerModal.tsx',
     'src/screens/CreateAnnouncementScreen.tsx',
     'src/screens/blog/BlogDetailScreen.tsx',
     'src/screens/blog/CreateBlogScreen.tsx',
