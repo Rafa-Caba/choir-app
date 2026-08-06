@@ -2,6 +2,7 @@
 
 import React, {
     useCallback,
+    useEffect,
     useMemo,
     useRef,
     useState
@@ -41,10 +42,19 @@ import {
 } from '../../hooks/query/useGalleryData';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
-import type { GalleryFlag, GalleryImage } from '../../types/gallery';
+import type {
+    GalleryFlag,
+    GalleryImage,
+    GalleryMediaDetailParams
+} from '../../types/gallery';
+import {
+    getGalleryDisplayUri,
+    getGalleryPreviewUri,
+    isRemoteMediaUri
+} from '../../utils/mediaUtils';
 
 type MediaDetailParams = {
-    MediaDetailScreen: { readonly media: GalleryImage };
+    MediaDetailScreen: GalleryMediaDetailParams;
 };
 
 type ViewerGestureAxis = 'horizontal' | 'vertical' | null;
@@ -65,7 +75,7 @@ export const MediaDetailScreen = () => {
     const screenHeight = Dimensions.get('window').height;
 
     const [media, setMedia] = useState<GalleryImage>(route.params.media);
-    const [loadingMedia, setLoadingMedia] = useState(false);
+    const [loadingMedia, setLoadingMedia] = useState(true);
     const [settingsVisible, setSettingsVisible] = useState(false);
     const [actionsVisible, setActionsVisible] = useState(false);
     const [scale, setScale] = useState(1);
@@ -75,8 +85,12 @@ export const MediaDetailScreen = () => {
     const transitioningRef = useRef(false);
     const translateX = useRef(new Animated.Value(0)).current;
     const translateY = useRef(new Animated.Value(0)).current;
+    const imageOpacity = useRef(new Animated.Value(0)).current;
 
-    const displayMediaUrl = media.cachedImageUrl ?? media.imageUrl;
+    const displayMediaUrl = getGalleryDisplayUri(media);
+    const previewMediaUrl = media.id === route.params.media.id && route.params.previewUri
+        ? route.params.previewUri
+        : getGalleryPreviewUri(media);
     const user = useAuthStore((state) => state.user);
     const galleryQuery = useGalleryQuery();
     const deleteMutation = useDeleteGalleryImageMutation();
@@ -99,6 +113,46 @@ export const MediaDetailScreen = () => {
 
     const hasPrevious = currentIndex > 0;
     const hasNext = currentIndex < mediaItems.length - 1;
+
+    useEffect(() => {
+        setLoadingMedia(true);
+        imageOpacity.stopAnimation();
+        imageOpacity.setValue(0);
+    }, [imageOpacity, media.id]);
+
+    useEffect(() => {
+        const candidates = [
+            mediaItems[currentIndex - 1],
+            mediaItems[currentIndex],
+            mediaItems[currentIndex + 1]
+        ].filter((item): item is GalleryImage => Boolean(item));
+
+        candidates.forEach((item) => {
+            const previewUri = getGalleryPreviewUri(item);
+            const displayUri = getGalleryDisplayUri(item);
+
+            if (isRemoteMediaUri(previewUri)) {
+                void Image.prefetch(previewUri).catch(() => false);
+            }
+
+            if (
+                item.mediaType === 'IMAGE' &&
+                displayUri !== previewUri &&
+                isRemoteMediaUri(displayUri)
+            ) {
+                void Image.prefetch(displayUri).catch(() => false);
+            }
+        });
+    }, [currentIndex, mediaItems]);
+
+    const handleImageLoad = useCallback((): void => {
+        setLoadingMedia(false);
+        Animated.timing(imageOpacity, {
+            toValue: 1,
+            duration: 120,
+            useNativeDriver: true
+        }).start();
+    }, [imageOpacity]);
 
     const viewerOpacity = useMemo(
         () => translateY.interpolate({
@@ -185,23 +239,34 @@ export const MediaDetailScreen = () => {
                 return;
             }
 
+            imageOpacity.stopAnimation();
+            imageOpacity.setValue(0);
+            setLoadingMedia(true);
             setMedia(targetMedia);
             setScale(1);
-            setLoadingMedia(false);
             translateY.setValue(0);
             translateX.setValue(entryPosition);
 
-            Animated.spring(translateX, {
-                toValue: 0,
-                damping: 22,
-                stiffness: 240,
-                mass: 0.8,
-                useNativeDriver: true
-            }).start(() => {
-                transitioningRef.current = false;
+            requestAnimationFrame(() => {
+                Animated.spring(translateX, {
+                    toValue: 0,
+                    damping: 22,
+                    stiffness: 240,
+                    mass: 0.8,
+                    useNativeDriver: true
+                }).start(() => {
+                    transitioningRef.current = false;
+                });
             });
         });
-    }, [mediaItems, restoreViewerPosition, screenWidth, translateX, translateY]);
+    }, [
+        imageOpacity,
+        mediaItems,
+        restoreViewerPosition,
+        screenWidth,
+        translateX,
+        translateY
+    ]);
 
     const viewerPanResponder = useMemo(
         () => PanResponder.create({
@@ -431,15 +496,16 @@ export const MediaDetailScreen = () => {
                         <ActivityIndicator
                             size="large"
                             color="#ffffff"
-                            style={StyleSheet.absoluteFill}
+                            style={styles.loadingIndicator}
                         />
                     )}
 
                     {media.mediaType === 'VIDEO' ? (
                         <Video
+                            key={`video-${media.id}`}
                             style={styles.media}
                             source={{ uri: displayMediaUrl }}
-                            posterSource={{ uri: getThumbnail(media.imageUrl) }}
+                            posterSource={{ uri: previewMediaUrl || getThumbnail(media.imageUrl) }}
                             usePoster
                             useNativeControls
                             resizeMode={ResizeMode.CONTAIN}
@@ -448,9 +514,11 @@ export const MediaDetailScreen = () => {
                             isMuted={Platform.OS === 'web'}
                             onLoadStart={() => setLoadingMedia(true)}
                             onLoad={() => setLoadingMedia(false)}
+                            onError={() => setLoadingMedia(false)}
                         />
                     ) : (
                         <ScrollView
+                            key={`scroll-${media.id}`}
                             contentContainerStyle={styles.imageScrollContent}
                             maximumZoomScale={3}
                             minimumZoomScale={1}
@@ -458,19 +526,34 @@ export const MediaDetailScreen = () => {
                             scrollEnabled={scale > 1}
                         >
                             <TouchableWithoutFeedback onPress={handleDoubleTap}>
-                                <Image
-                                    source={{ uri: displayMediaUrl }}
-                                    style={[
-                                        styles.media,
-                                        Platform.OS === 'web'
-                                            ? {
-                                                width: `${scale * 100}%`,
-                                                height: `${scale * 100}%`
-                                            }
-                                            : undefined
-                                    ]}
-                                    resizeMode="contain"
-                                />
+                                <View style={styles.imageStage}>
+                                    <Image
+                                        key={`preview-${media.id}`}
+                                        source={{ uri: previewMediaUrl }}
+                                        style={styles.media}
+                                        resizeMode="contain"
+                                        fadeDuration={0}
+                                    />
+                                    <Animated.Image
+                                        key={`full-${media.id}`}
+                                        source={{ uri: displayMediaUrl }}
+                                        style={[
+                                            styles.fullResolutionImage,
+                                            { opacity: imageOpacity },
+                                            Platform.OS === 'web'
+                                                ? {
+                                                    width: `${scale * 100}%`,
+                                                    height: `${scale * 100}%`
+                                                }
+                                                : undefined
+                                        ]}
+                                        resizeMode="contain"
+                                        fadeDuration={0}
+                                        onLoadStart={() => setLoadingMedia(true)}
+                                        onLoad={handleImageLoad}
+                                        onError={() => setLoadingMedia(false)}
+                                    />
+                                </View>
                             </TouchableWithoutFeedback>
                         </ScrollView>
                     )}
@@ -550,9 +633,23 @@ const styles = StyleSheet.create({
         flex: 1,
         overflow: 'hidden'
     },
+    loadingIndicator: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 3
+    },
     imageScrollContent: {
         flexGrow: 1,
         justifyContent: 'center'
+    },
+    imageStage: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#000000'
+    },
+    fullResolutionImage: {
+        ...StyleSheet.absoluteFillObject,
+        width: '100%',
+        height: '100%'
     },
     media: {
         width: '100%',

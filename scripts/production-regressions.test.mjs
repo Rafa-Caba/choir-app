@@ -45,6 +45,7 @@ const changedSources = [
     'src/screens/chat/ChatScreen.tsx',
     'src/screens/gallery/GalleryScreen.tsx',
     'src/screens/gallery/MediaDetailScreen.tsx',
+    'src/utils/mediaUtils.ts',
     'src/screens/settings/AdminSettingsScreen.tsx',
     'src/screens/settings/profile/ProfileScreen.tsx',
     'src/screens/platform/PlatformProfileScreen.tsx',
@@ -115,6 +116,7 @@ const homeScreen = read('src/screens/HomeScreen.tsx');
 const normalizeChatMessage = read('src/utils/normalizeChatMessage.ts');
 const chatStickers = read('src/constants/chatStickers.ts');
 const mediaDetail = read('src/screens/gallery/MediaDetailScreen.tsx');
+const mediaUtils = read('src/utils/mediaUtils.ts');
 const testflightEnv = read('.env.testflight.example');
 const authService = read('src/services/auth.ts');
 const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
@@ -202,6 +204,15 @@ assert.match(mediaDetail, /transitionToMedia/u);
 assert.match(mediaDetail, /hasPrevious/u);
 assert.match(mediaDetail, /hasNext/u);
 assert.match(mediaDetail, /dismissViewer/u);
+assert.match(mediaDetail, /key=\{`preview-\$\{media\.id\}`\}/u);
+assert.match(mediaDetail, /key=\{`full-\$\{media\.id\}`\}/u);
+assert.match(mediaDetail, /Image\.prefetch/u);
+assert.match(mediaDetail, /getGalleryPreviewUri/u);
+assert.match(mediaDetail, /imageOpacity/u);
+assert.match(galleryScreen, /previewUri/u);
+assert.match(galleryScreen, /Image\.prefetch/u);
+assert.match(mediaUtils, /c_fill,w_720,h_720,q_auto,f_auto/u);
+assert.match(mediaUtils, /getGalleryPreviewUri/u);
 assert.match(mediaViewerModal, /PanResponder\.create/u);
 assert.match(mediaViewerModal, /dismissViewer/u);
 assert.match(mediaViewerModal, /translateY/u);

@@ -21,7 +21,7 @@ import { ThemesListScreen } from '../screens/settings/themes/ThemesListScreen';
 import { useAuthStore } from '../store/useAuthStore';
 import type { AuditScope } from '../types/audit';
 import type { User } from '../types/auth';
-import type { GalleryImage } from '../types/gallery';
+import type { GalleryMediaDetailParams } from '../types/gallery';
 import type { Theme } from '../types/theme';
 
 export type SettingsStackParamList = {
@@ -36,7 +36,7 @@ export type SettingsStackParamList = {
     ThemesListScreen: undefined;
     ManageThemeScreen: { readonly themeToEdit?: Theme } | undefined;
     AuditLogsScreen: { readonly scope?: AuditScope } | undefined;
-    MediaDetailScreen: { readonly media: GalleryImage };
+    MediaDetailScreen: GalleryMediaDetailParams;
     PlatformProfileScreen: undefined;
 };
 

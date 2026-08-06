@@ -18,6 +18,11 @@ export interface GalleryImage {
     readonly updatedAt: string;
 }
 
+export interface GalleryMediaDetailParams {
+    readonly media: GalleryImage;
+    readonly previewUri?: string;
+}
+
 export interface CreateGalleryPayload {
     readonly title: string;
     readonly description: string;

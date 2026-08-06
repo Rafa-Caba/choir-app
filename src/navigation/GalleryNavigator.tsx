@@ -1,13 +1,14 @@
 // src/navigation/GalleryNavigator.tsx
+
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { GalleryScreen } from '../screens/gallery/GalleryScreen';
 import { MediaDetailScreen } from '../screens/gallery/MediaDetailScreen';
-import type { GalleryImage } from '../types/gallery';
+import type { GalleryMediaDetailParams } from '../types/gallery';
 
 export type GalleryStackParamList = {
     GalleryGrid: undefined;
-    MediaDetailScreen: { readonly media: GalleryImage };
+    MediaDetailScreen: GalleryMediaDetailParams;
 };
 
 const Stack = createNativeStackNavigator<GalleryStackParamList>();

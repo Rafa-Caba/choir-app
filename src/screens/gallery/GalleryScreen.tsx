@@ -1,6 +1,6 @@
 // src/screens/gallery/GalleryScreen.tsx
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -28,11 +28,15 @@ import {
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTheme } from '../../context/ThemeContext';
 import { LoadingScreen } from '../LoadingScreen';
-import { getCloudinaryThumbnail } from '../../utils/mediaUtils';
-import type { GalleryImage } from '../../types/gallery';
+import {
+    getGalleryDisplayUri,
+    getGalleryPreviewUri,
+    isRemoteMediaUri
+} from '../../utils/mediaUtils';
+import type { GalleryImage, GalleryMediaDetailParams } from '../../types/gallery';
 
 type GalleryNavigationParams = {
-    readonly MediaDetailScreen: { readonly media: GalleryImage };
+    readonly MediaDetailScreen: GalleryMediaDetailParams;
 };
 
 export const GalleryScreen = () => {
@@ -49,17 +53,19 @@ export const GalleryScreen = () => {
     const [newTitle, setNewTitle] = useState('');
     const [newDesc, setNewDesc] = useState('');
 
-    const getSafeThumbnail = (imageUrl: string, mediaType: string): string => {
-        if (!imageUrl) {
-            return 'https://via.placeholder.com/150';
+    const openMediaDetail = useCallback((item: GalleryImage): void => {
+        const displayUri = getGalleryDisplayUri(item);
+        const previewUri = getGalleryPreviewUri(item);
+
+        if (item.mediaType === 'IMAGE' && isRemoteMediaUri(displayUri)) {
+            void Image.prefetch(displayUri).catch(() => false);
         }
 
-        if (mediaType === 'VIDEO') {
-            return imageUrl.replace(/\.(mp4|mov|3gp|m4v|webm)$/iu, '.jpg');
-        }
-
-        return getCloudinaryThumbnail(imageUrl) || imageUrl;
-    };
+        navigation.navigate('MediaDetailScreen', {
+            media: item,
+            previewUri
+        });
+    }, [navigation]);
 
     const resetUploadForm = (): void => {
         setTempUri(null);
@@ -132,20 +138,18 @@ export const GalleryScreen = () => {
     const featuredItems = images.slice(0, 5);
 
     const renderGridItem = ({ item }: { readonly item: GalleryImage }) => {
-        const displayUrl = item.mediaType === 'VIDEO'
-            ? item.imageUrl
-            : item.cachedImageUrl ?? item.imageUrl;
-        const thumbUri = getSafeThumbnail(displayUrl, item.mediaType);
+        const thumbUri = getGalleryPreviewUri(item);
 
         return (
             <TouchableOpacity
                 style={styles.gridItem}
-                onPress={() => navigation.navigate('MediaDetailScreen', { media: item })}
+                onPress={() => openMediaDetail(item)}
             >
                 <Image
                     source={{ uri: thumbUri }}
                     style={[styles.gridImage, { backgroundColor: colors.cardColor }]}
                     resizeMode="cover"
+                    fadeDuration={0}
                 />
                 {item.mediaType === 'VIDEO' && (
                     <View style={styles.videoOverlay}>
@@ -179,16 +183,13 @@ export const GalleryScreen = () => {
                         contentContainerStyle={styles.featuredScrollContent}
                     >
                         {featuredItems.map((item, index) => {
-                            const displayUrl = item.mediaType === 'VIDEO'
-                                ? item.imageUrl
-                                : item.cachedImageUrl ?? item.imageUrl;
-                            const thumb = getSafeThumbnail(displayUrl, item.mediaType);
+                            const thumb = getGalleryPreviewUri(item);
 
                             return (
                                 <TouchableOpacity
                                     key={item.id}
                                     activeOpacity={0.9}
-                                    onPress={() => navigation.navigate('MediaDetailScreen', { media: item })}
+                                    onPress={() => openMediaDetail(item)}
                                 >
                                     <View style={[
                                         styles.featuredImageWrapper,
@@ -202,6 +203,7 @@ export const GalleryScreen = () => {
                                             source={{ uri: thumb }}
                                             style={styles.featuredImage}
                                             resizeMode="cover"
+                                            fadeDuration={0}
                                         />
                                         {item.mediaType === 'VIDEO' && (
                                             <View style={[styles.videoOverlay, styles.featuredVideoOverlay]}>
