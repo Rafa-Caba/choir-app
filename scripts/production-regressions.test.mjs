@@ -19,6 +19,7 @@ const changedSources = [
     'src/hooks/query/useSongsData.ts',
     'src/hooks/query/useTenantQueryScope.ts',
     'src/hooks/query/useThemesData.ts',
+    'src/hooks/query/useNotificationsData.ts',
     'src/hooks/usePushNotifications.ts',
     'src/navigation/BlogNavigator.tsx',
     'src/providers/QueryLifecycleManager.tsx',
@@ -35,8 +36,10 @@ const changedSources = [
     'src/components/chatMessages/ChatInput.tsx',
     'src/constants/chatStickers.ts',
     'src/components/chatMessages/ChatMessageItem.tsx',
+    'src/components/chatMessages/MessageDetailsModal.tsx',
     'src/components/chatMessages/MessageContent.tsx',
     'src/components/shared/MediaViewerModal.tsx',
+    'src/components/home/HomeQuickMenuModal.tsx',
     'src/navigation/AppNavigator.tsx',
     'src/navigation/TabsNavigator.tsx',
     'src/screens/chat/ChatScreen.tsx',
@@ -68,6 +71,7 @@ const changedSources = [
     'src/store/useSongsStore.ts',
     'src/store/useThemeStore.ts',
     'src/types/chat.ts',
+    'src/types/notification.ts',
     'src/types/settings.ts',
     'src/types/tiptap.ts',
     'src/utils/normalizeChatMessage.ts',
@@ -101,6 +105,13 @@ const mediaViewerModal = read('src/components/shared/MediaViewerModal.tsx');
 const appNavigator = read('src/navigation/AppNavigator.tsx');
 const tabsNavigator = read('src/navigation/TabsNavigator.tsx');
 const chatTypes = read('src/types/chat.ts');
+
+const notificationTypes = read('src/types/notification.ts');
+const notificationService = read('src/services/notifications.ts');
+const notificationData = read('src/hooks/query/useNotificationsData.ts');
+const messageDetailsModal = read('src/components/chatMessages/MessageDetailsModal.tsx');
+const homeQuickMenu = read('src/components/home/HomeQuickMenuModal.tsx');
+const homeScreen = read('src/screens/HomeScreen.tsx');
 const normalizeChatMessage = read('src/utils/normalizeChatMessage.ts');
 const chatStickers = read('src/constants/chatStickers.ts');
 const mediaDetail = read('src/screens/gallery/MediaDetailScreen.tsx');
@@ -226,7 +237,36 @@ assert.match(chatService, /CHAT_UPLOAD_TIMEOUT_MS = 90_000/u);
 assert.match(chatService, /markChatReceipts/u);
 assert.match(chatData, /useMarkChatReceiptsMutation/u);
 assert.match(chatStore, /markChatReceipts/u);
+
+assert.match(chatTypes, /recipientUserIds/u);
+assert.match(chatTypes, /deliveryReceipts/u);
+assert.match(chatTypes, /readReceipts/u);
+assert.match(chatTypes, /ChatMessageDetails/u);
+assert.match(chatMessageItem, /allDelivered/u);
+assert.match(chatMessageItem, /allRead/u);
+assert.match(chatMessageItem, /Detalles/u);
+assert.match(chatMessageItem, /MessageDetailsModal/u);
+assert.match(messageDetailsModal, /Leído por/u);
+assert.match(messageDetailsModal, /Entregado a/u);
+assert.match(messageDetailsModal, /TouchableWithoutFeedback/u);
+assert.match(notificationTypes, /CHAT_REACTION/u);
+assert.match(notificationTypes, /BLOG_COMMENT/u);
+assert.match(notificationService, /\/notifications\/read-all/u);
+assert.match(notificationData, /useNotificationsQuery/u);
+assert.match(homeQuickMenu, /Accesos rápidos/u);
+assert.match(homeQuickMenu, /Apariencia y temas/u);
+assert.match(homeQuickMenu, /Notificaciones/u);
+assert.match(tabsNavigator, /tabBarBadge/u);
+assert.match(homeScreen, /HomeQuickMenuModal/u);
+assert.match(homeScreen, /notificationBadge/u);
+assert.match(chatScreen, /useMarkNotificationsReadMutation/u);
 assert.match(chatScreen, /status: 'READ'/u);
+assert.match(tabsNavigator, /status: 'DELIVERED'/u);
+assert.match(tabsNavigator, /CHAT_MESSAGE/u);
+assert.match(homeScreen, /focusMessageId: resourceId/u);
+assert.match(chatScreen, /route\.params\?\.focusMessageId/u);
+assert.match(chatScreen, /navigation\.setParams\(\{ focusMessageId: undefined \}\)/u);
+assert.match(chatMessageItem, /\.\.\.\(isMe/u);
 assert.match(songService, /normalizeSong/u);
 assert.match(songService, /resolveRawSongTypeId/u);
 

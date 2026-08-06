@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import choirApi from '../../api/choirApi';
 import {
+    getChatMessageDetails,
     markChatReceipts,
     sendChatMessage,
     uploadChatMedia,
@@ -11,6 +12,7 @@ import {
 import { syncCacheFirst } from '../../services/sync';
 import type {
     ChatMessage,
+    ChatMessageDetails,
     ChatReceiptStatus,
     ChatUserSummary,
     MessageType,
@@ -259,5 +261,20 @@ export const useMarkChatReceiptsMutation = () => {
                 (current) => sortHistory(mergeMessages(current, updatedMessages))
             );
         }
+    });
+};
+
+export const useChatMessageDetailsQuery = (
+    messageId: string,
+    enabled: boolean
+) => {
+    const scope = useTenantQueryScope();
+
+    return useQuery({
+        queryKey: queryKeys.chatMessageDetails(scope.tenantKey, messageId),
+        queryFn: ({ signal }): Promise<ChatMessageDetails> =>
+            getChatMessageDetails(messageId, signal),
+        enabled: scope.enabled && enabled && Boolean(messageId),
+        staleTime: 5_000
     });
 };

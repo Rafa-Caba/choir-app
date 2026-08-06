@@ -20,7 +20,9 @@ import { Ionicons } from '@expo/vector-icons';
 import {
     useIsFocused,
     useNavigation,
-    type NavigationProp
+    useRoute,
+    type NavigationProp,
+    type RouteProp
 } from '@react-navigation/native';
 import {
     ChatInput,
@@ -38,6 +40,10 @@ import {
     useMarkChatReceiptsMutation,
     useSendChatMessageMutation
 } from '../../hooks/query/useChatData';
+import {
+    useMarkNotificationsReadMutation,
+    useNotificationsQuery
+} from '../../hooks/query/useNotificationsData';
 
 interface ScrollToIndexFailureInfo {
     readonly index: number;
@@ -58,17 +64,22 @@ export const ChatScreen = () => {
     const initialScrollPendingRef = useRef(true);
     const messageCountRef = useRef(0);
     const pendingReadKeyRef = useRef('');
+    const handledFocusMessageIdRef = useRef('');
     const [showOnlineModal, setShowOnlineModal] = useState(false);
     const [showActionsModal, setShowActionsModal] = useState(false);
     const [composerShift, setComposerShift] = useState(0);
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const colors = useTheme().currentTheme;
     const navigation = useNavigation<NavigationProp<ChatStackParamList>>();
+    const route = useRoute<RouteProp<ChatStackParamList, 'ChatScreen'>>();
     const isFocused = useIsFocused();
     const historyQuery = useChatHistoryQuery(isFocused);
     const directoryQuery = useChatDirectoryQuery(showOnlineModal);
     const sendMutation = useSendChatMessageMutation();
     const receiptMutation = useMarkChatReceiptsMutation();
+    const notificationReadMutation = useMarkNotificationsReadMutation();
+    const notificationsQuery = useNotificationsQuery();
+    const unreadChatNotifications = notificationsQuery.data?.summary.chat ?? 0;
     const messages = historyQuery.data ?? [];
     const currentUserId = useAuthStore((state) => state.user?.id ?? '');
     const connected = useChatStore((state) => state.connected);
@@ -226,6 +237,15 @@ export const ChatScreen = () => {
         pinChatToLatest();
     }, [isFocused, latestMessageId, pinChatToLatest]);
 
+
+    useEffect(() => {
+        if (!isFocused || unreadChatNotifications === 0 || notificationReadMutation.isPending) {
+            return;
+        }
+
+        notificationReadMutation.mutate('CHAT');
+    }, [isFocused, unreadChatNotifications]);
+
     useEffect(() => {
         if (!isFocused || !currentUserId || receiptMutation.isPending) {
             return;
@@ -325,6 +345,23 @@ export const ChatScreen = () => {
             viewPosition: 0.45
         });
     }, [highlightMessage, messages]);
+
+    useEffect(() => {
+        const focusMessageId = route.params?.focusMessageId ?? '';
+
+        if (
+            !isFocused ||
+            !focusMessageId ||
+            messages.length === 0 ||
+            handledFocusMessageIdRef.current === focusMessageId
+        ) {
+            return;
+        }
+
+        handledFocusMessageIdRef.current = focusMessageId;
+        scrollToReply(focusMessageId);
+        navigation.setParams({ focusMessageId: undefined });
+    }, [isFocused, messages.length, navigation, route.params?.focusMessageId, scrollToReply]);
 
     const handleScrollToIndexFailed = useCallback((info: ScrollToIndexFailureInfo): void => {
         const offset = Math.max(0, info.averageItemLength * info.index);

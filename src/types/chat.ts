@@ -44,6 +44,11 @@ export interface ChatMediaMetadata {
     readonly resourceType: string;
 }
 
+export interface ChatReceiptEntry {
+    readonly userId: string;
+    readonly at: string;
+}
+
 export interface ChatMessage {
     readonly id: string;
     readonly author: ChatUserSummary;
@@ -58,8 +63,11 @@ export interface ChatMessage {
     readonly media?: ChatMediaMetadata | null;
     readonly reactions: readonly MessageReaction[];
     readonly replyTo?: ReplyPreview | null;
+    readonly recipientUserIds: readonly string[];
     readonly deliveredTo: readonly string[];
     readonly readBy: readonly string[];
+    readonly deliveryReceipts: readonly ChatReceiptEntry[];
+    readonly readReceipts: readonly ChatReceiptEntry[];
     readonly createdAt: string;
     readonly updatedAt?: string;
 }
@@ -106,6 +114,11 @@ export interface RawReceiptUser {
 
 export type RawReceiptValue = string | RawReceiptUser;
 
+export interface RawReceiptEntry {
+    readonly user?: RawReceiptValue;
+    readonly at?: string;
+}
+
 export interface RawChatMessage {
     readonly id?: string;
     readonly _id?: string;
@@ -120,8 +133,11 @@ export interface RawChatMessage {
     readonly mediaAssetId?: RawChatMediaAsset | string | null;
     readonly reactions?: readonly RawReaction[];
     readonly replyTo?: RawReplyMessage | string | null;
+    readonly recipientUserIds?: readonly RawReceiptValue[];
     readonly deliveredTo?: readonly RawReceiptValue[];
     readonly readBy?: readonly RawReceiptValue[];
+    readonly deliveryReceipts?: readonly RawReceiptEntry[];
+    readonly readReceipts?: readonly RawReceiptEntry[];
     readonly createdAt?: string;
     readonly updatedAt?: string;
 }
@@ -163,4 +179,22 @@ export interface SocketTypingEvent {
 export interface SocketDisconnectNotice {
     readonly code: string;
     readonly message: string;
+}
+
+export type MessageRecipientStatus = 'READ' | 'DELIVERED' | 'PENDING';
+
+export interface MessageRecipientDetail {
+    readonly user: ChatUserSummary;
+    readonly status: MessageRecipientStatus;
+    readonly deliveredAt: string | null;
+    readonly readAt: string | null;
+}
+
+export interface ChatMessageDetails {
+    readonly messageId: string;
+    readonly createdAt: string;
+    readonly recipientCount: number;
+    readonly deliveredCount: number;
+    readonly readCount: number;
+    readonly recipients: readonly MessageRecipientDetail[];
 }

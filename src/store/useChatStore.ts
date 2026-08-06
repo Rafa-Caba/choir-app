@@ -11,6 +11,7 @@ import type {
     SocketPresenceUser,
     SocketTypingEvent
 } from '../types/chat';
+import type { AppNotification, SocketNotificationRemoval } from '../types/notification';
 import { normalizeChatMessage } from '../utils/normalizeChatMessage';
 import { useAuthStore } from './useAuthStore';
 import { useTargetChoirStore } from './useTargetChoirStore';
@@ -24,6 +25,9 @@ interface ServerToClientEvents {
     readonly 'user-typing': (payload: SocketTypingEvent) => void;
     readonly 'new-message': (message: RawChatMessage) => void;
     readonly 'message-updated': (message: RawChatMessage) => void;
+    readonly 'notification-created': (notification: AppNotification) => void;
+    readonly 'notification-removed': (payload: SocketNotificationRemoval) => void;
+    readonly 'notifications-read': () => void;
     readonly 'session-disconnected': (notice: SocketDisconnectNotice) => void;
 }
 
@@ -115,6 +119,19 @@ const updateCachedMessages = (messages: readonly ChatMessage[]): void => {
     );
 };
 
+
+const invalidateNotifications = (): void => {
+    const scope = getTenantQueryScopeSnapshot();
+
+    if (!scope.enabled) {
+        return;
+    }
+
+    void queryClient.invalidateQueries({
+        queryKey: queryKeys.notifications(scope.tenantKey)
+    });
+};
+
 const handleIncomingMessage = (raw: RawChatMessage): void => {
     const message = updateCachedMessage(raw);
     const currentUserId = useAuthStore.getState().user?.id ?? '';
@@ -197,6 +214,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }));
         socket.on('new-message', handleIncomingMessage);
         socket.on('message-updated', updateCachedMessage);
+        socket.on('notification-created', invalidateNotifications);
+        socket.on('notification-removed', invalidateNotifications);
+        socket.on('notifications-read', invalidateNotifications);
         socket.on('online-users', (users) => set({ onlineUsers: users }));
         socket.on('user-typing', ({ username, isTyping }) => set((state) => ({
             typingUsers: isTyping

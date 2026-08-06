@@ -2,6 +2,7 @@
 
 import type {
     ChatMediaMetadata,
+    ChatReceiptEntry,
     ChatMessage,
     ChatUserSummary,
     MessageReaction,
@@ -9,6 +10,7 @@ import type {
     RawChatMediaAsset,
     RawChatMessage,
     RawChatUser,
+    RawReceiptEntry,
     RawReceiptValue,
     RawReplyMessage,
     ReplyPreview
@@ -44,6 +46,18 @@ const normalizeReceiptIds = (
     values?: readonly RawReceiptValue[]
 ): readonly string[] => {
     return [...new Set((values ?? []).map(normalizeReceiptId).filter(Boolean))];
+};
+
+
+const normalizeReceiptEntries = (
+    values?: readonly RawReceiptEntry[]
+): readonly ChatReceiptEntry[] => {
+    return (values ?? [])
+        .map((receipt) => ({
+            userId: receipt.user ? normalizeReceiptId(receipt.user) : '',
+            at: receipt.at ?? ''
+        }))
+        .filter((receipt) => Boolean(receipt.userId && receipt.at));
 };
 
 const getReplyTypePreview = (
@@ -158,8 +172,11 @@ export const normalizeChatMessage = (raw: RawChatMessage): ChatMessage => {
         media: normalizeMedia(raw.mediaAssetId, fallbackUrl, fallbackFilename),
         reactions,
         replyTo: normalizeReply(raw.replyTo),
+        recipientUserIds: normalizeReceiptIds(raw.recipientUserIds),
         deliveredTo: normalizeReceiptIds(raw.deliveredTo),
         readBy: normalizeReceiptIds(raw.readBy),
+        deliveryReceipts: normalizeReceiptEntries(raw.deliveryReceipts),
+        readReceipts: normalizeReceiptEntries(raw.readReceipts),
         createdAt,
         updatedAt: raw.updatedAt ?? createdAt
     };

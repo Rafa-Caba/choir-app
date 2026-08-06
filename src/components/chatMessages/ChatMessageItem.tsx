@@ -16,6 +16,7 @@ import { useChatStore } from '../../store/useChatStore';
 import { useTheme } from '../../context/ThemeContext';
 import { MessageContent } from './MessageContent';
 import { MediaViewerModal } from '../shared/MediaViewerModal';
+import { MessageDetailsModal } from './MessageDetailsModal';
 
 interface Props {
     readonly message: ChatMessage;
@@ -40,6 +41,7 @@ export const ChatMessageItem = ({
     const reactToMessage = useChatStore((state) => state.reactToMessage);
     const colors = useTheme().currentTheme;
     const [showAvatarModal, setShowAvatarModal] = useState(false);
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
 
     const myId = user?.id ?? '';
     const authorId = message.author.id;
@@ -51,9 +53,16 @@ export const ChatMessageItem = ({
         hour: '2-digit',
         minute: '2-digit'
     });
-    const deliveredToOthers = message.deliveredTo.some((userId) => userId !== myId);
-    const readByOthers = message.readBy.some((userId) => userId !== myId);
-    const receiptIcon = readByOthers || deliveredToOthers
+    const expectedRecipientIds = message.recipientUserIds.filter(
+        (userId) => userId !== myId
+    );
+    const allDelivered = expectedRecipientIds.length > 0 && expectedRecipientIds.every(
+        (userId) => message.deliveredTo.includes(userId)
+    );
+    const allRead = expectedRecipientIds.length > 0 && expectedRecipientIds.every(
+        (userId) => message.readBy.includes(userId)
+    );
+    const receiptIcon = allDelivered || allRead
         ? 'checkmark-done'
         : 'checkmark';
     const bubbleBackground = isSticker
@@ -63,7 +72,7 @@ export const ChatMessageItem = ({
             : colors.cardColor;
     const textColor = isMe ? colors.buttonTextColor : colors.textColor;
     const timeColor = isMe ? 'rgba(255,255,255,0.75)' : colors.secondaryTextColor;
-    const receiptColor = readByOthers ? colors.accentColor : timeColor;
+    const receiptColor = allRead ? colors.accentColor : timeColor;
 
     const handleLongPress = (): void => {
         Alert.alert(
@@ -80,7 +89,13 @@ export const ChatMessageItem = ({
                     onPress: () => {
                         void reactToMessage(message.id, '❤️');
                     }
-                }
+                },
+                ...(isMe
+                    ? [{
+                        text: 'Detalles',
+                        onPress: () => setShowDetailsModal(true)
+                    }]
+                    : [])
             ]
         );
     };
@@ -102,6 +117,13 @@ export const ChatMessageItem = ({
                 mediaType="image"
                 category="users"
                 actionsEnabled={false}
+            />
+
+
+            <MessageDetailsModal
+                visible={showDetailsModal}
+                message={message}
+                onClose={() => setShowDetailsModal(false)}
             />
 
             {!isMe && (
@@ -221,10 +243,10 @@ export const ChatMessageItem = ({
                             size={16}
                             color={receiptColor}
                             style={styles.receiptIcon}
-                            accessibilityLabel={readByOthers
-                                ? 'Mensaje visto'
-                                : deliveredToOthers
-                                    ? 'Mensaje entregado'
+                            accessibilityLabel={allRead
+                                ? 'Mensaje leído por todos'
+                                : allDelivered
+                                    ? 'Mensaje entregado a todos'
                                     : 'Mensaje enviado'}
                         />
                     )}

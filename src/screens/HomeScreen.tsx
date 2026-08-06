@@ -1,6 +1,6 @@
 // src/screens/HomeScreen.tsx
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Alert,
     FlatList,
@@ -14,15 +14,20 @@ import {
 import { useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
 import type { DrawerNavigationProp } from '@react-navigation/drawer';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useTheme } from '../context/ThemeContext';
 import { useAuthStore } from '../store/useAuthStore';
 import { AnnouncementCard } from '../components/AnnouncementCard';
 import type { Announcement } from '../types/announcement';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
+import type { TabsParamList } from '../navigation/TabsNavigator';
 import {
     useAnnouncementsQuery,
     useDeleteAnnouncementMutation
 } from '../hooks/query/useAnnouncementData';
+import { useNotificationsQuery } from '../hooks/query/useNotificationsData';
+import { HomeQuickMenuModal } from '../components/home/HomeQuickMenuModal';
+import type { NotificationCategory } from '../types/notification';
 
 type DrawerRoutes = {
     readonly Root: undefined;
@@ -36,11 +41,14 @@ type HomeNavigation = CompositeNavigationProp<
 export const HomeScreen = () => {
     const navigation = useNavigation<HomeNavigation>();
     const colors = useTheme().currentTheme;
+    const [quickMenuVisible, setQuickMenuVisible] = useState(false);
     const user = useAuthStore((state) => state.user);
     const canEdit = user?.role === 'ADMIN' || user?.role === 'EDITOR';
     const announcementsQuery = useAnnouncementsQuery(canEdit ? 'all' : 'public');
     const deleteMutation = useDeleteAnnouncementMutation();
     const announcements = announcementsQuery.data ?? [];
+    const notificationsQuery = useNotificationsQuery();
+    const unreadCount = notificationsQuery.data?.summary.total ?? 0;
 
     const handleDelete = (id: string): void => {
         const remove = (): void => {
@@ -62,6 +70,26 @@ export const HomeScreen = () => {
         ]);
     };
 
+    const navigateFromNotification = (
+        category: NotificationCategory,
+        resourceId: string
+    ): void => {
+        const tabsNavigation = navigation.getParent<BottomTabNavigationProp<TabsParamList>>();
+
+        if (category === 'CHAT') {
+            tabsNavigation?.navigate('ChatTab', {
+                screen: 'ChatScreen',
+                params: { focusMessageId: resourceId }
+            });
+            return;
+        }
+
+        tabsNavigation?.navigate('BlogTab', {
+            screen: 'BlogDetail',
+            params: { postId: resourceId }
+        });
+    };
+
     const renderAnnouncement = ({ item }: { readonly item: Announcement }) => (
         <AnnouncementCard
             announcement={item}
@@ -81,13 +109,30 @@ export const HomeScreen = () => {
                     <Text style={[styles.greeting, { color: colors.secondaryTextColor }]}>Hola,</Text>
                     <Text style={[styles.name, { color: colors.textColor }]}>{user?.name || 'Usuario'}</Text>
                 </View>
-                <TouchableOpacity onPress={() => navigation.openDrawer()}>
-                    <Image
-                        source={{ uri: user?.cachedImageUrl ?? user?.imageUrl ?? 'https://via.placeholder.com/100' }}
-                        style={[styles.avatar, { borderColor: colors.primaryColor }]}
-                    />
+                <TouchableOpacity
+                    onPress={() => setQuickMenuVisible(true)}
+                    activeOpacity={0.82}
+                    accessibilityLabel="Abrir accesos rápidos"
+                >
+                    <View>
+                        <Image
+                            source={{ uri: user?.cachedImageUrl ?? user?.imageUrl ?? 'https://via.placeholder.com/100' }}
+                            style={[styles.avatar, { borderColor: colors.primaryColor }]}
+                        />
+                        {unreadCount > 0 && (
+                            <View style={styles.notificationBadge}>
+                                <Text style={styles.notificationBadgeText}>{Math.min(unreadCount, 99)}</Text>
+                            </View>
+                        )}
+                    </View>
                 </TouchableOpacity>
             </View>
+
+            <HomeQuickMenuModal
+                visible={quickMenuVisible}
+                onClose={() => setQuickMenuVisible(false)}
+                onNavigateNotification={navigateFromNotification}
+            />
 
             <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: colors.textColor }]}>Avisos</Text>
@@ -134,6 +179,21 @@ const styles = StyleSheet.create({
     greeting: { fontSize: 16 },
     name: { fontSize: 22, fontWeight: 'bold' },
     avatar: { width: 75, height: 75, borderRadius: 50, borderWidth: 2 },
+    notificationBadge: {
+        position: 'absolute',
+        top: -5,
+        right: -5,
+        minWidth: 24,
+        height: 24,
+        borderRadius: 12,
+        paddingHorizontal: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#E53935',
+        borderWidth: 2,
+        borderColor: '#ffffff'
+    },
+    notificationBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     sectionTitle: { fontSize: 20, fontWeight: 'bold' },
     addButton: { paddingHorizontal: 15, paddingVertical: 6, borderRadius: 20 },

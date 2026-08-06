@@ -3,6 +3,7 @@
 import choirApi from '../api/choirApi';
 import type {
     ChatMessage,
+    ChatMessageDetails,
     ChatMessageResponse,
     ChatReceiptsResponse,
     ChatReceiptStatus,
@@ -98,6 +99,19 @@ export const sendChatMessage = async (
 ): Promise<ChatMessage> => {
     const response = await choirApi.post<ChatMessageResponse>('/chat', payload);
     return normalizeChatMessage(response.data.message);
+};
+
+
+export const getChatMessageDetails = async (
+    messageId: string,
+    signal?: AbortSignal
+): Promise<ChatMessageDetails> => {
+    const response = await choirApi.get<ChatMessageDetails>(
+        `/chat/${messageId}/details`,
+        { signal }
+    );
+
+    return response.data;
 };
 
 export const toggleReaction = async (

@@ -1,6 +1,6 @@
 // src/screens/blog/BlogListScreen.tsx
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -11,7 +11,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { BlogStackParamList } from '../../navigation/BlogNavigator';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -21,6 +21,10 @@ import {
     useBlogPostsQuery,
     useDeleteBlogMutation
 } from '../../hooks/query/useBlogData';
+import {
+    useMarkNotificationsReadMutation,
+    useNotificationsQuery
+} from '../../hooks/query/useNotificationsData';
 import type { BlogPost } from '../../types/blog';
 
 export const BlogListScreen = () => {
@@ -28,9 +32,21 @@ export const BlogListScreen = () => {
     const colors = useTheme().currentTheme;
     const postsQuery = useBlogPostsQuery();
     const deleteMutation = useDeleteBlogMutation();
+    const notificationReadMutation = useMarkNotificationsReadMutation();
+    const notificationsQuery = useNotificationsQuery();
+    const unreadBlogNotifications = notificationsQuery.data?.summary.blog ?? 0;
+    const isFocused = useIsFocused();
     const user = useAuthStore((state) => state.user);
     const posts = postsQuery.data ?? [];
     const canManage = user?.role === 'ADMIN' || user?.role === 'EDITOR';
+
+    useEffect(() => {
+        if (!isFocused || unreadBlogNotifications === 0 || notificationReadMutation.isPending) {
+            return;
+        }
+
+        notificationReadMutation.mutate('BLOG');
+    }, [isFocused, unreadBlogNotifications]);
 
     const handleDelete = (id: string): void => {
         const confirmDelete = (): void => {

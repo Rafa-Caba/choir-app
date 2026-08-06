@@ -7,7 +7,7 @@ import { ChatMediaScreen } from '../screens/chat/ChatMediaScreen';
 import { ChatScreen } from '../screens/chat/ChatScreen';
 
 export type ChatStackParamList = {
-    ChatScreen: undefined;
+    ChatScreen: { readonly focusMessageId?: string } | undefined;
     ChatMediaScreen: undefined;
 };
 
