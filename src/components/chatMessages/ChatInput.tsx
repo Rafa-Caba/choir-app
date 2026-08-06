@@ -45,6 +45,17 @@ interface SelectedMedia extends ChatAttachment {
 
 type AttachmentPickerAction = 'media' | 'file';
 type RecordingState = 'idle' | 'starting' | 'recording' | 'paused' | 'stopping';
+type AttachmentFallback = Pick<ChatAttachment, 'filename' | 'mimeType'>;
+
+const imageFallback: AttachmentFallback = {
+    filename: 'chat-image.jpg',
+    mimeType: 'image/jpeg'
+};
+
+const videoFallback: AttachmentFallback = {
+    filename: 'chat-video.mp4',
+    mimeType: 'video/mp4'
+};
 
 const pickerPresentationDelayMs = Platform.OS === 'ios' ? 300 : 80;
 const recordingProgressIntervalMs = 200;
@@ -53,6 +64,7 @@ const formatDuration = (durationMillis: number): string => {
     const totalSeconds = Math.max(0, Math.floor(durationMillis / 1_000));
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
+
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
@@ -68,22 +80,34 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
     const [selectedStickerPackId, setSelectedStickerPackId] = useState(
         CHAT_STICKER_PACKS[0]?.id ?? ''
     );
-    const [pendingPickerAction, setPendingPickerAction] = useState<AttachmentPickerAction | null>(null);
+    const [pendingPickerAction, setPendingPickerAction] =
+        useState<AttachmentPickerAction | null>(null);
+
     const replyingTo = useChatStore((state) => state.replyingTo);
     const setReplyingTo = useChatStore((state) => state.setReplyingTo);
     const colors = useTheme().currentTheme;
-    const recordingActive = recordingState === 'recording' || recordingState === 'paused';
-    const recordingBusy = recordingState === 'starting' || recordingState === 'stopping';
+
+    const recordingActive =
+        recordingState === 'recording' || recordingState === 'paused';
+    const recordingBusy =
+        recordingState === 'starting' || recordingState === 'stopping';
     const recordingPaused = recordingState === 'paused';
-    const selectedStickerPack = CHAT_STICKER_PACKS.find(
-        (pack) => pack.id === selectedStickerPackId
-    ) ?? CHAT_STICKER_PACKS[0];
+
+    const selectedStickerPack =
+        CHAT_STICKER_PACKS.find(
+            (pack) => pack.id === selectedStickerPackId
+        ) ?? CHAT_STICKER_PACKS[0];
 
     const waveformHeights = useMemo(
-        () => Array.from({ length: 28 }, (_value, index) => {
-            const phase = Math.floor(recordingDurationMillis / recordingProgressIntervalMs) + index;
-            return 7 + ((phase * 7 + index * 3) % 20);
-        }),
+        () =>
+            Array.from({ length: 28 }, (_value, index) => {
+                const phase =
+                    Math.floor(
+                        recordingDurationMillis / recordingProgressIntervalMs
+                    ) + index;
+
+                return 7 + ((phase * 7 + index * 3) % 20);
+            }),
         [recordingDurationMillis]
     );
 
@@ -93,7 +117,9 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             recordingRef.current = null;
 
             if (activeRecording) {
-                void activeRecording.stopAndUnloadAsync().catch(() => undefined);
+                void activeRecording
+                    .stopAndUnloadAsync()
+                    .catch(() => undefined);
             }
 
             void Audio.setAudioModeAsync({
@@ -112,6 +138,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
         }
 
         const action = pendingPickerAction;
+
         const timeout = setTimeout(() => {
             setPendingPickerAction(null);
 
@@ -171,23 +198,35 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             });
 
             const nextRecording = new Audio.Recording();
-            nextRecording.setProgressUpdateInterval(recordingProgressIntervalMs);
+
+            nextRecording.setProgressUpdateInterval(
+                recordingProgressIntervalMs
+            );
+
             nextRecording.setOnRecordingStatusUpdate((status) => {
                 if (status.canRecord) {
                     setRecordingDurationMillis(status.durationMillis);
                 }
             });
+
             await nextRecording.prepareToRecordAsync(
                 Audio.RecordingOptionsPresets.HIGH_QUALITY
             );
+
             await nextRecording.startAsync();
+
             recordingRef.current = nextRecording;
             setRecordingState('recording');
         } catch (error) {
             resetRecordingState();
             await resetAudioMode().catch(() => undefined);
+
             console.error('Chat audio recording start failed', error);
-            Alert.alert('Error', 'No fue posible iniciar la grabación. Intenta nuevamente.');
+
+            Alert.alert(
+                'Error',
+                'No fue posible iniciar la grabación. Intenta nuevamente.'
+            );
         }
     };
 
@@ -255,7 +294,9 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
 
         try {
             await activeRecording.stopAndUnloadAsync();
+
             const uri = activeRecording.getURI();
+
             await resetAudioMode();
 
             if (!uri) {
@@ -263,6 +304,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             }
 
             setSending(true);
+
             await onSend({
                 text: '',
                 attachment: {
@@ -289,7 +331,8 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                 mediaTypes: ImagePicker.MediaTypeOptions.All,
                 quality: 0.7,
                 videoMaxDuration: 60,
-                presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
+                presentationStyle:
+                    ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
             });
 
             if (result.canceled) {
@@ -299,6 +342,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             const asset = result.assets[0];
             const isVideo = asset.type === 'video';
             const fallback = isVideo ? videoFallback : imageFallback;
+
             setSelectedMedia({
                 uri: asset.uri,
                 type: isVideo ? 'video' : 'image',
@@ -307,7 +351,10 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             });
         } catch (error) {
             console.error('Chat media picker failed', error);
-            Alert.alert('Error', 'No fue posible abrir la galería del dispositivo.');
+            Alert.alert(
+                'Error',
+                'No fue posible abrir la galería del dispositivo.'
+            );
         }
     }
 
@@ -319,7 +366,8 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
         Keyboard.dismiss();
 
         try {
-            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            const permission =
+                await ImagePicker.requestCameraPermissionsAsync();
 
             if (permission.status !== 'granted') {
                 Alert.alert(
@@ -332,7 +380,8 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             const result = await ImagePicker.launchCameraAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 quality: 0.7,
-                presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
+                presentationStyle:
+                    ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
             });
 
             if (result.canceled) {
@@ -340,6 +389,7 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             }
 
             const asset = result.assets[0];
+
             setSelectedMedia({
                 uri: asset.uri,
                 type: 'image',
@@ -374,19 +424,26 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             }
 
             const asset = result.assets[0];
+
             setSelectedMedia({
                 uri: asset.uri,
                 type: 'file',
                 filename: asset.name,
-                mimeType: asset.mimeType ?? 'application/octet-stream'
+                mimeType:
+                    asset.mimeType ?? 'application/octet-stream'
             });
         } catch (error) {
             console.error('Chat document picker failed', error);
-            Alert.alert('Error', 'No fue posible abrir el selector de archivos.');
+            Alert.alert(
+                'Error',
+                'No fue posible abrir el selector de archivos.'
+            );
         }
     }
 
-    const requestAttachmentPicker = (action: AttachmentPickerAction): void => {
+    const requestAttachmentPicker = (
+        action: AttachmentPickerAction
+    ): void => {
         if (sending || recordingState !== 'idle') {
             return;
         }
@@ -403,7 +460,11 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
     const onSubmit = async (): Promise<void> => {
         const textToSend = message.trim();
 
-        if (sending || recordingState !== 'idle' || (textToSend.length === 0 && !selectedMedia)) {
+        if (
+            sending ||
+            recordingState !== 'idle' ||
+            (textToSend.length === 0 && !selectedMedia)
+        ) {
             return;
         }
 
@@ -420,15 +481,21 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                 replyToId: replyingTo?.id
             });
         } catch {
-            setMessage((current) => current.length === 0 ? textToSend : current);
+            setMessage((current) =>
+                current.length === 0 ? textToSend : current
+            );
+
             setSelectedMedia((current) => current ?? mediaToSend);
+
             Alert.alert('Error', 'No fue posible enviar el mensaje.');
         } finally {
             setSending(false);
         }
     };
 
-    const sendSticker = async (stickerValue: string): Promise<void> => {
+    const sendSticker = async (
+        stickerValue: string
+    ): Promise<void> => {
         if (sending || recordingState !== 'idle') {
             return;
         }
@@ -456,10 +523,17 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
 
     const getPreviewIcon = (): keyof typeof Ionicons.glyphMap => {
         switch (selectedMedia?.type) {
-            case 'video': return 'videocam';
-            case 'image': return 'image';
-            case 'file': return 'document-attach';
-            default: return 'attach';
+            case 'video':
+                return 'videocam';
+
+            case 'image':
+                return 'image';
+
+            case 'file':
+                return 'document-attach';
+
+            default:
+                return 'attach';
         }
     };
 
@@ -468,9 +542,11 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
             return '';
         }
 
-        const contentPreview = (typeof replyingTo.content === 'string'
-            ? replyingTo.content
-            : getPreviewFromRichText(replyingTo.content)).trim();
+        const contentPreview = (
+            typeof replyingTo.content === 'string'
+                ? replyingTo.content
+                : getPreviewFromRichText(replyingTo.content)
+        ).trim();
 
         if (contentPreview) {
             return contentPreview;
@@ -479,15 +555,22 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
         switch (replyingTo.type) {
             case 'IMAGE':
                 return '📷 Foto';
+
             case 'VIDEO':
             case 'MEDIA':
                 return '🎥 Video';
+
             case 'AUDIO':
                 return '🎤 Nota de voz';
+
             case 'FILE':
-                return replyingTo.filename ? `📎 ${replyingTo.filename}` : '📎 Archivo';
+                return replyingTo.filename
+                    ? `📎 ${replyingTo.filename}`
+                    : '📎 Archivo';
+
             case 'STICKER':
                 return '✨ Sticker';
+
             default:
                 return 'Mensaje original';
         }
@@ -508,31 +591,91 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                 >
                     <TouchableOpacity
                         activeOpacity={1}
-                        style={[styles.modalContent, { backgroundColor: colors.cardColor }]}
+                        style={[
+                            styles.modalContent,
+                            {
+                                backgroundColor: colors.cardColor
+                            }
+                        ]}
                     >
-                        <Text style={[styles.modalTitle, { color: colors.textColor }]}>Adjuntar contenido</Text>
+                        <Text
+                            style={[
+                                styles.modalTitle,
+                                {
+                                    color: colors.textColor
+                                }
+                            ]}
+                        >
+                            Adjuntar contenido
+                        </Text>
 
                         <TouchableOpacity
                             style={styles.modalOption}
-                            onPress={() => requestAttachmentPicker('media')}
+                            onPress={() =>
+                                requestAttachmentPicker('media')
+                            }
                         >
-                            <Ionicons name="images-outline" size={24} color={colors.primaryColor} />
-                            <Text style={[styles.modalOptionText, { color: colors.textColor }]}>Imagen o video</Text>
+                            <Ionicons
+                                name="images-outline"
+                                size={24}
+                                color={colors.primaryColor}
+                            />
+
+                            <Text
+                                style={[
+                                    styles.modalOptionText,
+                                    {
+                                        color: colors.textColor
+                                    }
+                                ]}
+                            >
+                                Imagen o video
+                            </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
                             style={styles.modalOption}
-                            onPress={() => requestAttachmentPicker('file')}
+                            onPress={() =>
+                                requestAttachmentPicker('file')
+                            }
                         >
-                            <Ionicons name="document-attach-outline" size={24} color={colors.primaryColor} />
-                            <Text style={[styles.modalOptionText, { color: colors.textColor }]}>Documento</Text>
+                            <Ionicons
+                                name="document-attach-outline"
+                                size={24}
+                                color={colors.primaryColor}
+                            />
+
+                            <Text
+                                style={[
+                                    styles.modalOptionText,
+                                    {
+                                        color: colors.textColor
+                                    }
+                                ]}
+                            >
+                                Documento
+                            </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            style={[styles.modalCancel, { borderColor: colors.borderColor }]}
+                            style={[
+                                styles.modalCancel,
+                                {
+                                    borderColor: colors.borderColor
+                                }
+                            ]}
                             onPress={closeAttachmentModal}
                         >
-                            <Text style={[styles.modalCancelText, { color: colors.secondaryTextColor }]}>Cancelar</Text>
+                            <Text
+                                style={[
+                                    styles.modalCancelText,
+                                    {
+                                        color: colors.secondaryTextColor
+                                    }
+                                ]}
+                            >
+                                Cancelar
+                            </Text>
                         </TouchableOpacity>
                     </TouchableOpacity>
                 </TouchableOpacity>
@@ -551,37 +694,79 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                 >
                     <TouchableOpacity
                         activeOpacity={1}
-                        style={[styles.stickerModalContent, { backgroundColor: colors.cardColor }]}
+                        style={[
+                            styles.stickerModalContent,
+                            {
+                                backgroundColor: colors.cardColor
+                            }
+                        ]}
                     >
                         <View style={styles.stickerHeader}>
-                            <Text style={[styles.modalTitle, { color: colors.textColor }]}>Stickers</Text>
-                            <TouchableOpacity onPress={() => setShowStickerModal(false)}>
-                                <Ionicons name="close" size={24} color={colors.textColor} />
+                            <Text
+                                style={[
+                                    styles.modalTitle,
+                                    {
+                                        color: colors.textColor
+                                    }
+                                ]}
+                            >
+                                Stickers
+                            </Text>
+
+                            <TouchableOpacity
+                                onPress={() =>
+                                    setShowStickerModal(false)
+                                }
+                            >
+                                <Ionicons
+                                    name="close"
+                                    size={24}
+                                    color={colors.textColor}
+                                />
                             </TouchableOpacity>
                         </View>
+
                         <ScrollView
                             horizontal
                             showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.stickerPackTabs}
+                            contentContainerStyle={
+                                styles.stickerPackTabs
+                            }
                         >
                             {CHAT_STICKER_PACKS.map((pack) => {
-                                const selected = pack.id === selectedStickerPack?.id;
+                                const selected =
+                                    pack.id ===
+                                    selectedStickerPack?.id;
+
                                 return (
                                     <TouchableOpacity
                                         key={pack.id}
                                         style={[
                                             styles.stickerPackTab,
                                             {
-                                                backgroundColor: selected
-                                                    ? colors.primaryColor
-                                                    : colors.backgroundColor,
-                                                borderColor: colors.borderColor
+                                                backgroundColor:
+                                                    selected
+                                                        ? colors.primaryColor
+                                                        : colors.backgroundColor,
+                                                borderColor:
+                                                    colors.borderColor
                                             }
                                         ]}
-                                        onPress={() => setSelectedStickerPackId(pack.id)}
+                                        onPress={() =>
+                                            setSelectedStickerPackId(
+                                                pack.id
+                                            )
+                                        }
                                         accessibilityLabel={`Abrir stickers de ${pack.label}`}
                                     >
-                                        <Text style={styles.stickerPackIcon}>{pack.icon}</Text>
+                                        <Text
+                                            style={
+                                                styles.stickerPackIcon
+                                            }
+                                        >
+                                            {pack.icon}
+                                        </Text>
+
                                         <Text
                                             style={[
                                                 styles.stickerPackLabel,
@@ -604,49 +789,126 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                             contentContainerStyle={styles.stickerGrid}
                             showsVerticalScrollIndicator={false}
                         >
-                            {(selectedStickerPack?.stickers ?? []).map((sticker) => (
-                                <TouchableOpacity
-                                    key={sticker.id}
-                                    style={[styles.stickerButton, { backgroundColor: colors.backgroundColor }]}
-                                    onPress={() => void sendSticker(sticker.value)}
-                                    accessibilityLabel={`Enviar sticker ${sticker.label}`}
-                                >
-                                    <Text style={styles.stickerText}>{sticker.value}</Text>
-                                </TouchableOpacity>
-                            ))}
+                            {(selectedStickerPack?.stickers ?? []).map(
+                                (sticker) => (
+                                    <TouchableOpacity
+                                        key={sticker.id}
+                                        style={[
+                                            styles.stickerButton,
+                                            {
+                                                backgroundColor:
+                                                    colors.backgroundColor
+                                            }
+                                        ]}
+                                        onPress={() =>
+                                            void sendSticker(
+                                                sticker.value
+                                            )
+                                        }
+                                        accessibilityLabel={`Enviar sticker ${sticker.label}`}
+                                    >
+                                        <Text
+                                            style={
+                                                styles.stickerText
+                                            }
+                                        >
+                                            {sticker.value}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )
+                            )}
                         </ScrollView>
                     </TouchableOpacity>
                 </TouchableOpacity>
             </Modal>
 
             {replyingTo && (
-                <View style={[styles.replyBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}> 
-                    <View style={[styles.replyBarLine, { backgroundColor: colors.primaryColor }]} />
+                <View
+                    style={[
+                        styles.replyBar,
+                        {
+                            backgroundColor: colors.cardColor,
+                            borderTopColor: colors.borderColor
+                        }
+                    ]}
+                >
+                    <View
+                        style={[
+                            styles.replyBarLine,
+                            {
+                                backgroundColor: colors.primaryColor
+                            }
+                        ]}
+                    />
+
                     <View style={styles.flexOne}>
-                        <Text style={[styles.replyBarName, { color: colors.primaryColor }]}> 
-                            Respondiendo a {replyingTo.author.name.split(' ')[0] || 'Usuario'}
+                        <Text
+                            style={[
+                                styles.replyBarName,
+                                {
+                                    color: colors.primaryColor
+                                }
+                            ]}
+                        >
+                            Respondiendo a{' '}
+                            {replyingTo.author.name.split(' ')[0] ||
+                                'Usuario'}
                         </Text>
-                        <Text numberOfLines={2} style={[styles.replyBarText, { color: colors.secondaryTextColor }]}> 
+
+                        <Text
+                            numberOfLines={2}
+                            style={[
+                                styles.replyBarText,
+                                {
+                                    color: colors.secondaryTextColor
+                                }
+                            ]}
+                        >
                             {getReplyingPreview()}
                         </Text>
                     </View>
-                    <TouchableOpacity onPress={() => setReplyingTo(null)}>
-                        <Ionicons name="close-circle" size={24} color={colors.textColor} />
+
+                    <TouchableOpacity
+                        onPress={() => setReplyingTo(null)}
+                    >
+                        <Ionicons
+                            name="close-circle"
+                            size={24}
+                            color={colors.textColor}
+                        />
                     </TouchableOpacity>
                 </View>
             )}
 
             {selectedMedia && (
-                <View style={[styles.imagePreviewBar, { backgroundColor: colors.cardColor, borderTopColor: colors.borderColor }]}> 
+                <View
+                    style={[
+                        styles.imagePreviewBar,
+                        {
+                            backgroundColor: colors.cardColor,
+                            borderTopColor: colors.borderColor
+                        }
+                    ]}
+                >
                     <View style={styles.previewRow}>
                         {selectedMedia.type === 'image' ? (
                             <Image
-                                source={{ uri: selectedMedia.uri }}
+                                source={{
+                                    uri: selectedMedia.uri
+                                }}
                                 style={styles.previewThumbnail}
                                 resizeMode="cover"
                             />
                         ) : (
-                            <View style={[styles.previewFallback, { backgroundColor: colors.backgroundColor }]}> 
+                            <View
+                                style={[
+                                    styles.previewFallback,
+                                    {
+                                        backgroundColor:
+                                            colors.backgroundColor
+                                    }
+                                ]}
+                            >
                                 <Ionicons
                                     name={getPreviewIcon()}
                                     size={24}
@@ -654,11 +916,29 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                                 />
                             </View>
                         )}
+
                         <View style={styles.previewTextContainer}>
-                            <Text style={[styles.previewText, { color: colors.textColor }]} numberOfLines={1}>
+                            <Text
+                                style={[
+                                    styles.previewText,
+                                    {
+                                        color: colors.textColor
+                                    }
+                                ]}
+                                numberOfLines={1}
+                            >
                                 {selectedMedia.filename}
                             </Text>
-                            <Text style={[styles.previewType, { color: colors.secondaryTextColor }]}> 
+
+                            <Text
+                                style={[
+                                    styles.previewType,
+                                    {
+                                        color:
+                                            colors.secondaryTextColor
+                                    }
+                                ]}
+                            >
                                 {selectedMedia.type === 'image'
                                     ? 'Imagen lista para enviar'
                                     : selectedMedia.type === 'video'
@@ -667,13 +947,28 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                             </Text>
                         </View>
                     </View>
-                    <TouchableOpacity onPress={() => setSelectedMedia(null)} style={styles.removeImageBtn}>
-                        <Ionicons name="close-circle" size={24} color={colors.textColor} />
+
+                    <TouchableOpacity
+                        onPress={() => setSelectedMedia(null)}
+                        style={styles.removeImageBtn}
+                    >
+                        <Ionicons
+                            name="close-circle"
+                            size={24}
+                            color={colors.textColor}
+                        />
                     </TouchableOpacity>
                 </View>
             )}
 
-            <View style={[styles.container, { backgroundColor: colors.primaryColor }]}> 
+            <View
+                style={[
+                    styles.container,
+                    {
+                        backgroundColor: colors.primaryColor
+                    }
+                ]}
+            >
                 {recordingActive || recordingBusy ? (
                     <View style={styles.recordingToolbar}>
                         <TouchableOpacity
@@ -682,42 +977,82 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                             disabled={recordingBusy || sending}
                             accessibilityLabel="Eliminar nota de voz"
                         >
-                            <Ionicons name="trash-outline" size={26} color="#ff3b30" />
+                            <Ionicons
+                                name="trash-outline"
+                                size={26}
+                                color="#ff3b30"
+                            />
                         </TouchableOpacity>
 
-                        <View style={[styles.recordingTrack, { backgroundColor: colors.cardColor }]}> 
-                            <Text style={[styles.recordingDuration, { color: colors.textColor }]}> 
-                                {formatDuration(recordingDurationMillis)}
+                        <View
+                            style={[
+                                styles.recordingTrack,
+                                {
+                                    backgroundColor:
+                                        colors.cardColor
+                                }
+                            ]}
+                        >
+                            <Text
+                                style={[
+                                    styles.recordingDuration,
+                                    {
+                                        color: colors.textColor
+                                    }
+                                ]}
+                            >
+                                {formatDuration(
+                                    recordingDurationMillis
+                                )}
                             </Text>
+
                             <View style={styles.waveform}>
-                                {waveformHeights.map((height, index) => (
-                                    <View
-                                        key={`${index}-${height}`}
-                                        style={[
-                                            styles.waveformBar,
-                                            {
-                                                height,
-                                                backgroundColor: recordingPaused
-                                                    ? colors.secondaryTextColor
-                                                    : colors.primaryColor
-                                            }
-                                        ]}
-                                    />
-                                ))}
+                                {waveformHeights.map(
+                                    (height, index) => (
+                                        <View
+                                            key={`${index}-${height}`}
+                                            style={[
+                                                styles.waveformBar,
+                                                {
+                                                    height,
+                                                    backgroundColor:
+                                                        recordingPaused
+                                                            ? colors.secondaryTextColor
+                                                            : colors.primaryColor
+                                                }
+                                            ]}
+                                        />
+                                    )
+                                )}
                             </View>
                         </View>
 
                         <TouchableOpacity
                             style={styles.recordingAction}
-                            onPress={() => void (recordingPaused ? resumeRecording() : pauseRecording())}
+                            onPress={() =>
+                                void (recordingPaused
+                                    ? resumeRecording()
+                                    : pauseRecording())
+                            }
                             disabled={recordingBusy || sending}
-                            accessibilityLabel={recordingPaused ? 'Continuar grabación' : 'Pausar grabación'}
+                            accessibilityLabel={
+                                recordingPaused
+                                    ? 'Continuar grabación'
+                                    : 'Pausar grabación'
+                            }
                         >
                             {recordingBusy ? (
-                                <ActivityIndicator size="small" color={colors.buttonTextColor} />
+                                <ActivityIndicator
+                                    size="small"
+                                    color={colors.buttonTextColor}
+                                />
                             ) : (
                                 <Ionicons
-                                    name={recordingPaused ? 'play' : 'pause'}
+                                    name={
+                                        recordingPaused
+                                            ? 'play'
+                                            : 'pause'
+                                    }
                                     size={24}
                                     color={colors.buttonTextColor}
                                 />
@@ -725,28 +1060,47 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            style={[styles.recordingSend, { backgroundColor: colors.buttonTextColor }]}
+                            style={[
+                                styles.recordingSend,
+                                {
+                                    backgroundColor:
+                                        colors.buttonTextColor
+                                }
+                            ]}
                             onPress={() => void sendRecording()}
                             disabled={recordingBusy || sending}
                             accessibilityLabel="Enviar nota de voz"
                         >
                             {sending ? (
-                                <ActivityIndicator size="small" color={colors.primaryColor} />
+                                <ActivityIndicator
+                                    size="small"
+                                    color={colors.primaryColor}
+                                />
                             ) : (
-                                <Ionicons name="send" size={23} color={colors.primaryColor} />
+                                <Ionicons
+                                    name="send"
+                                    size={23}
+                                    color={colors.primaryColor}
+                                />
                             )}
                         </TouchableOpacity>
                     </View>
                 ) : (
                     <View style={styles.itemInput}>
                         <TouchableOpacity
-                            onPress={() => setShowAttachmentModal(true)}
+                            onPress={() =>
+                                setShowAttachmentModal(true)
+                            }
                             style={styles.attachBtn}
                             disabled={sending}
                             activeOpacity={0.7}
                             accessibilityLabel="Adjuntar contenido"
                         >
-                            <Ionicons name="add-circle-outline" size={32} color={colors.buttonTextColor} />
+                            <Ionicons
+                                name="add-circle-outline"
+                                size={32}
+                                color={colors.buttonTextColor}
+                            />
                         </TouchableOpacity>
 
                         <View
@@ -760,7 +1114,12 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                             ]}
                         >
                             <TextInput
-                                style={[styles.input, { color: colors.buttonTextColor }]}
+                                style={[
+                                    styles.input,
+                                    {
+                                        color: colors.buttonTextColor
+                                    }
+                                ]}
                                 placeholder="Mensaje..."
                                 placeholderTextColor="rgba(255,255,255,0.7)"
                                 multiline
@@ -772,11 +1131,16 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                                 spellCheck
                                 autoCapitalize="sentences"
                                 keyboardType="default"
-                                keyboardAppearance={colors.isDark ? 'dark' : 'light'}
+                                keyboardAppearance={
+                                    colors.isDark
+                                        ? 'dark'
+                                        : 'light'
+                                }
                                 editable={!sending}
                                 blurOnSubmit={false}
                                 scrollEnabled
                             />
+
                             <TouchableOpacity
                                 style={styles.stickerIcon}
                                 onPress={() => {
@@ -786,11 +1150,16 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                                 disabled={sending}
                                 accessibilityLabel="Abrir stickers"
                             >
-                                <Ionicons name="happy-outline" size={24} color={colors.buttonTextColor} />
+                                <Ionicons
+                                    name="happy-outline"
+                                    size={24}
+                                    color={colors.buttonTextColor}
+                                />
                             </TouchableOpacity>
                         </View>
 
-                        {message.trim().length > 0 || selectedMedia ? (
+                        {message.trim().length > 0 ||
+                            selectedMedia ? (
                             <TouchableOpacity
                                 style={styles.iconSend}
                                 onPress={() => void onSubmit()}
@@ -799,33 +1168,66 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
                                 accessibilityLabel="Enviar mensaje"
                             >
                                 {sending ? (
-                                    <ActivityIndicator size="small" color={colors.buttonTextColor} />
+                                    <ActivityIndicator
+                                        size="small"
+                                        color={
+                                            colors.buttonTextColor
+                                        }
+                                    />
                                 ) : (
-                                    <Ionicons name="send" color={colors.buttonTextColor} size={25} />
+                                    <Ionicons
+                                        name="send"
+                                        color={
+                                            colors.buttonTextColor
+                                        }
+                                        size={25}
+                                    />
                                 )}
                             </TouchableOpacity>
                         ) : (
                             <>
                                 <TouchableOpacity
                                     style={styles.compactAction}
-                                    onPress={() => void pickCameraImage()}
+                                    onPress={() =>
+                                        void pickCameraImage()
+                                    }
                                     disabled={sending}
                                     activeOpacity={0.7}
                                     accessibilityLabel="Tomar foto"
                                 >
-                                    <Ionicons name="camera-outline" color={colors.buttonTextColor} size={25} />
+                                    <Ionicons
+                                        name="camera-outline"
+                                        color={
+                                            colors.buttonTextColor
+                                        }
+                                        size={25}
+                                    />
                                 </TouchableOpacity>
+
                                 <TouchableOpacity
                                     style={styles.compactAction}
-                                    onPress={() => void startRecording()}
+                                    onPress={() =>
+                                        void startRecording()
+                                    }
                                     disabled={sending}
                                     activeOpacity={0.7}
                                     accessibilityLabel="Iniciar nota de voz"
                                 >
                                     {sending ? (
-                                        <ActivityIndicator size="small" color={colors.buttonTextColor} />
+                                        <ActivityIndicator
+                                            size="small"
+                                            color={
+                                                colors.buttonTextColor
+                                            }
+                                        />
                                     ) : (
-                                        <Ionicons name="mic-outline" color={colors.buttonTextColor} size={26} />
+                                        <Ionicons
+                                            name="mic-outline"
+                                            color={
+                                                colors.buttonTextColor
+                                            }
+                                            size={26}
+                                        />
                                     )}
                                 </TouchableOpacity>
                             </>
@@ -838,14 +1240,19 @@ export const ChatInput = ({ onSend, onTyping, onFocus }: Props) => {
 };
 
 const styles = StyleSheet.create({
-    flexOne: { flex: 1 },
+    flexOne: {
+        flex: 1
+    },
     container: {
         width: '100%',
         paddingBottom: 8,
         paddingHorizontal: 10,
         paddingTop: 8
     },
-    itemInput: { flexDirection: 'row', alignItems: 'flex-end' },
+    itemInput: {
+        flexDirection: 'row',
+        alignItems: 'flex-end'
+    },
     inputShell: {
         flex: 1,
         minHeight: 42,
@@ -871,7 +1278,10 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center'
     },
-    attachBtn: { marginVertical: 'auto', paddingHorizontal: 3 },
+    attachBtn: {
+        marginVertical: 'auto',
+        paddingHorizontal: 3
+    },
     iconSend: {
         minWidth: 42,
         minHeight: 42,
@@ -905,7 +1315,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 12
     },
-    recordingDuration: { width: 42, fontSize: 13, fontWeight: '700' },
+    recordingDuration: {
+        width: 42,
+        fontSize: 13,
+        fontWeight: '700'
+    },
     waveform: {
         flex: 1,
         height: 30,
@@ -914,7 +1328,11 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         overflow: 'hidden'
     },
-    waveformBar: { width: 2, borderRadius: 1, opacity: 0.8 },
+    waveformBar: {
+        width: 2,
+        borderRadius: 1,
+        opacity: 0.8
+    },
     recordingSend: {
         width: 42,
         height: 42,
@@ -923,10 +1341,26 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center'
     },
-    replyBar: { flexDirection: 'row', alignItems: 'center', padding: 10, borderTopWidth: 1 },
-    replyBarLine: { width: 4, height: '100%', marginRight: 10, borderRadius: 2 },
-    replyBarName: { fontWeight: 'bold', fontSize: 12, marginBottom: 2 },
-    replyBarText: { fontSize: 12 },
+    replyBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 10,
+        borderTopWidth: 1
+    },
+    replyBarLine: {
+        width: 4,
+        height: '100%',
+        marginRight: 10,
+        borderRadius: 2
+    },
+    replyBarName: {
+        fontWeight: 'bold',
+        fontSize: 12,
+        marginBottom: 2
+    },
+    replyBarText: {
+        fontSize: 12
+    },
     imagePreviewBar: {
         padding: 10,
         flexDirection: 'row',
@@ -934,8 +1368,17 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderTopWidth: 1
     },
-    previewRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    previewThumbnail: { width: 54, height: 54, borderRadius: 10, marginRight: 10 },
+    previewRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1
+    },
+    previewThumbnail: {
+        width: 54,
+        height: 54,
+        borderRadius: 10,
+        marginRight: 10
+    },
     previewFallback: {
         width: 54,
         height: 54,
@@ -944,12 +1387,30 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center'
     },
-    previewTextContainer: { flex: 1 },
-    previewText: { fontWeight: '600' },
-    previewType: { fontSize: 12, marginTop: 3 },
-    removeImageBtn: { marginLeft: 10 },
-    modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-    modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%' },
+    previewTextContainer: {
+        flex: 1
+    },
+    previewText: {
+        fontWeight: '600'
+    },
+    previewType: {
+        fontSize: 12,
+        marginTop: 3
+    },
+    removeImageBtn: {
+        marginLeft: 10
+    },
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.5)'
+    },
+    modalContent: {
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        padding: 20,
+        width: '100%'
+    },
     stickerModalContent: {
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
@@ -957,8 +1418,14 @@ const styles = StyleSheet.create({
         width: '100%',
         maxHeight: '72%'
     },
-    stickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    stickerPackTabs: { paddingBottom: 14 },
+    stickerHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+    },
+    stickerPackTabs: {
+        paddingBottom: 14
+    },
     stickerPackTab: {
         minWidth: 96,
         marginRight: 8,
@@ -970,10 +1437,23 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center'
     },
-    stickerPackIcon: { fontSize: 18, marginRight: 5 },
-    stickerPackLabel: { fontSize: 12, fontWeight: '700' },
-    stickerGridScroll: { maxHeight: 320 },
-    stickerGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, paddingBottom: 8 },
+    stickerPackIcon: {
+        fontSize: 18,
+        marginRight: 5
+    },
+    stickerPackLabel: {
+        fontSize: 12,
+        fontWeight: '700'
+    },
+    stickerGridScroll: {
+        maxHeight: 320
+    },
+    stickerGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginHorizontal: -4,
+        paddingBottom: 8
+    },
     stickerButton: {
         width: '23%',
         aspectRatio: 1,
@@ -982,10 +1462,30 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center'
     },
-    stickerText: { fontSize: 38 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-    modalOption: { flexDirection: 'row', paddingVertical: 15, alignItems: 'center' },
-    modalOptionText: { marginLeft: 15, fontSize: 16 },
-    modalCancel: { paddingVertical: 15, alignItems: 'center', borderTopWidth: 1, marginTop: 10 },
-    modalCancelText: { fontWeight: '600' }
+    stickerText: {
+        fontSize: 38
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 15
+    },
+    modalOption: {
+        flexDirection: 'row',
+        paddingVertical: 15,
+        alignItems: 'center'
+    },
+    modalOptionText: {
+        marginLeft: 15,
+        fontSize: 16
+    },
+    modalCancel: {
+        paddingVertical: 15,
+        alignItems: 'center',
+        borderTopWidth: 1,
+        marginTop: 10
+    },
+    modalCancelText: {
+        fontWeight: '600'
+    }
 });

@@ -1,10 +1,18 @@
 // src/screens/gallery/MediaDetailScreen.tsx
-
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
-    View, Image, TouchableOpacity, StyleSheet, Text,
-    Alert, ActivityIndicator, Modal, Switch, ScrollView, Platform,
-    TouchableWithoutFeedback
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import {
     useNavigation,
@@ -13,10 +21,10 @@ import {
     type RouteProp
 } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Video, ResizeMode } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '../../store/useAuthStore';
 import {
@@ -51,6 +59,7 @@ export const MediaDetailScreen = () => {
     const lastTap = useRef<number | null>(null);
 
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'EDITOR';
+    const switchScaleStyle = useMemo(() => (Platform.OS === 'ios' ? styles.iosSwitch : undefined), []);
 
     const getThumbnail = (url: string) => {
         if (!url) return '';
@@ -133,20 +142,14 @@ export const MediaDetailScreen = () => {
 
     const renderSwitch = (label: string, key: GalleryFlag, value: boolean) => (
         <View style={styles.switchRow}>
-            <Text
-                numberOfLines={2}
-                style={[styles.switchLabel, { color: colors.textColor }]}
-            >
-                {label}
-            </Text>
+            <Text style={[styles.switchLabel, { color: colors.textColor }]}>{label}</Text>
             <View style={styles.switchControlContainer}>
                 <Switch
-                    style={styles.switchControl}
+                    style={switchScaleStyle}
                     value={value}
                     onValueChange={(nextValue) => void toggleFlag(key, nextValue)}
                     trackColor={{ false: '#767577', true: colors.primaryColor }}
                     thumbColor={value ? colors.buttonTextColor : '#f4f3f4'}
-                    ios_backgroundColor="#767577"
                     disabled={flagsMutation.isPending}
                 />
             </View>
@@ -243,7 +246,7 @@ export const MediaDetailScreen = () => {
                             styles.modalContent,
                             {
                                 backgroundColor: colors.cardColor,
-                                paddingBottom: Math.max(insets.bottom, 20)
+                                paddingBottom: Math.max(insets.bottom, 16) + 16
                             }
                         ]}
                     >
@@ -255,8 +258,9 @@ export const MediaDetailScreen = () => {
                         </View>
 
                         <ScrollView
-                            contentContainerStyle={styles.settingsScrollContent}
+                            bounces={false}
                             showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.modalScrollContent}
                         >
                             <Text style={[styles.sectionTitle, { color: colors.primaryColor }]}>Ubicación</Text>
                             {renderSwitch("Logo de la app", "imageLogo", media.imageLogo)}
@@ -298,9 +302,13 @@ const styles = StyleSheet.create({
         borderTopRightRadius: 20,
         paddingTop: 20,
         paddingHorizontal: 24,
-        height: '52%',
-        width: '100%',
-        elevation: 10
+        maxHeight: '60%',
+        elevation: 10,
+        overflow: 'visible'
+    },
+    modalScrollContent: {
+        paddingBottom: 4,
+        paddingRight: 8
     },
     modalHeader: {
         flexDirection: 'row',
@@ -316,23 +324,27 @@ const styles = StyleSheet.create({
         textTransform: 'uppercase',
         opacity: 0.7
     },
-    settingsScrollContent: { paddingBottom: 8 },
     switchRow: {
-        width: '100%',
-        minHeight: 48,
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 10,
-        paddingVertical: 4
+        minHeight: 56,
+        paddingVertical: 6
     },
-    switchLabel: { fontSize: 16, fontWeight: '500', flex: 1, paddingRight: 16 },
+    switchLabel: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '500',
+        marginRight: 16
+    },
     switchControlContainer: {
-        width: 64,
-        minHeight: 44,
+        width: 76,
+        minWidth: 76,
         alignItems: 'flex-end',
         justifyContent: 'center',
-        paddingRight: 4
+        paddingRight: 4,
+        overflow: 'visible'
     },
-    switchControl: { transform: [{ scaleX: 0.92 }, { scaleY: 0.92 }] }
+    iosSwitch: {
+        transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }]
+    }
 });
