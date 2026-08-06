@@ -16,6 +16,8 @@ const changedSources = [
     'src/hooks/query/useBlogData.ts',
     'src/hooks/query/useChatData.ts',
     'src/hooks/query/useGalleryData.ts',
+    'src/storage/galleryMediaCache.ts',
+    'src/storage/mediaStorage.ts',
     'src/hooks/query/useSongsData.ts',
     'src/hooks/query/useTenantQueryScope.ts',
     'src/hooks/query/useThemesData.ts',
@@ -72,6 +74,7 @@ const changedSources = [
     'src/store/useSongsStore.ts',
     'src/store/useThemeStore.ts',
     'src/types/chat.ts',
+    'src/types/gallery.ts',
     'src/types/notification.ts',
     'src/types/settings.ts',
     'src/types/tiptap.ts',
@@ -117,6 +120,10 @@ const normalizeChatMessage = read('src/utils/normalizeChatMessage.ts');
 const chatStickers = read('src/constants/chatStickers.ts');
 const mediaDetail = read('src/screens/gallery/MediaDetailScreen.tsx');
 const mediaUtils = read('src/utils/mediaUtils.ts');
+const galleryData = read('src/hooks/query/useGalleryData.ts');
+const galleryMediaCache = read('src/storage/galleryMediaCache.ts');
+const mediaStorage = read('src/storage/mediaStorage.ts');
+const galleryTypes = read('src/types/gallery.ts');
 const testflightEnv = read('.env.testflight.example');
 const authService = read('src/services/auth.ts');
 const songTypesScreen = read('src/screens/songs/SongTypesScreen.tsx');
@@ -207,12 +214,29 @@ assert.match(mediaDetail, /dismissViewer/u);
 assert.match(mediaDetail, /key=\{`preview-\$\{media\.id\}`\}/u);
 assert.match(mediaDetail, /key=\{`full-\$\{media\.id\}`\}/u);
 assert.match(mediaDetail, /Image\.prefetch/u);
-assert.match(mediaDetail, /getGalleryPreviewUri/u);
+assert.match(mediaDetail, /getGalleryViewerPreviewUri/u);
+assert.match(mediaDetail, /decodedImageUris/u);
+assert.match(mediaDetail, /adjacentImageUris/u);
+assert.match(mediaDetail, /preloadContainer/u);
+assert.match(mediaDetail, /previewReady/u);
 assert.match(mediaDetail, /imageOpacity/u);
 assert.match(galleryScreen, /previewUri/u);
 assert.match(galleryScreen, /Image\.prefetch/u);
-assert.match(mediaUtils, /c_fill,w_720,h_720,q_auto,f_auto/u);
-assert.match(mediaUtils, /getGalleryPreviewUri/u);
+assert.match(galleryScreen, /getGalleryGridUri/u);
+assert.match(galleryScreen, /initialNumToRender=\{12\}/u);
+assert.match(mediaUtils, /c_limit,w_720,h_720,q_auto,f_auto/u);
+assert.match(mediaUtils, /c_limit,w_1600,h_1600,q_auto,f_auto/u);
+assert.match(mediaUtils, /getGalleryGridUri/u);
+assert.match(mediaUtils, /getGalleryViewerPreviewUri/u);
+assert.match(galleryData, /loadGallerySnapshot/u);
+assert.match(galleryData, /snapshotReady/u);
+assert.match(galleryData, /warmGalleryPreviewCache/u);
+assert.match(galleryMediaCache, /hydrateGalleryLocalMedia/u);
+assert.match(galleryMediaCache, /runPreviewWorkers/u);
+assert.match(mediaStorage, /mediaIndexCache/u);
+assert.match(mediaStorage, /getStoredMediaRecordsForUrls/u);
+assert.match(galleryTypes, /cachedThumbnailUrl/u);
+assert.match(galleryTypes, /cachedPreviewUrl/u);
 assert.match(mediaViewerModal, /PanResponder\.create/u);
 assert.match(mediaViewerModal, /dismissViewer/u);
 assert.match(mediaViewerModal, /translateY/u);

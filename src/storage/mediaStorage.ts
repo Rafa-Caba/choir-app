@@ -27,6 +27,8 @@ const DEFAULT_RETRY_COUNT = 2;
 
 let storageMutationQueue: Promise<void> = Promise.resolve();
 const activeDownloads = new Map<string, Promise<MediaDownloadResult>>();
+const mediaIndexCache = new Map<string, MediaStorageIndex>();
+const mediaIndexLoaders = new Map<string, Promise<MediaStorageIndex>>();
 
 export class MediaStorageError extends Error {
     readonly code:
@@ -101,6 +103,10 @@ const getIndexKey = (context: TenantStorageContext): string => {
     return `${buildTenantStoragePrefix(context)}:${INDEX_SUFFIX}`;
 };
 
+const getIndexCacheKey = (context: TenantStorageContext): string => {
+    return `${context.choirId}:${context.userId}`;
+};
+
 const emptyIndex = (): MediaStorageIndex => ({
     version: 1,
     records: []
@@ -109,19 +115,42 @@ const emptyIndex = (): MediaStorageIndex => ({
 const readIndex = async (
     context: TenantStorageContext
 ): Promise<MediaStorageIndex> => {
-    const value = await readJson<MediaStorageIndex>(getIndexKey(context));
+    const cacheKey = getIndexCacheKey(context);
+    const cached = mediaIndexCache.get(cacheKey);
 
-    if (!value || value.version !== 1 || !Array.isArray(value.records)) {
-        return emptyIndex();
+    if (cached) {
+        return cached;
     }
 
-    return value;
+    const currentLoader = mediaIndexLoaders.get(cacheKey);
+
+    if (currentLoader) {
+        return currentLoader;
+    }
+
+    const loader = readJson<MediaStorageIndex>(getIndexKey(context))
+        .then((value) => {
+            const resolved = value &&
+                value.version === 1 &&
+                Array.isArray(value.records)
+                ? value
+                : emptyIndex();
+            mediaIndexCache.set(cacheKey, resolved);
+            return resolved;
+        })
+        .finally(() => {
+            mediaIndexLoaders.delete(cacheKey);
+        });
+
+    mediaIndexLoaders.set(cacheKey, loader);
+    return loader;
 };
 
 const writeIndex = async (
     context: TenantStorageContext,
     index: MediaStorageIndex
 ): Promise<void> => {
+    mediaIndexCache.set(getIndexCacheKey(context), index);
     await writeJson(getIndexKey(context), index);
 };
 
@@ -323,6 +352,77 @@ export const getStoredMediaRecord = async (
 
     return null;
 };
+
+const choosePreferredRecord = (
+    current: StoredMediaRecord | undefined,
+    candidate: StoredMediaRecord
+): StoredMediaRecord => {
+    if (!current) {
+        return candidate;
+    }
+
+    if (current.location !== candidate.location) {
+        return candidate.location === 'DOCUMENTS' ? candidate : current;
+    }
+
+    return Date.parse(candidate.lastAccessedAt) > Date.parse(current.lastAccessedAt)
+        ? candidate
+        : current;
+};
+
+export const getStoredMediaRecordsForUrls = async (
+    context: TenantStorageContext,
+    remoteUrls: readonly string[]
+): Promise<ReadonlyMap<string, StoredMediaRecord>> => {
+    if (Platform.OS === 'web' || remoteUrls.length === 0) {
+        return new Map<string, StoredMediaRecord>();
+    }
+
+    const requestedUrls = new Set(remoteUrls.filter((url) => url.length > 0));
+    const index = await readIndex(context);
+    const selected = new Map<string, StoredMediaRecord>();
+
+    for (const record of index.records) {
+        if (!requestedUrls.has(record.remoteUrl)) {
+            continue;
+        }
+
+        selected.set(
+            record.remoteUrl,
+            choosePreferredRecord(selected.get(record.remoteUrl), record)
+        );
+    }
+
+    const checks = await Promise.all(
+        [...selected.entries()].map(async ([remoteUrl, record]) => {
+            const info = await FileSystem.getInfoAsync(record.localUri);
+            return { remoteUrl, record, exists: info.exists };
+        })
+    );
+    const valid = new Map<string, StoredMediaRecord>();
+    const missingIds = new Set<string>();
+
+    for (const check of checks) {
+        if (check.exists) {
+            valid.set(check.remoteUrl, check.record);
+        } else {
+            missingIds.add(check.record.id);
+        }
+    }
+
+    if (missingIds.size > 0) {
+        await runStorageMutation(async () => {
+            const latest = await readIndex(context);
+            await writeIndex(context, {
+                version: 1,
+                records: latest.records.filter((record) => !missingIds.has(record.id))
+            });
+        });
+    }
+
+    return valid;
+};
+
 
 const copyExistingRecord = async (
     request: MediaDownloadRequest,

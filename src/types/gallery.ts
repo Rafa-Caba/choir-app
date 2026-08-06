@@ -6,6 +6,8 @@ export interface GalleryImage {
     readonly description: string;
     readonly imageUrl: string;
     readonly cachedImageUrl?: string | null;
+    readonly cachedThumbnailUrl?: string | null;
+    readonly cachedPreviewUrl?: string | null;
     readonly mediaType: 'IMAGE' | 'VIDEO';
     readonly imageStart: boolean;
     readonly imageTopBar: boolean;

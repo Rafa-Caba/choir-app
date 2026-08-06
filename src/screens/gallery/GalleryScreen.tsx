@@ -30,7 +30,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { LoadingScreen } from '../LoadingScreen';
 import {
     getGalleryDisplayUri,
-    getGalleryPreviewUri,
+    getGalleryGridUri,
     isRemoteMediaUri
 } from '../../utils/mediaUtils';
 import type { GalleryImage, GalleryMediaDetailParams } from '../../types/gallery';
@@ -55,7 +55,7 @@ export const GalleryScreen = () => {
 
     const openMediaDetail = useCallback((item: GalleryImage): void => {
         const displayUri = getGalleryDisplayUri(item);
-        const previewUri = getGalleryPreviewUri(item);
+        const previewUri = getGalleryGridUri(item);
 
         if (item.mediaType === 'IMAGE' && isRemoteMediaUri(displayUri)) {
             void Image.prefetch(displayUri).catch(() => false);
@@ -138,7 +138,7 @@ export const GalleryScreen = () => {
     const featuredItems = images.slice(0, 5);
 
     const renderGridItem = ({ item }: { readonly item: GalleryImage }) => {
-        const thumbUri = getGalleryPreviewUri(item);
+        const thumbUri = getGalleryGridUri(item);
 
         return (
             <TouchableOpacity
@@ -183,7 +183,7 @@ export const GalleryScreen = () => {
                         contentContainerStyle={styles.featuredScrollContent}
                     >
                         {featuredItems.map((item, index) => {
-                            const thumb = getGalleryPreviewUri(item);
+                            const thumb = getGalleryGridUri(item);
 
                             return (
                                 <TouchableOpacity
@@ -226,6 +226,10 @@ export const GalleryScreen = () => {
                 renderItem={renderGridItem}
                 onRefresh={() => void galleryQuery.refetch()}
                 refreshing={galleryQuery.isRefetching}
+                initialNumToRender={12}
+                maxToRenderPerBatch={12}
+                updateCellsBatchingPeriod={24}
+                windowSize={7}
             />
 
             <Modal

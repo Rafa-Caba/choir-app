@@ -49,7 +49,7 @@ import type {
 } from '../../types/gallery';
 import {
     getGalleryDisplayUri,
-    getGalleryPreviewUri,
+    getGalleryViewerPreviewUri,
     isRemoteMediaUri
 } from '../../utils/mediaUtils';
 
@@ -64,6 +64,7 @@ const dismissDistance = 120;
 const dismissVelocity = 1.05;
 const horizontalSwipeDistance = 72;
 const horizontalSwipeVelocity = 0.65;
+const decodedImageUris = new Set<string>();
 
 export const MediaDetailScreen = () => {
     const navigation = useNavigation<NavigationProp<MediaDetailParams>>();
@@ -75,7 +76,11 @@ export const MediaDetailScreen = () => {
     const screenHeight = Dimensions.get('window').height;
 
     const [media, setMedia] = useState<GalleryImage>(route.params.media);
-    const [loadingMedia, setLoadingMedia] = useState(true);
+    const [loadingMedia, setLoadingMedia] = useState(
+        route.params.media.mediaType === 'VIDEO'
+    );
+    const [previewReady, setPreviewReady] = useState(false);
+    const [fullReady, setFullReady] = useState(false);
     const [settingsVisible, setSettingsVisible] = useState(false);
     const [actionsVisible, setActionsVisible] = useState(false);
     const [scale, setScale] = useState(1);
@@ -90,7 +95,7 @@ export const MediaDetailScreen = () => {
     const displayMediaUrl = getGalleryDisplayUri(media);
     const previewMediaUrl = media.id === route.params.media.id && route.params.previewUri
         ? route.params.previewUri
-        : getGalleryPreviewUri(media);
+        : getGalleryViewerPreviewUri(media);
     const user = useAuthStore((state) => state.user);
     const galleryQuery = useGalleryQuery();
     const deleteMutation = useDeleteGalleryImageMutation();
@@ -113,12 +118,38 @@ export const MediaDetailScreen = () => {
 
     const hasPrevious = currentIndex > 0;
     const hasNext = currentIndex < mediaItems.length - 1;
+    const adjacentImageUris = useMemo(() => {
+        return [
+            mediaItems[currentIndex - 1],
+            mediaItems[currentIndex + 1]
+        ]
+            .filter((item): item is GalleryImage => Boolean(
+                item && item.mediaType === 'IMAGE'
+            ))
+            .flatMap((item) => [
+                getGalleryViewerPreviewUri(item),
+                getGalleryDisplayUri(item)
+            ])
+            .filter((uri, index, values) => values.indexOf(uri) === index);
+    }, [currentIndex, mediaItems]);
 
     useEffect(() => {
-        setLoadingMedia(true);
+        const previewWasDecoded = decodedImageUris.has(previewMediaUrl);
+        const fullWasDecoded = decodedImageUris.has(displayMediaUrl) ||
+            displayMediaUrl === previewMediaUrl;
+
+        setPreviewReady(previewWasDecoded || fullWasDecoded);
+        setFullReady(fullWasDecoded);
+        setLoadingMedia(media.mediaType === 'VIDEO');
         imageOpacity.stopAnimation();
-        imageOpacity.setValue(0);
-    }, [imageOpacity, media.id]);
+        imageOpacity.setValue(fullWasDecoded ? 1 : 0);
+    }, [
+        displayMediaUrl,
+        imageOpacity,
+        media.id,
+        media.mediaType,
+        previewMediaUrl
+    ]);
 
     useEffect(() => {
         const candidates = [
@@ -128,7 +159,7 @@ export const MediaDetailScreen = () => {
         ].filter((item): item is GalleryImage => Boolean(item));
 
         candidates.forEach((item) => {
-            const previewUri = getGalleryPreviewUri(item);
+            const previewUri = getGalleryViewerPreviewUri(item);
             const displayUri = getGalleryDisplayUri(item);
 
             if (isRemoteMediaUri(previewUri)) {
@@ -145,14 +176,27 @@ export const MediaDetailScreen = () => {
         });
     }, [currentIndex, mediaItems]);
 
+    const handlePreviewLoad = useCallback((): void => {
+        decodedImageUris.add(previewMediaUrl);
+        setPreviewReady(true);
+        setLoadingMedia(false);
+
+        if (displayMediaUrl === previewMediaUrl) {
+            decodedImageUris.add(displayMediaUrl);
+            setFullReady(true);
+        }
+    }, [displayMediaUrl, previewMediaUrl]);
+
     const handleImageLoad = useCallback((): void => {
+        decodedImageUris.add(displayMediaUrl);
+        setFullReady(true);
         setLoadingMedia(false);
         Animated.timing(imageOpacity, {
             toValue: 1,
-            duration: 120,
+            duration: previewReady ? 90 : 0,
             useNativeDriver: true
         }).start();
-    }, [imageOpacity]);
+    }, [displayMediaUrl, imageOpacity, previewReady]);
 
     const viewerOpacity = useMemo(
         () => translateY.interpolate({
@@ -241,7 +285,6 @@ export const MediaDetailScreen = () => {
 
             imageOpacity.stopAnimation();
             imageOpacity.setValue(0);
-            setLoadingMedia(true);
             setMedia(targetMedia);
             setScale(1);
             translateY.setValue(0);
@@ -455,6 +498,18 @@ export const MediaDetailScreen = () => {
                 category="gallery"
             />
 
+            <View pointerEvents="none" style={styles.preloadContainer}>
+                {adjacentImageUris.map((uri) => (
+                    <Image
+                        key={`preload-${uri}`}
+                        source={{ uri }}
+                        style={styles.preloadImage}
+                        fadeDuration={0}
+                        onLoad={() => decodedImageUris.add(uri)}
+                    />
+                ))}
+            </View>
+
             <View style={styles.topBar}>
                 <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
                     <Ionicons name="close" size={28} color="#ffffff" />
@@ -492,7 +547,7 @@ export const MediaDetailScreen = () => {
                 {...viewerPanResponder.panHandlers}
             >
                 <View style={styles.contentContainer}>
-                    {loadingMedia && (
+                    {loadingMedia && (media.mediaType === 'VIDEO' || (!previewReady && !fullReady)) && (
                         <ActivityIndicator
                             size="large"
                             color="#ffffff"
@@ -533,26 +588,34 @@ export const MediaDetailScreen = () => {
                                         style={styles.media}
                                         resizeMode="contain"
                                         fadeDuration={0}
-                                    />
-                                    <Animated.Image
-                                        key={`full-${media.id}`}
-                                        source={{ uri: displayMediaUrl }}
-                                        style={[
-                                            styles.fullResolutionImage,
-                                            { opacity: imageOpacity },
-                                            Platform.OS === 'web'
-                                                ? {
-                                                    width: `${scale * 100}%`,
-                                                    height: `${scale * 100}%`
-                                                }
-                                                : undefined
-                                        ]}
-                                        resizeMode="contain"
-                                        fadeDuration={0}
-                                        onLoadStart={() => setLoadingMedia(true)}
-                                        onLoad={handleImageLoad}
+                                        onLoad={handlePreviewLoad}
                                         onError={() => setLoadingMedia(false)}
                                     />
+                                    {displayMediaUrl !== previewMediaUrl && (
+                                        <Animated.Image
+                                            key={`full-${media.id}`}
+                                            source={{ uri: displayMediaUrl }}
+                                            style={[
+                                                styles.fullResolutionImage,
+                                                { opacity: imageOpacity },
+                                                Platform.OS === 'web'
+                                                    ? {
+                                                        width: `${scale * 100}%`,
+                                                        height: `${scale * 100}%`
+                                                    }
+                                                    : undefined
+                                            ]}
+                                            resizeMode="contain"
+                                            fadeDuration={0}
+                                            onLoadStart={() => {
+                                                if (!previewReady) {
+                                                    setLoadingMedia(true);
+                                                }
+                                            }}
+                                            onLoad={handleImageLoad}
+                                            onError={() => setLoadingMedia(false)}
+                                        />
+                                    )}
                                 </View>
                             </TouchableWithoutFeedback>
                         </ScrollView>
@@ -636,6 +699,18 @@ const styles = StyleSheet.create({
     loadingIndicator: {
         ...StyleSheet.absoluteFillObject,
         zIndex: 3
+    },
+    preloadContainer: {
+        position: 'absolute',
+        top: -10,
+        left: -10,
+        width: 1,
+        height: 1,
+        opacity: 0.01
+    },
+    preloadImage: {
+        width: 1,
+        height: 1
     },
     imageScrollContent: {
         flexGrow: 1,
