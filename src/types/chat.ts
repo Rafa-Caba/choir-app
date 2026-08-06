@@ -34,6 +34,16 @@ export interface ReplyPreview {
     readonly textPreview: string;
 }
 
+export interface ChatMediaMetadata {
+    readonly id: string;
+    readonly url: string;
+    readonly filename: string;
+    readonly mimeType: string;
+    readonly bytes: number;
+    readonly format: string;
+    readonly resourceType: string;
+}
+
 export interface ChatMessage {
     readonly id: string;
     readonly author: ChatUserSummary;
@@ -45,6 +55,7 @@ export interface ChatMessage {
     readonly audioUrl?: string;
     readonly imagePublicId?: string;
     readonly cachedMediaUrl?: string | null;
+    readonly media?: ChatMediaMetadata | null;
     readonly reactions: readonly MessageReaction[];
     readonly replyTo?: ReplyPreview | null;
     readonly deliveredTo: readonly string[];
@@ -67,6 +78,17 @@ export interface RawReaction {
     readonly username?: string;
 }
 
+export interface RawChatMediaAsset {
+    readonly id?: string;
+    readonly _id?: string;
+    readonly url?: string;
+    readonly originalName?: string;
+    readonly mimeType?: string;
+    readonly bytes?: number;
+    readonly format?: string;
+    readonly resourceType?: string;
+}
+
 export interface RawReplyMessage {
     readonly id?: string;
     readonly _id?: string;
@@ -74,6 +96,7 @@ export interface RawReplyMessage {
     readonly type?: MessageType;
     readonly filename?: string;
     readonly author?: RawChatUser;
+    readonly mediaAssetId?: RawChatMediaAsset | string | null;
 }
 
 export interface RawReceiptUser {
@@ -94,6 +117,7 @@ export interface RawChatMessage {
     readonly imageUrl?: string;
     readonly audioUrl?: string;
     readonly imagePublicId?: string;
+    readonly mediaAssetId?: RawChatMediaAsset | string | null;
     readonly reactions?: readonly RawReaction[];
     readonly replyTo?: RawReplyMessage | string | null;
     readonly deliveredTo?: readonly RawReceiptValue[];

@@ -22,10 +22,9 @@ import {
 } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MediaActionsModal } from '../../components/shared/MediaActionsModal';
 import { useAuthStore } from '../../store/useAuthStore';
 import {
     useDeleteGalleryImageMutation,
@@ -53,6 +52,7 @@ export const MediaDetailScreen = () => {
 
     const [loadingMedia, setLoadingMedia] = useState(false);
     const [settingsVisible, setSettingsVisible] = useState(false);
+    const [actionsVisible, setActionsVisible] = useState(false);
 
     // Zoom
     const [scale, setScale] = useState(1);
@@ -72,31 +72,6 @@ export const MediaDetailScreen = () => {
             setScale(scale > 1 ? 1 : 2);
         } else {
             lastTap.current = now;
-        }
-    };
-
-    const handleDownload = async () => {
-        try {
-            const filename = media.imageUrl.split('/').pop() || 'download';
-            if (Platform.OS === 'web') {
-                const link = document.createElement('a');
-                link.href = media.imageUrl;
-                link.download = filename;
-                link.target = "_blank";
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            } else {
-                const fileUri = FileSystem.documentDirectory + filename;
-                const { uri } = await FileSystem.downloadAsync(media.imageUrl, fileUri);
-                if (await Sharing.isAvailableAsync()) {
-                    await Sharing.shareAsync(uri);
-                } else {
-                    Alert.alert("Descarga completada", "El archivo se guardó correctamente.");
-                }
-            }
-        } catch (e) {
-            Alert.alert("Error", "No fue posible descargar el archivo.");
         }
     };
 
@@ -158,6 +133,17 @@ export const MediaDetailScreen = () => {
 
     return (
         <View style={styles.container}>
+            <MediaActionsModal
+                visible={actionsVisible}
+                onClose={() => setActionsVisible(false)}
+                remoteUrl={media.imageUrl}
+                filename={media.imageUrl.split('/').pop() || (
+                    media.mediaType === 'VIDEO' ? 'video.mp4' : 'imagen.jpg'
+                )}
+                mimeType={media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'}
+                kind={media.mediaType === 'VIDEO' ? 'VIDEO' : 'IMAGE'}
+                category="gallery"
+            />
             {/* Top Bar */}
             <View style={styles.topBar}>
                 <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
@@ -165,8 +151,8 @@ export const MediaDetailScreen = () => {
                 </TouchableOpacity>
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <TouchableOpacity style={styles.iconBtn} onPress={handleDownload}>
-                        <Ionicons name="download-outline" size={24} color="white" />
+                    <TouchableOpacity style={styles.iconBtn} onPress={() => setActionsVisible(true)}>
+                        <Ionicons name="ellipsis-horizontal" size={24} color="white" />
                     </TouchableOpacity>
 
                     {isAdmin && (

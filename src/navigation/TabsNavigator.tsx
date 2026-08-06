@@ -5,7 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { HomeNavigator } from './HomeNavigator';
-import { ChatScreen } from '../screens/chat/ChatScreen';
+import { ChatNavigator } from './ChatNavigator';
 import { SongsNavigator } from './SongsNavigator';
 import { GalleryNavigator } from './GalleryNavigator';
 import { BlogNavigator } from './BlogNavigator';
@@ -60,7 +60,7 @@ export const TabsNavigator = () => {
             })}
         >
             <Tab.Screen name="HomeTab" component={HomeNavigator} options={{ title: 'Home' }} />
-            <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: 'Chat' }} />
+            <Tab.Screen name="ChatTab" component={ChatNavigator} options={{ title: 'Chat' }} />
             <Tab.Screen name="SongsTab" component={SongsNavigator} options={{ title: 'Cantos' }} />
             <Tab.Screen name="GalleryTab" component={GalleryNavigator} options={{ title: 'Galería' }} />
             <Tab.Screen name="BlogTab" component={BlogNavigator} options={{ title: 'Blog' }} />

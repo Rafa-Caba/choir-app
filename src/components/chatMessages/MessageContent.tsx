@@ -4,19 +4,22 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Image,
-    Linking,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio, ResizeMode, Video } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
+import { useMediaResource } from '../../hooks/useMediaResource';
+import { formatMediaBytes } from '../../storage/mediaStorage';
 import type { ChatMessage } from '../../types/chat';
+import type { MediaKind } from '../../types/mediaStorage';
 import type { Theme } from '../../types/theme';
 import { getPreviewFromRichText } from '../../utils/textUtils';
-import { MediaViewerModal } from '../shared/MediaViewerModal';
 import { RichTextViewer } from '../common/RichTextViewer';
+import { MediaActionsModal } from '../shared/MediaActionsModal';
+import { MediaViewerModal } from '../shared/MediaViewerModal';
 
 interface MessageContentProps {
     readonly message: ChatMessage;
@@ -33,6 +36,36 @@ const formatDuration = (durationMillis: number): string => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
+const getMediaKind = (message: ChatMessage): MediaKind => {
+    switch (message.type) {
+        case 'IMAGE':
+            return 'IMAGE';
+        case 'VIDEO':
+            return 'VIDEO';
+        case 'MEDIA':
+            return message.media?.mimeType.startsWith('audio/') || Boolean(message.audioUrl)
+                ? 'AUDIO'
+                : 'VIDEO';
+        case 'AUDIO':
+            return 'AUDIO';
+        default:
+            return 'DOCUMENT';
+    }
+};
+
+const getDefaultMimeType = (kind: MediaKind): string => {
+    switch (kind) {
+        case 'IMAGE':
+            return 'image/jpeg';
+        case 'VIDEO':
+            return 'video/mp4';
+        case 'AUDIO':
+            return 'audio/mp4';
+        case 'DOCUMENT':
+            return 'application/octet-stream';
+    }
+};
+
 export const MessageContent = ({
     message,
     isMe,
@@ -40,21 +73,35 @@ export const MessageContent = ({
     textColor,
     timeColor
 }: MessageContentProps) => {
-    const [isModalVisible, setModalVisible] = useState(false);
+    const [viewerVisible, setViewerVisible] = useState(false);
+    const [actionsVisible, setActionsVisible] = useState(false);
     const [sound, setSound] = useState<Audio.Sound | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoadingAudio, setIsLoadingAudio] = useState(false);
     const [audioPositionMillis, setAudioPositionMillis] = useState(0);
     const [audioDurationMillis, setAudioDurationMillis] = useState(0);
-
-    const mediaUrl = message.cachedMediaUrl || message.fileUrl || message.imageUrl || message.audioUrl || '';
-    const filename = message.filename || 'Archivo adjunto';
-    const type = message.type;
-    const isVideo = type === 'VIDEO';
-    const isAudio = type === 'AUDIO';
-    const isImage = type === 'IMAGE';
-    const isFile = type === 'FILE';
-    const isSticker = type === 'STICKER';
+    const mediaKind = getMediaKind(message);
+    const mediaUrl = message.cachedMediaUrl ||
+        message.media?.url ||
+        message.fileUrl ||
+        message.imageUrl ||
+        message.audioUrl ||
+        '';
+    const filename = message.media?.filename || message.filename || 'Archivo adjunto';
+    const mimeType = message.media?.mimeType || getDefaultMimeType(mediaKind);
+    const mediaBytes = message.media?.bytes ?? 0;
+    const resource = useMediaResource({
+        remoteUrl: mediaUrl,
+        filename,
+        mimeType,
+        kind: mediaKind,
+        category: 'chat'
+    });
+    const isVideo = mediaKind === 'VIDEO';
+    const isAudio = mediaKind === 'AUDIO';
+    const isImage = mediaKind === 'IMAGE';
+    const isFile = mediaKind === 'DOCUMENT';
+    const isSticker = message.type === 'STICKER';
     const textContent = getPreviewFromRichText(message.content);
     const shouldRenderText = Boolean(textContent.trim());
     const waveformBars = useMemo(
@@ -64,6 +111,13 @@ export const MessageContent = ({
     const audioProgress = audioDurationMillis > 0
         ? Math.min(1, audioPositionMillis / audioDurationMillis)
         : 0;
+    const statusText = resource.record
+        ? resource.record.location === 'DOCUMENTS'
+            ? 'Guardado en el dispositivo'
+            : 'Disponible sin conexión'
+        : resource.state === 'DOWNLOADING'
+            ? `Descargando ${Math.round((resource.progress?.fraction ?? 0) * 100)}%`
+            : 'Toca para ver opciones';
 
     useEffect(() => {
         return () => {
@@ -93,7 +147,7 @@ export const MessageContent = ({
             setIsLoadingAudio(true);
             await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
             const created = await Audio.Sound.createAsync(
-                { uri: mediaUrl },
+                { uri: resource.displayUri },
                 { shouldPlay: true },
                 (status) => {
                     if (!status.isLoaded) {
@@ -119,22 +173,11 @@ export const MessageContent = ({
         }
     };
 
-    const handleFilePress = (): void => {
-        if (isImage || isVideo) {
-            setModalVisible(true);
-            return;
-        }
-
-        if (mediaUrl) {
-            void Linking.openURL(mediaUrl);
-        }
-    };
-
     if (isSticker) {
         return (
             <View style={styles.stickerContainer}>
                 {!isMe && (
-                    <Text style={[styles.author, { color: colors.primaryColor }]}> 
+                    <Text style={[styles.author, { color: colors.primaryColor }]}>
                         {message.author.name}
                     </Text>
                 )}
@@ -146,8 +189,19 @@ export const MessageContent = ({
     if (isAudio) {
         return (
             <View>
+                <MediaActionsModal
+                    visible={actionsVisible}
+                    onClose={() => setActionsVisible(false)}
+                    remoteUrl={mediaUrl}
+                    filename={filename}
+                    mimeType={mimeType}
+                    kind="AUDIO"
+                    category="chat"
+                    initialBytes={mediaBytes}
+                />
+
                 {!isMe && (
-                    <Text style={[styles.author, { color: colors.primaryColor }]}> 
+                    <Text style={[styles.author, { color: colors.primaryColor }]}>
                         {message.author.name}
                     </Text>
                 )}
@@ -161,7 +215,11 @@ export const MessageContent = ({
                         {isLoadingAudio ? (
                             <ActivityIndicator color={textColor} size="small" />
                         ) : (
-                            <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color={textColor} />
+                            <Ionicons
+                                name={isPlaying ? 'pause' : 'play'}
+                                size={28}
+                                color={textColor}
+                            />
                         )}
                     </TouchableOpacity>
                     <View style={styles.audioWaveformContainer}>
@@ -182,10 +240,17 @@ export const MessageContent = ({
                                 );
                             })}
                         </View>
-                        <Text style={[styles.audioDuration, { color: timeColor }]}> 
+                        <Text style={[styles.audioDuration, { color: timeColor }]}>
                             {formatDuration(audioDurationMillis || audioPositionMillis)}
                         </Text>
                     </View>
+                    <TouchableOpacity
+                        style={styles.moreButton}
+                        onPress={() => setActionsVisible(true)}
+                        accessibilityLabel="Abrir acciones de la nota de voz"
+                    >
+                        <Ionicons name="ellipsis-vertical" size={20} color={textColor} />
+                    </TouchableOpacity>
                 </View>
             </View>
         );
@@ -195,31 +260,54 @@ export const MessageContent = ({
         return (
             <View>
                 <MediaViewerModal
-                    visible={isModalVisible}
-                    onClose={() => setModalVisible(false)}
+                    visible={viewerVisible}
+                    onClose={() => setViewerVisible(false)}
                     mediaUrl={mediaUrl}
                     mediaType={isVideo ? 'video' : 'image'}
+                    filename={filename}
+                    mimeType={mimeType}
+                    category="chat"
+                    initialBytes={mediaBytes}
                 />
 
                 {!isMe && (
-                    <Text style={[styles.author, { color: colors.primaryColor }]}> 
+                    <Text style={[styles.author, { color: colors.primaryColor }]}>
                         {message.author.name || 'Usuario'}
                     </Text>
                 )}
 
                 <TouchableOpacity
-                    onPress={() => setModalVisible(true)}
+                    onPress={() => setViewerVisible(true)}
                     style={styles.mediaPreview}
                     activeOpacity={0.9}
                 >
-                    <Image
-                        source={{ uri: isVideo ? mediaUrl.replace(/\.(mp4|mov|webm)$/i, '.jpg') : mediaUrl }}
-                        style={styles.imagePreview}
-                        resizeMode="cover"
-                    />
+                    {isVideo ? (
+                        <Video
+                            source={{ uri: resource.displayUri }}
+                            style={styles.imagePreview}
+                            resizeMode={ResizeMode.COVER}
+                            shouldPlay={false}
+                            isMuted
+                        />
+                    ) : (
+                        <Image
+                            source={{ uri: resource.displayUri }}
+                            style={styles.imagePreview}
+                            resizeMode="cover"
+                        />
+                    )}
                     {isVideo && (
                         <View style={styles.videoOverlay}>
-                            <Ionicons name="play-circle" size={40} color="rgba(255,255,255,0.9)" />
+                            <Ionicons
+                                name="play-circle"
+                                size={40}
+                                color="rgba(255,255,255,0.9)"
+                            />
+                        </View>
+                    )}
+                    {resource.state === 'DOWNLOADING' && (
+                        <View style={styles.videoOverlay}>
+                            <ActivityIndicator color="#ffffff" />
                         </View>
                     )}
                 </TouchableOpacity>
@@ -235,12 +323,26 @@ export const MessageContent = ({
     if (isFile) {
         return (
             <View>
+                <MediaActionsModal
+                    visible={actionsVisible}
+                    onClose={() => setActionsVisible(false)}
+                    remoteUrl={mediaUrl}
+                    filename={filename}
+                    mimeType={mimeType}
+                    kind="DOCUMENT"
+                    category="chat"
+                    initialBytes={mediaBytes}
+                />
+
                 {!isMe && (
-                    <Text style={[styles.author, { color: colors.primaryColor }]}> 
+                    <Text style={[styles.author, { color: colors.primaryColor }]}>
                         {message.author.name}
                     </Text>
                 )}
-                <TouchableOpacity onPress={handleFilePress} style={styles.mediaContainer}>
+                <TouchableOpacity
+                    onPress={() => setActionsVisible(true)}
+                    style={styles.mediaContainer}
+                >
                     <View
                         style={[
                             styles.fileIcon,
@@ -264,11 +366,14 @@ export const MessageContent = ({
                         >
                             {filename}
                         </Text>
-                        <Text style={[styles.downloadText, { color: timeColor }]}>Toca para descargar</Text>
+                        <Text style={[styles.downloadText, { color: timeColor }]}>
+                            {formatMediaBytes(resource.record?.bytes ?? mediaBytes)} · {statusText}
+                        </Text>
                     </View>
+                    <Ionicons name="ellipsis-vertical" size={20} color={textColor} />
                 </TouchableOpacity>
                 {shouldRenderText && (
-                    <Text style={[styles.messageText, { color: textColor, marginTop: 5 }]}> 
+                    <Text style={[styles.messageText, { color: textColor, marginTop: 5 }]}>
                         {textContent}
                     </Text>
                 )}
@@ -279,11 +384,11 @@ export const MessageContent = ({
     return (
         <View>
             {!isMe && (
-                <Text style={[styles.author, { color: colors.primaryColor }]}> 
+                <Text style={[styles.author, { color: colors.primaryColor }]}>
                     {message.author.name}
                 </Text>
             )}
-            <Text style={[styles.messageText, { color: textColor }]}> 
+            <Text style={[styles.messageText, { color: textColor }]}>
                 {textContent || 'Mensaje vacío'}
             </Text>
         </View>
@@ -294,7 +399,12 @@ const styles = StyleSheet.create({
     flexOne: { flex: 1 },
     author: { fontWeight: 'bold', fontSize: 12, marginBottom: 2 },
     messageText: { fontSize: 16, lineHeight: 22 },
-    mediaContainer: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, minWidth: 150 },
+    mediaContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 5,
+        minWidth: 190
+    },
     mediaPreview: {
         width: 200,
         height: 200,
@@ -311,12 +421,12 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.3)'
     },
     fileIcon: { padding: 8, borderRadius: 8, marginRight: 10 },
-    downloadText: { fontSize: 10 },
+    downloadText: { fontSize: 10, marginTop: 2 },
     mediaText: { marginTop: 12 },
     stickerContainer: { alignItems: 'center' },
     sticker: { fontSize: 58, lineHeight: 68 },
     audioContainer: {
-        minWidth: 205,
+        minWidth: 215,
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: 4
@@ -335,5 +445,11 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between'
     },
     audioWaveformBar: { width: 2, borderRadius: 1, opacity: 0.9 },
-    audioDuration: { fontSize: 10, marginTop: 1 }
+    audioDuration: { fontSize: 10, marginTop: 1 },
+    moreButton: {
+        width: 30,
+        height: 36,
+        justifyContent: 'center',
+        alignItems: 'center'
+    }
 });

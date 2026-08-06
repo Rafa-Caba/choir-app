@@ -78,6 +78,11 @@ export const SettingsScreen = ({ navigation }: Props) => {
                 {user?.role !== 'SUPER_ADMIN' && (
                     <Item icon="color-palette-outline" text="Apariencia y temas" onPress={() => navigation.navigate('ThemeSelectionScreen')} />
                 )}
+                <Item
+                    icon="folder-open-outline"
+                    text="Multimedia y almacenamiento"
+                    onPress={() => navigation.navigate('MediaStorageScreen')}
+                />
 
                 {(canManageUsers(user?.role) || canManageSettings(user?.role) || canViewAuditLogs(user?.role)) && (
                     <Text style={[styles.sectionTitle, { color: colors.secondaryTextColor }]}>Administración</Text>

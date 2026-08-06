@@ -38,6 +38,8 @@ export const BlogCard = ({ post, onPress, onEdit, onDelete }: Props) => {
                 onClose={() => setShowModal(false)}
                 mediaUrl={displayImageUrl}
                 mediaType="image"
+                category="blog"
+                filename="blog.jpg"
             />
 
             {/* Header Image */}

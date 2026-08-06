@@ -30,6 +30,7 @@ export type CacheResource =
     | 'songs'
     | 'song-types'
     | 'chat'
+    | 'chat-media'
     | 'users'
     | 'choirs';
 

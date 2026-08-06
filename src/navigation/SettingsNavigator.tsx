@@ -11,6 +11,7 @@ import { UsersListScreen } from '../screens/admin/UsersListScreen';
 import { MediaDetailScreen } from '../screens/gallery/MediaDetailScreen';
 import { AdminSettingsScreen } from '../screens/settings/AdminSettingsScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
+import { MediaStorageScreen } from '../screens/settings/MediaStorageScreen';
 import { EditProfileScreen } from '../screens/settings/profile/EditProfileScreen';
 import { ProfileScreen } from '../screens/settings/profile/ProfileScreen';
 import { PlatformProfileScreen } from '../screens/platform/PlatformProfileScreen';
@@ -25,6 +26,7 @@ import type { Theme } from '../types/theme';
 
 export type SettingsStackParamList = {
     SettingsScreen: undefined;
+    MediaStorageScreen: undefined;
     PerfilScreen: undefined;
     EditarPerfilScreen: undefined;
     ThemeSelectionScreen: undefined;
@@ -86,6 +88,7 @@ export const SettingsNavigator = () => {
             }}
         >
             <Stack.Screen name="SettingsScreen" component={SettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="MediaStorageScreen" component={MediaStorageScreen} options={{ title: 'Multimedia y almacenamiento' }} />
             <Stack.Screen name="PerfilScreen" component={ProfileScreen} options={{ title: 'Mi perfil' }} />
             <Stack.Screen name="EditarPerfilScreen" component={EditProfileScreen} options={{ title: 'Editar perfil' }} />
             <Stack.Screen name="ThemeSelectionScreen" component={OwnThemeSelectionGuard} options={{ title: 'Temas' }} />

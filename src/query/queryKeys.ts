@@ -10,5 +10,6 @@ export const queryKeys = {
     songs: (tenantKey: string) => ['tenant', tenantKey, 'songs'] as const,
     songTypes: (tenantKey: string) => ['tenant', tenantKey, 'song-types'] as const,
     chatHistory: (tenantKey: string) => ['tenant', tenantKey, 'chat', 'history'] as const,
+    chatMedia: (tenantKey: string) => ['tenant', tenantKey, 'chat', 'media'] as const,
     chatDirectory: (tenantKey: string) => ['tenant', tenantKey, 'chat', 'directory'] as const
 };

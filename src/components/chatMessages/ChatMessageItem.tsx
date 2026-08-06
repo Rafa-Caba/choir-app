@@ -100,6 +100,8 @@ export const ChatMessageItem = ({
                 onClose={() => setShowAvatarModal(false)}
                 mediaUrl={authorPhoto}
                 mediaType="image"
+                category="users"
+                actionsEnabled={false}
             />
 
             {!isMe && (

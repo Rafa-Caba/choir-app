@@ -1,149 +1,221 @@
-import React, { useState, useRef } from 'react';
+// src/components/shared/MediaViewerModal.tsx
+
+import React, { useRef, useState } from 'react';
 import {
-    Modal, View, StyleSheet, TouchableOpacity, Text, Dimensions,
-    ActivityIndicator, Platform, Image, ScrollView, TouchableWithoutFeedback, Alert
+    ActivityIndicator,
+    Image,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import { useTheme } from '../../context/ThemeContext';
+import { ResizeMode, Video } from 'expo-av';
+import { useMediaResource } from '../../hooks/useMediaResource';
+import type { MediaCacheCategory } from '../../types/sync';
+import { MediaActionsModal } from './MediaActionsModal';
 
-const { width, height } = Dimensions.get('window');
-
-interface Props {
-    visible: boolean;
-    onClose: () => void;
-    mediaUrl: string | null;
-    mediaType: 'image' | 'video'; // normalized type
+interface MediaViewerModalProps {
+    readonly visible: boolean;
+    readonly onClose: () => void;
+    readonly mediaUrl: string | null;
+    readonly mediaType: 'image' | 'video';
+    readonly filename?: string;
+    readonly mimeType?: string;
+    readonly category?: MediaCacheCategory;
+    readonly initialBytes?: number;
+    readonly actionsEnabled?: boolean;
 }
 
-export const MediaViewerModal = ({ visible, onClose, mediaUrl, mediaType }: Props) => {
-    const { currentTheme } = useTheme();
-    const colors = currentTheme;
-
-    const [loading, setLoading] = useState(false);
+export const MediaViewerModal = ({
+    visible,
+    onClose,
+    mediaUrl,
+    mediaType,
+    filename,
+    mimeType,
+    category = 'chat',
+    initialBytes = 0,
+    actionsEnabled = true
+}: MediaViewerModalProps) => {
     const [scale, setScale] = useState(1);
+    const [actionsVisible, setActionsVisible] = useState(false);
     const lastTap = useRef<number | null>(null);
+    const resource = useMediaResource({
+        remoteUrl: mediaUrl ?? '',
+        filename,
+        mimeType,
+        kind: mediaType === 'video' ? 'VIDEO' : 'IMAGE',
+        category
+    });
 
-    if (!mediaUrl) return null;
+    if (!mediaUrl) {
+        return null;
+    }
 
-    // --- HANDLE ZOOM (Double Tap) ---
-    const handleDoubleTap = () => {
+    const handleDoubleTap = (): void => {
         const now = Date.now();
-        const DOUBLE_PRESS_DELAY = 300;
-        if (lastTap.current && (now - lastTap.current) < DOUBLE_PRESS_DELAY) {
-            setScale(scale > 1 ? 1 : 2);
-        } else {
-            lastTap.current = now;
+
+        if (lastTap.current && now - lastTap.current < 300) {
+            setScale((current) => current > 1 ? 1 : 2);
+            return;
         }
+
+        lastTap.current = now;
     };
 
-    // --- HANDLE DOWNLOAD ---
-    const handleDownload = async () => {
-        try {
-            setLoading(true);
-            const filename = mediaUrl.split('/').pop() || `download.${mediaType === 'video' ? 'mp4' : 'jpg'}`;
+    const handleClose = (): void => {
+        setActionsVisible(false);
+        setScale(1);
+        onClose();
+    };
 
-            if (Platform.OS === 'web') {
-                // 🌍 WEB DOWNLOAD
-                const link = document.createElement('a');
-                link.href = mediaUrl;
-                link.download = filename;
-                link.target = "_blank";
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                setLoading(false);
-            } else {
-                // 📱 MOBILE DOWNLOAD
-                const fileUri = FileSystem.documentDirectory + filename;
-                const { uri } = await FileSystem.downloadAsync(mediaUrl, fileUri);
+    const handleOpenActions = (): void => {
+        setScale(1);
+        onClose();
 
-                if (await Sharing.isAvailableAsync()) {
-                    await Sharing.shareAsync(uri);
-                } else {
-                    Alert.alert("Descarga completa", "Archivo guardado en documentos.");
-                }
-                setLoading(false);
-            }
-        } catch (error) {
-            console.error("Download error:", error);
-            setLoading(false);
-            Alert.alert("Error", "No se pudo descargar el archivo.");
-        }
+        setTimeout(() => {
+            setActionsVisible(true);
+        }, Platform.OS === 'ios' ? 280 : 80);
     };
 
     return (
-        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-            <View style={styles.container}>
-
-                {/* --- Top Bar (Close & Download) --- */}
-                <View style={styles.topBar}>
-                    <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
-                        <Ionicons name="close" size={28} color="white" />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity onPress={handleDownload} style={styles.iconBtn}>
-                        {loading ? (
-                            <ActivityIndicator color="white" size="small" />
-                        ) : (
-                            <Ionicons name="download-outline" size={24} color="white" />
-                        )}
-                    </TouchableOpacity>
-                </View>
-
-                {/* --- Content --- */}
-                <View style={styles.content}>
-                    {mediaType === 'video' ? (
-                        <Video
-                            style={styles.media}
-                            source={{ uri: mediaUrl }}
-                            useNativeControls
-                            resizeMode={ResizeMode.CONTAIN}
-                            isLooping
-                            shouldPlay
-                            onError={(e) => console.log("Video Error:", e)}
-                        />
-                    ) : (
-                        // Zoomable Image
-                        <ScrollView
-                            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-                            maximumZoomScale={3}
-                            minimumZoomScale={1}
-                            centerContent
-                            scrollEnabled={scale > 1}
+        <>
+            <Modal
+                visible={visible}
+                transparent
+                animationType="fade"
+                onRequestClose={handleClose}
+            >
+                <View style={styles.container}>
+                    <View style={styles.topBar}>
+                        <TouchableOpacity
+                            onPress={handleClose}
+                            style={styles.iconButton}
+                            accessibilityLabel="Cerrar visor"
                         >
-                            <TouchableWithoutFeedback onPress={handleDoubleTap}>
-                                <Image
-                                    source={{ uri: mediaUrl }}
-                                    style={[
-                                        styles.media,
-                                        {
-                                            width: Platform.OS === 'web' ? `${scale * 100}%` : '100%',
-                                            height: Platform.OS === 'web' ? `${scale * 100}%` : '100%',
-                                        }
-                                    ]}
-                                    resizeMode="contain"
+                            <Ionicons name="close" size={28} color="#ffffff" />
+                        </TouchableOpacity>
+
+                        {actionsEnabled && (
+                            <TouchableOpacity
+                                onPress={handleOpenActions}
+                                style={styles.iconButton}
+                                accessibilityLabel="Abrir acciones del archivo"
+                            >
+                                <Ionicons
+                                    name="ellipsis-horizontal"
+                                    size={26}
+                                    color="#ffffff"
                                 />
-                            </TouchableWithoutFeedback>
-                        </ScrollView>
-                    )}
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    <View style={styles.content}>
+                        {resource.state === 'DOWNLOADING' && (
+                            <View style={styles.loadingOverlay}>
+                                <ActivityIndicator size="large" color="#ffffff" />
+                            </View>
+                        )}
+
+                        {mediaType === 'video' ? (
+                            <Video
+                                style={styles.media}
+                                source={{ uri: resource.displayUri }}
+                                useNativeControls
+                                resizeMode={ResizeMode.CONTAIN}
+                                isLooping
+                                shouldPlay={visible}
+                            />
+                        ) : (
+                            <ScrollView
+                                contentContainerStyle={styles.imageScrollContent}
+                                maximumZoomScale={3}
+                                minimumZoomScale={1}
+                                centerContent
+                                scrollEnabled={scale > 1}
+                            >
+                                <TouchableWithoutFeedback onPress={handleDoubleTap}>
+                                    <Image
+                                        source={{ uri: resource.displayUri }}
+                                        style={[
+                                            styles.media,
+                                            Platform.OS === 'web'
+                                                ? {
+                                                    width: `${scale * 100}%`,
+                                                    height: `${scale * 100}%`
+                                                }
+                                                : undefined
+                                        ]}
+                                        resizeMode="contain"
+                                    />
+                                </TouchableWithoutFeedback>
+                            </ScrollView>
+                        )}
+                    </View>
                 </View>
-            </View>
-        </Modal>
+            </Modal>
+
+            {actionsEnabled && (
+                <MediaActionsModal
+                    visible={actionsVisible}
+                    onClose={() => setActionsVisible(false)}
+                    remoteUrl={mediaUrl}
+                    filename={filename}
+                    mimeType={mimeType}
+                    kind={mediaType === 'video' ? 'VIDEO' : 'IMAGE'}
+                    category={category}
+                    initialBytes={initialBytes}
+                />
+            )}
+        </>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: 'black' },
+    container: {
+        flex: 1,
+        backgroundColor: '#000000'
+    },
     topBar: {
-        position: 'absolute', top: 50, left: 20, right: 20,
-        flexDirection: 'row', justifyContent: 'space-between', zIndex: 10
+        position: 'absolute',
+        top: 50,
+        left: 20,
+        right: 20,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        zIndex: 10
     },
-    iconBtn: {
-        padding: 8, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20
+    iconButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center'
     },
-    content: { flex: 1, justifyContent: 'center', overflow: 'hidden' },
-    media: { width: '100%', height: '100%' }
+    content: {
+        flex: 1,
+        justifyContent: 'center',
+        overflow: 'hidden'
+    },
+    imageScrollContent: {
+        flexGrow: 1,
+        justifyContent: 'center'
+    },
+    media: {
+        width: '100%',
+        height: '100%'
+    },
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.25)',
+        zIndex: 2
+    }
 });

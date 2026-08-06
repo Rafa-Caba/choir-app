@@ -21,7 +21,7 @@ export default {
     expo: {
         name: 'Choir App',
         slug: 'choir-app',
-        version: '1.0.4',
+        version: '1.0.5',
         orientation: 'portrait',
         icon: './assets/icon.png',
         scheme: 'choirapp',
@@ -52,6 +52,7 @@ export default {
                 ITSAppUsesNonExemptEncryption: false,
                 NSMicrophoneUsageDescription: 'Permitir a Choir App acceder al micrófono para grabar notas de voz.',
                 NSPhotoLibraryUsageDescription: 'Permitir a Choir App acceder a tus fotos para compartirlas en el chat.',
+                NSPhotoLibraryAddUsageDescription: 'Permitir a Choir App guardar imágenes y videos en tus Fotos.',
                 NSCameraUsageDescription: 'Permitir a Choir App acceder a tu cámara.'
             }
         },
@@ -89,7 +90,21 @@ export default {
                     microphonePermission: 'Permitir a Choir App acceder al micrófono para grabar notas de voz.'
                 }
             ],
-            'expo-document-picker'
+            [
+                'expo-file-system',
+                {
+                    supportsOpeningDocumentsInPlace: true,
+                    enableFileSharing: true
+                }
+            ],
+            'expo-document-picker',
+            [
+                'expo-media-library',
+                {
+                    photosPermission: 'Permitir a Choir App acceder a tus Fotos para guardar contenido multimedia.',
+                    savePhotosPermission: 'Permitir a Choir App guardar imágenes y videos en tus Fotos.'
+                }
+            ]
         ]
     }
 };

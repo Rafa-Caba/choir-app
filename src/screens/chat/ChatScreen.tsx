@@ -17,13 +17,18 @@ import {
     View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
+import {
+    useIsFocused,
+    useNavigation,
+    type NavigationProp
+} from '@react-navigation/native';
 import {
     ChatInput,
     type ChatInputSendRequest
 } from '../../components/chatMessages/ChatInput';
 import { ChatMessageItem } from '../../components/chatMessages/ChatMessageItem';
 import { useTheme } from '../../context/ThemeContext';
+import type { ChatStackParamList } from '../../navigation/ChatNavigator';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useChatStore } from '../../store/useChatStore';
 import type { ChatMessage } from '../../types/chat';
@@ -51,9 +56,11 @@ export const ChatScreen = () => {
     const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingReadKeyRef = useRef('');
     const [showOnlineModal, setShowOnlineModal] = useState(false);
+    const [showActionsModal, setShowActionsModal] = useState(false);
     const [composerShift, setComposerShift] = useState(0);
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const colors = useTheme().currentTheme;
+    const navigation = useNavigation<NavigationProp<ChatStackParamList>>();
     const isFocused = useIsFocused();
     const historyQuery = useChatHistoryQuery(isFocused);
     const directoryQuery = useChatDirectoryQuery(showOnlineModal);
@@ -288,7 +295,7 @@ export const ChatScreen = () => {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.backgroundColor }]}>
-            <TouchableOpacity
+            <View
                 style={[
                     styles.header,
                     {
@@ -296,8 +303,6 @@ export const ChatScreen = () => {
                         borderBottomColor: colors.borderColor
                     }
                 ]}
-                activeOpacity={0.7}
-                onPress={() => setShowOnlineModal(true)}
             >
                 <View style={styles.flexOne}>
                     <Text style={[styles.headerTitle, { color: colors.textColor }]}>Chat del coro</Text>
@@ -311,8 +316,27 @@ export const ChatScreen = () => {
                         </Text>
                     </View>
                 </View>
-                <Ionicons name="people" size={24} color={colors.primaryColor} />
-            </TouchableOpacity>
+                <View style={styles.headerActions}>
+                    <TouchableOpacity
+                        style={styles.headerActionButton}
+                        onPress={() => setShowOnlineModal(true)}
+                        accessibilityLabel="Ver miembros del coro"
+                    >
+                        <Ionicons name="people" size={24} color={colors.primaryColor} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.headerActionButton}
+                        onPress={() => setShowActionsModal(true)}
+                        accessibilityLabel="Abrir opciones del chat"
+                    >
+                        <Ionicons
+                            name="ellipsis-vertical"
+                            size={23}
+                            color={colors.primaryColor}
+                        />
+                    </TouchableOpacity>
+                </View>
+            </View>
 
             <View style={styles.chatBody}>
                 <FlatList
@@ -396,6 +420,60 @@ export const ChatScreen = () => {
                     />
                 </View>
             </View>
+
+            <Modal
+                visible={showActionsModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowActionsModal(false)}
+            >
+                <TouchableOpacity
+                    style={styles.actionsOverlay}
+                    activeOpacity={1}
+                    onPress={() => setShowActionsModal(false)}
+                >
+                    <TouchableOpacity
+                        activeOpacity={1}
+                        style={[styles.actionsSheet, { backgroundColor: colors.cardColor }]}
+                    >
+                        <Text style={[styles.actionsTitle, { color: colors.textColor }]}>Opciones del chat</Text>
+                        <TouchableOpacity
+                            style={styles.actionsRow}
+                            onPress={() => {
+                                setShowActionsModal(false);
+                                navigation.navigate('ChatMediaScreen');
+                            }}
+                        >
+                            <Ionicons name="folder-open-outline" size={24} color={colors.primaryColor} />
+                            <View style={styles.actionsRowText}>
+                                <Text style={[styles.actionsLabel, { color: colors.textColor }]}>Multimedia y archivos</Text>
+                                <Text style={[styles.actionsDescription, { color: colors.secondaryTextColor }]}>Fotos, videos, audios y documentos del chat</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={19} color={colors.secondaryTextColor} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.actionsRow}
+                            onPress={() => {
+                                setShowActionsModal(false);
+                                setShowOnlineModal(true);
+                            }}
+                        >
+                            <Ionicons name="people-outline" size={24} color={colors.primaryColor} />
+                            <View style={styles.actionsRowText}>
+                                <Text style={[styles.actionsLabel, { color: colors.textColor }]}>Miembros</Text>
+                                <Text style={[styles.actionsDescription, { color: colors.secondaryTextColor }]}>Consulta quién está disponible</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={19} color={colors.secondaryTextColor} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.actionsCancel, { borderTopColor: colors.borderColor }]}
+                            onPress={() => setShowActionsModal(false)}
+                        >
+                            <Text style={[styles.actionsCancelText, { color: colors.secondaryTextColor }]}>Cancelar</Text>
+                        </TouchableOpacity>
+                    </TouchableOpacity>
+                </TouchableOpacity>
+            </Modal>
 
             <Modal
                 visible={showOnlineModal}
@@ -493,6 +571,13 @@ const styles = StyleSheet.create({
         alignItems: 'center'
     },
     headerTitle: { fontSize: 18, fontWeight: '700' },
+    headerActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 8 },
+    headerActionButton: {
+        width: 42,
+        height: 42,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
     statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
     dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
     headerSubtitle: { fontSize: 12, flex: 1 },
@@ -503,6 +588,31 @@ const styles = StyleSheet.create({
     composerDock: { zIndex: 20 },
     typingContainer: { paddingHorizontal: 16, paddingVertical: 5 },
     typingText: { fontSize: 12, fontStyle: 'italic' },
+    actionsOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.45)'
+    },
+    actionsSheet: {
+        borderTopLeftRadius: 22,
+        borderTopRightRadius: 22,
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 28
+    },
+    actionsTitle: { fontSize: 20, fontWeight: '800', marginBottom: 10 },
+    actionsRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center' },
+    actionsRowText: { flex: 1, marginHorizontal: 14 },
+    actionsLabel: { fontSize: 16, fontWeight: '700' },
+    actionsDescription: { fontSize: 12, marginTop: 3 },
+    actionsCancel: {
+        minHeight: 48,
+        borderTopWidth: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 6
+    },
+    actionsCancelText: { fontSize: 15, fontWeight: '700' },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
     modalContent: { maxHeight: '70%', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

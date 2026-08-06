@@ -33,6 +33,8 @@ export const AnnouncementCard = ({ announcement, onPress, onDelete }: Props) => 
                 onClose={() => setShowModal(false)}
                 mediaUrl={displayImageUrl}
                 mediaType="image"
+                category="announcements"
+                filename="anuncio.jpg"
             />
 
             {displayImageUrl && (

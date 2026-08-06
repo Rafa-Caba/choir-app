@@ -54,6 +54,17 @@ export const getChatHistory = async (
     return response.data;
 };
 
+export const getChatMedia = async (
+    limit = 100,
+    signal?: AbortSignal
+): Promise<readonly RawChatMessage[]> => {
+    const response = await choirApi.get<readonly RawChatMessage[]>('/chat/media', {
+        params: { limit },
+        signal
+    });
+    return response.data;
+};
+
 export const uploadChatMedia = async (
     attachment: ChatAttachment
 ): Promise<ChatUploadResponse> => {

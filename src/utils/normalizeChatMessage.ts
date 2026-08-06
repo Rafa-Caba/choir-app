@@ -1,10 +1,12 @@
 // src/utils/normalizeChatMessage.ts
 
 import type {
+    ChatMediaMetadata,
     ChatMessage,
     ChatUserSummary,
     MessageReaction,
     MessageType,
+    RawChatMediaAsset,
     RawChatMessage,
     RawChatUser,
     RawReceiptValue,
@@ -20,7 +22,9 @@ const normalizeUser = (rawUser?: RawChatUser): ChatUserSummary => ({
     imageUrl: rawUser?.imageUrl
 });
 
-const normalizeReactionUser = (rawUser: RawChatUser | string | undefined): ChatUserSummary | string => {
+const normalizeReactionUser = (
+    rawUser: RawChatUser | string | undefined
+): ChatUserSummary | string => {
     if (typeof rawUser === 'string') {
         return rawUser;
     }
@@ -36,11 +40,16 @@ const normalizeReceiptId = (value: RawReceiptValue): string => {
     return value.id ?? value._id ?? '';
 };
 
-const normalizeReceiptIds = (values?: readonly RawReceiptValue[]): readonly string[] => {
+const normalizeReceiptIds = (
+    values?: readonly RawReceiptValue[]
+): readonly string[] => {
     return [...new Set((values ?? []).map(normalizeReceiptId).filter(Boolean))];
 };
 
-const getReplyTypePreview = (type: MessageType | undefined, filename?: string): string => {
+const getReplyTypePreview = (
+    type: MessageType | undefined,
+    filename?: string
+): string => {
     switch (type) {
         case 'IMAGE':
             return '📷 Foto';
@@ -92,13 +101,49 @@ const normalizeReply = (raw: RawChatMessage['replyTo']): ReplyPreview | null => 
     };
 };
 
+const normalizeMedia = (
+    raw: RawChatMediaAsset | string | null | undefined,
+    fallbackUrl: string,
+    fallbackFilename: string
+): ChatMediaMetadata | null => {
+    if (!raw || typeof raw === 'string') {
+        if (!fallbackUrl) {
+            return null;
+        }
+
+        return {
+            id: typeof raw === 'string' ? raw : '',
+            url: fallbackUrl,
+            filename: fallbackFilename,
+            mimeType: '',
+            bytes: 0,
+            format: '',
+            resourceType: ''
+        };
+    }
+
+    return {
+        id: raw.id ?? raw._id ?? '',
+        url: raw.url ?? fallbackUrl,
+        filename: raw.originalName ?? fallbackFilename,
+        mimeType: raw.mimeType ?? '',
+        bytes: typeof raw.bytes === 'number' ? raw.bytes : 0,
+        format: raw.format ?? '',
+        resourceType: raw.resourceType ?? ''
+    };
+};
+
 export const normalizeChatMessage = (raw: RawChatMessage): ChatMessage => {
     const createdAt = raw.createdAt ?? new Date().toISOString();
-    const reactions: readonly MessageReaction[] = (raw.reactions ?? []).map((reaction) => ({
-        emoji: reaction.emoji ?? '',
-        user: normalizeReactionUser(reaction.user),
-        username: reaction.username
-    }));
+    const fallbackUrl = raw.imageUrl || raw.audioUrl || raw.fileUrl || '';
+    const fallbackFilename = raw.filename ?? 'Archivo adjunto';
+    const reactions: readonly MessageReaction[] = (raw.reactions ?? []).map(
+        (reaction) => ({
+            emoji: reaction.emoji ?? '',
+            user: normalizeReactionUser(reaction.user),
+            username: reaction.username
+        })
+    );
 
     return {
         id: raw.id ?? raw._id ?? '',
@@ -110,6 +155,7 @@ export const normalizeChatMessage = (raw: RawChatMessage): ChatMessage => {
         imageUrl: raw.imageUrl,
         audioUrl: raw.audioUrl,
         imagePublicId: raw.imagePublicId,
+        media: normalizeMedia(raw.mediaAssetId, fallbackUrl, fallbackFilename),
         reactions,
         replyTo: normalizeReply(raw.replyTo),
         deliveredTo: normalizeReceiptIds(raw.deliveredTo),

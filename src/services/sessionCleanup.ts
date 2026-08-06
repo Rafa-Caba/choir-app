@@ -60,10 +60,8 @@ export const clearLocalSessionData = async (
     await resetApplicationStores();
 
     if (context) {
-        await Promise.all([
-            clearTenantStorage(context),
-            clearTenantMediaCache(context)
-        ]);
+        await clearTenantMediaCache(context);
+        await clearTenantStorage(context);
     }
 
     await Promise.all([

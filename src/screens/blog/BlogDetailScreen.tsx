@@ -163,6 +163,8 @@ export const BlogDetailScreen = () => {
                 onClose={() => setViewerVisible(false)}
                 mediaUrl={mediaUrl}
                 mediaType="image"
+                category="blog"
+                filename="blog.jpg"
             />
         </KeyboardAvoidingView>
     );
