@@ -55,6 +55,7 @@ export const MediaViewerModal = ({
 }: MediaViewerModalProps) => {
     const [scale, setScale] = useState(1);
     const [actionsVisible, setActionsVisible] = useState(false);
+    const [gestureDismissed, setGestureDismissed] = useState(false);
     const lastTap = useRef<number | null>(null);
     const translateY = useRef(new Animated.Value(0)).current;
     const screenHeight = Dimensions.get('window').height;
@@ -80,11 +81,17 @@ export const MediaViewerModal = ({
         translateY.setValue(0);
     }, [translateY]);
 
+    const resetViewerState = useCallback((): void => {
+        setScale(1);
+        setGestureDismissed(false);
+        resetDismissPosition();
+    }, [resetDismissPosition]);
+
     useEffect(() => {
         if (visible) {
-            resetDismissPosition();
+            resetViewerState();
         }
-    }, [resetDismissPosition, visible]);
+    }, [resetViewerState, visible]);
 
     const handleDoubleTap = (): void => {
         const now = Date.now();
@@ -99,10 +106,8 @@ export const MediaViewerModal = ({
 
     const handleClose = useCallback((): void => {
         setActionsVisible(false);
-        setScale(1);
-        resetDismissPosition();
         onClose();
-    }, [onClose, resetDismissPosition]);
+    }, [onClose]);
 
     const restoreViewerPosition = useCallback((): void => {
         Animated.spring(translateY, {
@@ -120,11 +125,16 @@ export const MediaViewerModal = ({
             duration: 190,
             useNativeDriver: true
         }).start(({ finished }) => {
-            if (finished) {
-                handleClose();
+            if (!finished) {
+                return;
             }
+
+            setGestureDismissed(true);
+            requestAnimationFrame(() => {
+                onClose();
+            });
         });
-    }, [handleClose, screenHeight, translateY]);
+    }, [onClose, screenHeight, translateY]);
 
     const dismissPanResponder = useMemo(
         () => PanResponder.create({
@@ -158,7 +168,6 @@ export const MediaViewerModal = ({
 
     const handleOpenActions = (): void => {
         setScale(1);
-        resetDismissPosition();
         onClose();
 
         setTimeout(() => {
@@ -176,13 +185,15 @@ export const MediaViewerModal = ({
                 visible={visible}
                 transparent
                 animationType="fade"
+                presentationStyle="overFullScreen"
                 onRequestClose={handleClose}
+                onDismiss={resetViewerState}
             >
                 <Animated.View
                     style={[
                         styles.container,
                         {
-                            opacity: viewerOpacity,
+                            opacity: gestureDismissed ? 0 : viewerOpacity,
                             transform: [{ translateY }]
                         }
                     ]}
